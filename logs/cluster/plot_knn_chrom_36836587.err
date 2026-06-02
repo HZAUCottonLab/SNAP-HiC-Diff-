@@ -1,0 +1,23 @@
+Config file config/config.yaml is extended by additional config specified via the command line.
+Config file config/chroms.yaml is extended by additional config specified via the command line.
+host: agent-ARM-03
+Building DAG of jobs...
+Using shell: /usr/bin/bash
+Provided cores: 128
+Rules claiming more threads will be scaled down.
+Select jobs to execute...
+Execute 1 jobs...
+
+[Tue Jun  2 10:57:05 2026]
+localrule plot_knn_chrom:
+    input: results/logs/knn_significant_heatmap/H1398_vs_L134/significant_windows.tsv, /share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/scripts/plot_knn_significant_heatmap.py, results/knn_empirical_pvalue/H1398_vs_L134/H1398_vs_L134_knn_enriched.tsv
+    output: results/logs/knn_significant_heatmap/H1398_vs_L134/HC04_A13.done
+    log: results/logs/knn_significant_heatmap/H1398_vs_L134/HC04_A13.log
+    jobid: 0
+    benchmark: results/benchmark/knn_significant_heatmap/H1398_vs_L134/HC04_A13.tsv
+    reason: Forced execution
+    wildcards: comparison=H1398_vs_L134, chrom=HC04_A13
+    threads: 80
+    resources: mem_mb=1000, mem_mib=954, disk_mb=1000, disk_mib=954, tmpdir=/tmp
+
+Activating conda environment: .snakemake/conda/59271960b794774df1c934b1e7affef8_

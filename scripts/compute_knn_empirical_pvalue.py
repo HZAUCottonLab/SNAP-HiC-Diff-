@@ -58,6 +58,19 @@ def robust_scaler_transform(data, med, iqr):
     return (data - med) / iqr
 
 
+def _knn_query_chunk(chunk_features, bg_features, knn_k):
+    """Run BallTree.query on one chunk of query features.
+    
+    Each loky worker builds its own BallTree from bg_features, so we avoid
+    passing the large tree object across process boundaries as an argument.
+    Instead bg_features is captured via closure in the parent scope and each
+    worker gets its own copy when the subprocess is forked/spawned.
+    """
+    tree = BallTree(bg_features, metric="euclidean")
+    dists, indices = tree.query(chunk_features, k=knn_k)
+    return dists, indices
+
+
 def _one_window(i, all_indices, all_dists, bg_scores, query_scores, score_cols):
     """Compute per-metric empirical p-values and bg medians for one window.
     
@@ -93,13 +106,13 @@ def compute_knn_pvalues(query_df, bg_df, knn_k, n_jobs, score_cols, log_file):
     log(f"[INFO] IB  median={ib_med:.6f}, IQR={ib_iqr:.6f}", log_file)
     log(f"[INFO] SP  median={sp_med:.6f}, IQR={sp_iqr:.6f}", log_file)
 
+    # Build background KNN features
     bg_knn_features = np.column_stack([
         robust_scaler_transform(bg_df["EC"].values, ec_med, ec_iqr),
         robust_scaler_transform(bg_df["IB"].values, ib_med, ib_iqr),
         robust_scaler_transform(bg_df["SP"].values, sp_med, sp_iqr),
     ])
-    tree = BallTree(bg_knn_features, metric="euclidean")
-    log(f"[INFO] BallTree built: n={len(bg_knn_features)}, metric=euclidean, k={knn_k}", log_file)
+    log(f"[INFO] BallTree feature matrix: n={len(bg_knn_features)}, k={knn_k}", log_file)
 
     # Pre-compute scaled query features
     query_ec = robust_scaler_transform(query_df["EC"].values, ec_med, ec_iqr)
@@ -107,10 +120,31 @@ def compute_knn_pvalues(query_df, bg_df, knn_k, n_jobs, score_cols, log_file):
     query_sp = robust_scaler_transform(query_df["SP"].values, sp_med, sp_iqr)
     query_features = np.column_stack([query_ec, query_ib, query_sp])
 
-    # Batch KNN query (single call, not parallelised)
+    # Parallel KNN query: chunk windows and dispatch to loky workers
     n_windows = len(query_df)
-    log(f"[INFO] Running {n_windows} KNN queries with k={knn_k}...", log_file)
-    all_dists, all_indices = tree.query(query_features, k=knn_k)
+    chunk_size = max(1, n_windows // n_jobs)
+    n_chunks = max(1, (n_windows + chunk_size - 1) // chunk_size)
+
+    log(
+        f"[INFO] Parallel KNN query: {n_windows} windows in {n_chunks} chunks "
+        f"(~{chunk_size}/chunk) with {n_jobs} loky workers...",
+        log_file,
+    )
+
+    # Build chunks of query feature arrays (views are fine, loky copies on fork)
+    chunk_results = Parallel(n_jobs=n_jobs, backend="loky", max_nbytes="1G")(
+        delayed(_knn_query_chunk)(
+            query_features[i : i + chunk_size],
+            bg_knn_features,
+            knn_k,
+        )
+        for i in range(0, n_windows, chunk_size)
+    )
+
+    # Concatenate per-chunk results
+    all_dists = np.vstack([r[0] for r in chunk_results])
+    all_indices = np.vstack([r[1] for r in chunk_results])
+    log(f"[INFO] KNN query done. result shape: dists={all_dists.shape}, indices={all_indices.shape}", log_file)
 
     # Prepare shared numpy arrays for thread workers
     bg_scores = {col: bg_df[col].values for col in score_cols}
@@ -153,7 +187,7 @@ def main():
     log(f"[INFO] KNN k: {knn_k}", args.log)
     log(f"[INFO] Scaler: {knn_cfg['scaler']}", args.log)
     log(f"[INFO] Score columns: {score_cols}", args.log)
-    log(f"[INFO] n_jobs: {n_jobs} (threading backend)", args.log)
+    log(f"[INFO] n_jobs: {n_jobs}", args.log)
 
     query_df = pd.read_csv(args.input, sep="\t")
     log(f"[INFO] Loaded input: {len(query_df)} rows", args.log)
