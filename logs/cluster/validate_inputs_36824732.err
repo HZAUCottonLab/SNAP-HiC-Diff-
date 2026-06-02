@@ -1,0 +1,66 @@
+Config file config/config.yaml is extended by additional config specified via the command line.
+Config file config/chroms.yaml is extended by additional config specified via the command line.
+host: agent-ARM-03
+Building DAG of jobs...
+Using shell: /usr/bin/bash
+Provided cores: 128
+Rules claiming more threads will be scaled down.
+Select jobs to execute...
+Execute 1 jobs...
+
+[Mon Jun  1 09:28:11 2026]
+localrule validate_inputs:
+    input: data/manifest.tsv, /share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/scripts/validate_inputs.py
+    output: results/validated/manifest.validated.tsv
+    log: results/logs/validate_inputs.log
+    jobid: 0
+    benchmark: results/benchmark/validate_inputs/validate_inputs.tsv
+    reason: Forced execution
+    threads: 80
+    resources: mem_mb=1000, mem_mib=954, disk_mb=1000, disk_mib=954, tmpdir=/tmp
+
+Activating conda environment: .snakemake/conda/59271960b794774df1c934b1e7affef8_
+[Mon Jun  1 09:38:57 2026]
+Finished job 0.
+1 of 1 steps (100%) done
+Storing output in storage.
+
+TASK_INFO:
+    JOB_ID:                     36824732
+    JOB_NAME:                   validate_inputs
+    TASK_NAME:                  rg0.0
+    REPLICA:                    1
+    TASKGROUP_NAME:             rg0
+    SUBMIT_NODE:                agent-ARM-35
+    EXEC_NODE:                  agent-ARM-03
+    EXIT_CODE:                  0
+    EXIT_MESSAGE:               Job execution succeeded
+
+RESOURCE_USAGE_SUMMARY:
+    REQ_CPU:                    80
+    REQ_MEM:                    128
+    REQ_GPU:                    0
+    REQ_NPU:                    0
+    USER_CPU_TIME:              70
+    SYSTEM_CPU_TIME:            6
+    MEMSW_MAX:                  280
+    SWAP_MAX:                   0
+    MEM_MAX:                    280
+    MEM_AVG:                    244
+    MRUN_TIME:                  663
+    SSTOPPED_TIME:              0
+    CPU_UTIL_AVG(%):            11
+    CPU_UTIL_RECENT(%):         8
+    USER_CPU_TIME_SUM:          70
+    SYSTEM_CPU_TIME_SUM:        6
+    MEMSW_MAX_SUM:              280
+    SWAP_MAX_SUM:               0
+    MEM_MAX_SUM:                280
+    MEM_AVG_SUM:                244
+    CPU_UTIL_AVG_SUM(%):        11
+    CPU_UTIL_RECENT_SUM(%):     8
+    GPU_SM_UTIL_AVG(%):         -
+    GPU_SM_UTIL_RECENT(%):      -
+    NPU_SM_MEM_SUM(MB):         -
+    NPU_SM_AICORE_UTIL(%):      -
+

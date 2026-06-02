@@ -1,0 +1,67 @@
+Config file config/config.yaml is extended by additional config specified via the command line.
+Config file config/chroms.yaml is extended by additional config specified via the command line.
+host: agent-ARM-21
+Building DAG of jobs...
+Using shell: /usr/bin/bash
+Provided cores: 128
+Rules claiming more threads will be scaled down.
+Select jobs to execute...
+Execute 1 jobs...
+
+[Mon Jun  1 17:29:42 2026]
+localrule plot_knn_chrom:
+    input: results/logs/knn_significant_heatmap/H1398_vs_L134/significant_windows.tsv, /share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/scripts/plot_knn_significant_heatmap.py, results/knn_empirical_pvalue/H1398_vs_L134/H1398_vs_L134_knn_enriched.tsv
+    output: results/logs/knn_significant_heatmap/H1398_vs_L134/HC04_D10.done
+    log: results/logs/knn_significant_heatmap/H1398_vs_L134/HC04_D10.log
+    jobid: 0
+    benchmark: results/benchmark/knn_significant_heatmap/H1398_vs_L134/HC04_D10.tsv
+    reason: Forced execution
+    wildcards: comparison=H1398_vs_L134, chrom=HC04_D10
+    threads: 80
+    resources: mem_mb=1000, mem_mib=954, disk_mb=1000, disk_mib=954, tmpdir=/tmp
+
+Activating conda environment: .snakemake/conda/59271960b794774df1c934b1e7affef8_
+[Mon Jun  1 17:29:49 2026]
+Finished job 0.
+1 of 1 steps (100%) done
+Storing output in storage.
+
+TASK_INFO:
+    JOB_ID:                     36826160
+    JOB_NAME:                   plot_knn_chrom
+    TASK_NAME:                  rg0.0
+    REPLICA:                    1
+    TASKGROUP_NAME:             rg0
+    SUBMIT_NODE:                agent-ARM-35
+    EXEC_NODE:                  agent-ARM-21
+    EXIT_CODE:                  0
+    EXIT_MESSAGE:               Job execution succeeded
+
+RESOURCE_USAGE_SUMMARY:
+    REQ_CPU:                    80
+    REQ_MEM:                    128
+    REQ_GPU:                    0
+    REQ_NPU:                    0
+    USER_CPU_TIME:              12
+    SYSTEM_CPU_TIME:            1
+    MEMSW_MAX:                  240
+    SWAP_MAX:                   0
+    MEM_MAX:                    240
+    MEM_AVG:                    1
+    MRUN_TIME:                  18
+    SSTOPPED_TIME:              0
+    CPU_UTIL_AVG(%):            78
+    CPU_UTIL_RECENT(%):         78
+    USER_CPU_TIME_SUM:          12
+    SYSTEM_CPU_TIME_SUM:        1
+    MEMSW_MAX_SUM:              240
+    SWAP_MAX_SUM:               0
+    MEM_MAX_SUM:                240
+    MEM_AVG_SUM:                1
+    CPU_UTIL_AVG_SUM(%):        78
+    CPU_UTIL_RECENT_SUM(%):     78
+    GPU_SM_UTIL_AVG(%):         -
+    GPU_SM_UTIL_RECENT(%):      -
+    NPU_SM_MEM_SUM(MB):         -
+    NPU_SM_AICORE_UTIL(%):      -
+

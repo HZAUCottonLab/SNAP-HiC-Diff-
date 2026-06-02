@@ -1,0 +1,40 @@
+
+TASK_INFO:
+    JOB_ID:                     36835955
+    JOB_NAME:                   plot_knn_chrom
+    TASK_NAME:                  rg0.0
+    REPLICA:                    1
+    TASKGROUP_NAME:             rg0
+    SUBMIT_NODE:                agent-ARM-35
+    EXEC_NODE:                  agent-ARM-22
+    EXIT_CODE:                  10003
+    EXIT_MESSAGE:               Job was terminated by xhhuang24
+
+RESOURCE_USAGE_SUMMARY:
+    REQ_CPU:                    80
+    REQ_MEM:                    128
+    REQ_GPU:                    0
+    REQ_NPU:                    0
+    USER_CPU_TIME:              2517
+    SYSTEM_CPU_TIME:            25
+    MEMSW_MAX:                  541
+    SWAP_MAX:                   0
+    MEM_MAX:                    541
+    MEM_AVG:                    458
+    MRUN_TIME:                  2837
+    SSTOPPED_TIME:              0
+    CPU_UTIL_AVG(%):            89
+    CPU_UTIL_RECENT(%):         88
+    USER_CPU_TIME_SUM:          2517
+    SYSTEM_CPU_TIME_SUM:        25
+    MEMSW_MAX_SUM:              541
+    SWAP_MAX_SUM:               0
+    MEM_MAX_SUM:                541
+    MEM_AVG_SUM:                458
+    CPU_UTIL_AVG_SUM(%):        89
+    CPU_UTIL_RECENT_SUM(%):     88
+    GPU_SM_UTIL_AVG(%):         -
+    GPU_SM_UTIL_RECENT(%):      -
+    NPU_SM_MEM_SUM(MB):         -
+    NPU_SM_AICORE_UTIL(%):      -
+

@@ -1,0 +1,40 @@
+
+TASK_INFO:
+    JOB_ID:                     36825381
+    JOB_NAME:                   compute_oe_matrix
+    TASK_NAME:                  rg0.0
+    REPLICA:                    1
+    TASKGROUP_NAME:             rg0
+    SUBMIT_NODE:                agent-ARM-35
+    EXEC_NODE:                  agent-ARM-13
+    EXIT_CODE:                  0
+    EXIT_MESSAGE:               Job execution succeeded
+
+RESOURCE_USAGE_SUMMARY:
+    REQ_CPU:                    80
+    REQ_MEM:                    128
+    REQ_GPU:                    0
+    REQ_NPU:                    0
+    USER_CPU_TIME:              2330
+    SYSTEM_CPU_TIME:            45
+    MEMSW_MAX:                  4833
+    SWAP_MAX:                   0
+    MEM_MAX:                    4833
+    MEM_AVG:                    1675
+    MRUN_TIME:                  2340
+    SSTOPPED_TIME:              0
+    CPU_UTIL_AVG(%):            101
+    CPU_UTIL_RECENT(%):         96
+    USER_CPU_TIME_SUM:          2330
+    SYSTEM_CPU_TIME_SUM:        45
+    MEMSW_MAX_SUM:              4833
+    SWAP_MAX_SUM:               0
+    MEM_MAX_SUM:                4833
+    MEM_AVG_SUM:                1675
+    CPU_UTIL_AVG_SUM(%):        101
+    CPU_UTIL_RECENT_SUM(%):     96
+    GPU_SM_UTIL_AVG(%):         -
+    GPU_SM_UTIL_RECENT(%):      -
+    NPU_SM_MEM_SUM(MB):         -
+    NPU_SM_AICORE_UTIL(%):      -
+

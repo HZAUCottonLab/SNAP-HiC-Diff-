@@ -1,0 +1,68 @@
+Config file config/config.yaml is extended by additional config specified via the command line.
+Config file config/chroms.yaml is extended by additional config specified via the command line.
+host: agent-ARM-16
+Building DAG of jobs...
+Using shell: /usr/bin/bash
+Provided cores: 128
+Rules claiming more threads will be scaled down.
+Select jobs to execute...
+Execute 1 jobs...
+
+[Sat May 30 08:43:17 2026]
+localcheckpoint compute_gap_qc:
+    input: results/logs/extract_balance/L251.done, /share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/scripts/compute_gap_qc.py
+    output: results/logs/gap_qc/L251.done, results/windows/L251/L251__HC04_A01_gaps.tsv, results/windows/L251/L251__HC04_A02_gaps.tsv, results/windows/L251/L251__HC04_A03_gaps.tsv, results/windows/L251/L251__HC04_A04_gaps.tsv, results/windows/L251/L251__HC04_A05_gaps.tsv, results/windows/L251/L251__HC04_A06_gaps.tsv, results/windows/L251/L251__HC04_A07_gaps.tsv, results/windows/L251/L251__HC04_A08_gaps.tsv, results/windows/L251/L251__HC04_A09_gaps.tsv, results/windows/L251/L251__HC04_A10_gaps.tsv, results/windows/L251/L251__HC04_A11_gaps.tsv, results/windows/L251/L251__HC04_A12_gaps.tsv, results/windows/L251/L251__HC04_A13_gaps.tsv, results/windows/L251/L251__HC04_D01_gaps.tsv, results/windows/L251/L251__HC04_D02_gaps.tsv, results/windows/L251/L251__HC04_D03_gaps.tsv, results/windows/L251/L251__HC04_D04_gaps.tsv, results/windows/L251/L251__HC04_D05_gaps.tsv, results/windows/L251/L251__HC04_D06_gaps.tsv, results/windows/L251/L251__HC04_D07_gaps.tsv, results/windows/L251/L251__HC04_D08_gaps.tsv, results/windows/L251/L251__HC04_D09_gaps.tsv, results/windows/L251/L251__HC04_D10_gaps.tsv, results/windows/L251/L251__HC04_D11_gaps.tsv, results/windows/L251/L251__HC04_D12_gaps.tsv, results/windows/L251/L251__HC04_D13_gaps.tsv, results/windows/L251/L251__HC04_A01_window_qc.tsv, results/windows/L251/L251__HC04_A02_window_qc.tsv, results/windows/L251/L251__HC04_A03_window_qc.tsv, results/windows/L251/L251__HC04_A04_window_qc.tsv, results/windows/L251/L251__HC04_A05_window_qc.tsv, results/windows/L251/L251__HC04_A06_window_qc.tsv, results/windows/L251/L251__HC04_A07_window_qc.tsv, results/windows/L251/L251__HC04_A08_window_qc.tsv, results/windows/L251/L251__HC04_A09_window_qc.tsv, results/windows/L251/L251__HC04_A10_window_qc.tsv, results/windows/L251/L251__HC04_A11_window_qc.tsv, results/windows/L251/L251__HC04_A12_window_qc.tsv, results/windows/L251/L251__HC04_A13_window_qc.tsv, results/windows/L251/L251__HC04_D01_window_qc.tsv, results/windows/L251/L251__HC04_D02_window_qc.tsv, results/windows/L251/L251__HC04_D03_window_qc.tsv, results/windows/L251/L251__HC04_D04_window_qc.tsv, results/windows/L251/L251__HC04_D05_window_qc.tsv, results/windows/L251/L251__HC04_D06_window_qc.tsv, results/windows/L251/L251__HC04_D07_window_qc.tsv, results/windows/L251/L251__HC04_D08_window_qc.tsv, results/windows/L251/L251__HC04_D09_window_qc.tsv, results/windows/L251/L251__HC04_D10_window_qc.tsv, results/windows/L251/L251__HC04_D11_window_qc.tsv, results/windows/L251/L251__HC04_D12_window_qc.tsv, results/windows/L251/L251__HC04_D13_window_qc.tsv
+    log: results/logs/gap_qc/L251.log
+    jobid: 0
+    benchmark: results/benchmark/gap_qc/L251.tsv
+    reason: Forced execution
+    wildcards: sample=L251
+    threads: 80
+    resources: mem_mb=1000, mem_mib=954, disk_mb=1000, disk_mib=954, tmpdir=/tmp
+DAG of jobs will be updated after completion.
+
+Activating conda environment: .snakemake/conda/59271960b794774df1c934b1e7affef8_
+[Sat May 30 08:48:35 2026]
+Finished job 0.
+1 of 1 steps (100%) done
+Storing output in storage.
+
+TASK_INFO:
+    JOB_ID:                     36661796
+    JOB_NAME:                   compute_gap_qc
+    TASK_NAME:                  rg0.0
+    REPLICA:                    1
+    TASKGROUP_NAME:             rg0
+    SUBMIT_NODE:                agent-ARM-10
+    EXEC_NODE:                  agent-ARM-16
+    EXIT_CODE:                  0
+    EXIT_MESSAGE:               Job execution succeeded
+
+RESOURCE_USAGE_SUMMARY:
+    REQ_CPU:                    80
+    REQ_MEM:                    128
+    REQ_GPU:                    0
+    REQ_NPU:                    0
+    USER_CPU_TIME:              703
+    SYSTEM_CPU_TIME:            558
+    MEMSW_MAX:                  23924
+    SWAP_MAX:                   0
+    MEM_MAX:                    23924
+    MEM_AVG:                    13105
+    MRUN_TIME:                  334
+    SSTOPPED_TIME:              0
+    CPU_UTIL_AVG(%):            377
+    CPU_UTIL_RECENT(%):         621
+    USER_CPU_TIME_SUM:          703
+    SYSTEM_CPU_TIME_SUM:        558
+    MEMSW_MAX_SUM:              23924
+    SWAP_MAX_SUM:               0
+    MEM_MAX_SUM:                23924
+    MEM_AVG_SUM:                13105
+    CPU_UTIL_AVG_SUM(%):        377
+    CPU_UTIL_RECENT_SUM(%):     621
+    GPU_SM_UTIL_AVG(%):         -
+    GPU_SM_UTIL_RECENT(%):      -
+    NPU_SM_MEM_SUM(MB):         -
+    NPU_SM_AICORE_UTIL(%):      -
+

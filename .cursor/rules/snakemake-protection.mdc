@@ -1,0 +1,30 @@
+# Protect .snakemake Directory
+
+## Rule
+
+**`.snakemake` 目录禁止被 agent 删除，只能手动删除。**
+
+任何删除操作前必须询问用户确认。
+
+## Implementation
+
+当检测到删除 `.snakemake` 目录或其任何内容的请求时：
+
+1. **立即停止执行**
+2. **询问用户**：
+   - "检测到删除 `.snakemake` 目录的请求。这是 Snakemake 的缓存目录，删除后需要重新运行整个 pipeline。确认要继续吗？"
+3. **只有用户明确确认后才执行删除**
+
+## Examples
+
+❌ 禁止：
+```
+rm -rf .snakemake
+rm .snakemake/*
+```
+
+✅ 正确：
+```
+# 必须先询问用户
+# "确认删除 .snakemake 吗？"
+```

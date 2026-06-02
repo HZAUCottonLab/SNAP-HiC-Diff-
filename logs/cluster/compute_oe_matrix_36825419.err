@@ -1,0 +1,67 @@
+Config file config/config.yaml is extended by additional config specified via the command line.
+Config file config/chroms.yaml is extended by additional config specified via the command line.
+host: agent-ARM-23
+Building DAG of jobs...
+Using shell: /usr/bin/bash
+Provided cores: 128
+Rules claiming more threads will be scaled down.
+Select jobs to execute...
+Execute 1 jobs...
+
+[Mon Jun  1 10:09:28 2026]
+localrule compute_oe_matrix:
+    input: results/logs/expected/H1396_to_npz.done, /share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/scripts/compute_oe_matrix_batch.py
+    output: results/logs/oe/H1396.done, results/oe/H1396/H1396__HC04_A01_oe.npz, results/oe/H1396/H1396__HC04_A02_oe.npz, results/oe/H1396/H1396__HC04_A03_oe.npz, results/oe/H1396/H1396__HC04_A04_oe.npz, results/oe/H1396/H1396__HC04_A05_oe.npz, results/oe/H1396/H1396__HC04_A06_oe.npz, results/oe/H1396/H1396__HC04_A07_oe.npz, results/oe/H1396/H1396__HC04_A08_oe.npz, results/oe/H1396/H1396__HC04_A09_oe.npz, results/oe/H1396/H1396__HC04_A10_oe.npz, results/oe/H1396/H1396__HC04_A11_oe.npz, results/oe/H1396/H1396__HC04_A12_oe.npz, results/oe/H1396/H1396__HC04_A13_oe.npz, results/oe/H1396/H1396__HC04_D01_oe.npz, results/oe/H1396/H1396__HC04_D02_oe.npz, results/oe/H1396/H1396__HC04_D03_oe.npz, results/oe/H1396/H1396__HC04_D04_oe.npz, results/oe/H1396/H1396__HC04_D05_oe.npz, results/oe/H1396/H1396__HC04_D06_oe.npz, results/oe/H1396/H1396__HC04_D07_oe.npz, results/oe/H1396/H1396__HC04_D08_oe.npz, results/oe/H1396/H1396__HC04_D09_oe.npz, results/oe/H1396/H1396__HC04_D10_oe.npz, results/oe/H1396/H1396__HC04_D11_oe.npz, results/oe/H1396/H1396__HC04_D12_oe.npz, results/oe/H1396/H1396__HC04_D13_oe.npz
+    log: results/logs/oe/H1396_oe.log
+    jobid: 0
+    benchmark: results/benchmark/oe/H1396_oe.tsv
+    reason: Forced execution
+    wildcards: sample=H1396
+    threads: 80
+    resources: mem_mb=1000, mem_mib=954, disk_mb=1000, disk_mib=954, tmpdir=/tmp
+
+Activating conda environment: .snakemake/conda/59271960b794774df1c934b1e7affef8_
+[Mon Jun  1 10:54:02 2026]
+Finished job 0.
+1 of 1 steps (100%) done
+Storing output in storage.
+
+TASK_INFO:
+    JOB_ID:                     36825419
+    JOB_NAME:                   compute_oe_matrix
+    TASK_NAME:                  rg0.0
+    REPLICA:                    1
+    TASKGROUP_NAME:             rg0
+    SUBMIT_NODE:                agent-ARM-35
+    EXEC_NODE:                  agent-ARM-23
+    EXIT_CODE:                  0
+    EXIT_MESSAGE:               Job execution succeeded
+
+RESOURCE_USAGE_SUMMARY:
+    REQ_CPU:                    80
+    REQ_MEM:                    128
+    REQ_GPU:                    0
+    REQ_NPU:                    0
+    USER_CPU_TIME:              2661
+    SYSTEM_CPU_TIME:            51
+    MEMSW_MAX:                  5067
+    SWAP_MAX:                   0
+    MEM_MAX:                    5067
+    MEM_AVG:                    1883
+    MRUN_TIME:                  2692
+    SSTOPPED_TIME:              0
+    CPU_UTIL_AVG(%):            100
+    CPU_UTIL_RECENT(%):         93
+    USER_CPU_TIME_SUM:          2661
+    SYSTEM_CPU_TIME_SUM:        51
+    MEMSW_MAX_SUM:              5067
+    SWAP_MAX_SUM:               0
+    MEM_MAX_SUM:                5067
+    MEM_AVG_SUM:                1883
+    CPU_UTIL_AVG_SUM(%):        100
+    CPU_UTIL_RECENT_SUM(%):     93
+    GPU_SM_UTIL_AVG(%):         -
+    GPU_SM_UTIL_RECENT(%):      -
+    NPU_SM_MEM_SUM(MB):         -
+    NPU_SM_AICORE_UTIL(%):      -
+

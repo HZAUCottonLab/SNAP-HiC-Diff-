@@ -1,0 +1,5 @@
+# Snakemake working directory
+.snakemake/
+
+# Pipeline outputs
+results/

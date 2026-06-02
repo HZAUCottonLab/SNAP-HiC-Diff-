@@ -1,0 +1,40 @@
+
+TASK_INFO:
+    JOB_ID:                     36825614
+    JOB_NAME:                   sliding_window
+    TASK_NAME:                  rg0.0
+    REPLICA:                    1
+    TASKGROUP_NAME:             rg0
+    SUBMIT_NODE:                agent-ARM-35
+    EXEC_NODE:                  agent-ARM-22
+    EXIT_CODE:                  0
+    EXIT_MESSAGE:               Job execution succeeded
+
+RESOURCE_USAGE_SUMMARY:
+    REQ_CPU:                    80
+    REQ_MEM:                    128
+    REQ_GPU:                    0
+    REQ_NPU:                    0
+    USER_CPU_TIME:              161300
+    SYSTEM_CPU_TIME:            434
+    MEMSW_MAX:                  23116
+    SWAP_MAX:                   0
+    MEM_MAX:                    23116
+    MEM_AVG:                    7786
+    MRUN_TIME:                  3868
+    SSTOPPED_TIME:              0
+    CPU_UTIL_AVG(%):            4181
+    CPU_UTIL_RECENT(%):         144
+    USER_CPU_TIME_SUM:          161300
+    SYSTEM_CPU_TIME_SUM:        434
+    MEMSW_MAX_SUM:              23116
+    SWAP_MAX_SUM:               0
+    MEM_MAX_SUM:                23116
+    MEM_AVG_SUM:                7786
+    CPU_UTIL_AVG_SUM(%):        4181
+    CPU_UTIL_RECENT_SUM(%):     144
+    GPU_SM_UTIL_AVG(%):         -
+    GPU_SM_UTIL_RECENT(%):      -
+    NPU_SM_MEM_SUM(MB):         -
+    NPU_SM_AICORE_UTIL(%):      -
+

@@ -1,0 +1,67 @@
+Config file config/config.yaml is extended by additional config specified via the command line.
+Config file config/chroms.yaml is extended by additional config specified via the command line.
+host: agent-ARM-43
+Building DAG of jobs...
+Using shell: /usr/bin/bash
+Provided cores: 128
+Rules claiming more threads will be scaled down.
+Select jobs to execute...
+Execute 1 jobs...
+
+[Sat May 30 08:43:53 2026]
+localrule extract_expected_tsv:
+    input: results/logs/extract_balance/L347.done
+    output: results/logs/expected/L347_cooltools.done
+    log: results/logs/expected/L347_cooltools.log
+    jobid: 0
+    benchmark: results/benchmark/expected/L347_cooltools.tsv
+    reason: Forced execution
+    wildcards: sample=L347
+    threads: 10
+    resources: mem_mb=1000, mem_mib=954, disk_mb=1000, disk_mib=954, tmpdir=/tmp
+
+Activating conda environment: .snakemake/conda/59271960b794774df1c934b1e7affef8_
+[Sat May 30 08:46:53 2026]
+Finished job 0.
+1 of 1 steps (100%) done
+Storing output in storage.
+
+TASK_INFO:
+    JOB_ID:                     36661800
+    JOB_NAME:                   extract_expected_tsv
+    TASK_NAME:                  rg0.0
+    REPLICA:                    1
+    TASKGROUP_NAME:             rg0
+    SUBMIT_NODE:                agent-ARM-10
+    EXEC_NODE:                  agent-ARM-43
+    EXIT_CODE:                  0
+    EXIT_MESSAGE:               Job execution succeeded
+
+RESOURCE_USAGE_SUMMARY:
+    REQ_CPU:                    10
+    REQ_MEM:                    128
+    REQ_GPU:                    0
+    REQ_NPU:                    0
+    USER_CPU_TIME:              161
+    SYSTEM_CPU_TIME:            40
+    MEMSW_MAX:                  4590
+    SWAP_MAX:                   0
+    MEM_MAX:                    4590
+    MEM_AVG:                    328
+    MRUN_TIME:                  190
+    SSTOPPED_TIME:              0
+    CPU_UTIL_AVG(%):            105
+    CPU_UTIL_RECENT(%):         101
+    USER_CPU_TIME_SUM:          161
+    SYSTEM_CPU_TIME_SUM:        40
+    MEMSW_MAX_SUM:              4590
+    SWAP_MAX_SUM:               0
+    MEM_MAX_SUM:                4590
+    MEM_AVG_SUM:                328
+    CPU_UTIL_AVG_SUM(%):        105
+    CPU_UTIL_RECENT_SUM(%):     101
+    GPU_SM_UTIL_AVG(%):         -
+    GPU_SM_UTIL_RECENT(%):      -
+    NPU_SM_MEM_SUM(MB):         -
+    NPU_SM_AICORE_UTIL(%):      -
+

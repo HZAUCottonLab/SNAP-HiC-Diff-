@@ -1,0 +1,134 @@
+# SNAP-HiC-Diff Window Comparison Pipeline Configuration
+
+# ============================================================================
+# Input
+# ============================================================================
+manifest: "data/manifest.tsv"
+
+# ============================================================================
+# Output
+# ============================================================================
+outdir: "results"
+tmpdir: "tmp"
+
+# ============================================================================
+# Analysis Parameters
+# ============================================================================
+resolution: 4000           # 4kb bins (finest available in mcool)
+window_size: 300000       # 300kb windows
+step_size: 32000          # 32kb step (sliding window)
+
+# ============================================================================
+# Samples (loaded dynamically from manifest.tsv - do not hardcode here)
+# ============================================================================
+
+# ============================================================================
+# hictk Parameters
+# ============================================================================
+hictk:
+  balance:
+    ignore_diags: 2        # Ignore first 2 diagonals during balance
+  threads: 10              # Threads per hictk job
+
+# ============================================================================
+# QC Thresholds (Custom Set)
+# ============================================================================
+qc:
+  # Dynamic P20 thresholds (per chromosome, applied after all windows)
+  dynamic_raw_sum_cpm_pct: 10      # Percentile for raw_sum_cpm + nz_frac dynamic threshold (0 = disabled)
+  max_bad_bin_frac: 0.5         # Maximum gap bin fraction
+
+# NaN-Density Breakpoint Detection (ICE matrix with gap mask)
+nan_density_breakpoint:
+  abnormal_threshold: 0.60      # Upper band zero+NaN fraction threshold (>50% = abnormal)
+
+# Gap Detection Parameters (sliding window)
+gap:
+  gradient_threshold: 10.0       # Min ratio for breakpoint detection (reference detect_gaps.py)
+  min_low_ratio: 0.001          # Min fraction of low bins in a valid gap window
+
+# ============================================================================
+# Smoothing Parameters
+# ============================================================================
+smoothing:
+  sigma: 1.0                    # Gaussian kernel sigma
+
+# ============================================================================
+# Parallelization
+# ============================================================================
+parallel:
+  threads_per_job: 80          # Threads per compute job (passed to joblib)
+
+# ============================================================================
+# Tracy-Widom Parameters
+# ============================================================================
+tracy_widom:
+  min_nbin: 10                # Minimum valid bins for TW test
+  na_fraction: 0.5            # Max fraction of NaN/zero in rows (filter threshold)
+
+# ============================================================================
+# KNN Empirical P-Value Parameters
+# ============================================================================
+knn_empirical_pvalue:
+  background_file: "/share/home/xhhuang24/project/PanTE/background_pool/results/window_compare/HiC_window_background.tsv"
+  knn_k: 10000
+  knn_metric: "euclidean"
+  scaler: "robust"
+  score_columns:
+    - MSE
+    - d_SSIM
+    - d_Spearman
+    - tw_score
+    - d_NCC
+  derive_scores:
+    d_SSIM: "1 - SSIM"
+    d_Spearman: "1 - Spearman"
+    tw_score: "-log10(max(tw_pvalue, 1e-30))"
+    d_NCC: "1 - NCC"
+  pvalue_direction:
+    MSE: "greater"
+    d_SSIM: "greater"
+    d_Spearman: "greater"
+    tw_score: "greater"
+    d_NCC: "greater"
+  # compute_fdr removed: raw empirical p-values are the canonical output
+  n_jobs: 80                        # joblib parallel threads for per-window p-value computation
+
+# ============================================================================
+# KNN Significant Heatmap Parameters
+# ============================================================================
+knn_significant_heatmap:
+  pvalue_threshold: 0.05          # raw empirical p-value threshold for significance
+  pass_mode: "all"                # all | any | subset
+  metrics:
+    - MSE
+    - d_SSIM
+    - d_Spearman
+    - tw_score
+    - d_NCC
+
+# ============================================================================
+# Window Compare Parameters
+# ============================================================================
+window_compare:
+  pairs_file: "data/window_compare_pairs.yaml"   # Path to comparison pairs config
+  covariates:
+    cpm_column: "raw_sum_cpm"       # CPM column from window QC
+    nz_column: "nz_frac"              # NZ fraction column from window QC
+    pseudocount_cpm: 0.01             # Pseudocount for CPM
+    weights:
+      EC: 0.33                       # Weight for Enrichment Correlation
+      IB: 0.33                       # Weight for Interaction Balance
+      SP: 0.33                       # Weight for Short-range Contacts
+  gaussian_metrics:
+    n_jobs: 80                       # Parallel jobs for Gaussian comparison
+  tw:
+    n_jobs: 80                       # Parallel jobs for Tracy-Widom test
+
+# ============================================================================
+# Dsub Parameters
+# ============================================================================
+# Note: memory/disk are auto-allocated by queue (arm: 5GB/core)
+dsub:
+  queue: "arm"
+  cpu: 80                      # 80 cores = 400GB memory (arm queue)

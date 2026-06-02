@@ -1,0 +1,201 @@
+2026-06-01 16:42:36,357 INFO === Threshold overlap sweep ===
+2026-06-01 16:42:36,357 INFO Project: L134_H1398_A05 | Chrom: HC04_A05
+2026-06-01 16:42:36,357 INFO Enriched: /share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/results/knn_empirical_pvalue/H1398_vs_L134/H1398_vs_L134_knn_enriched.tsv
+2026-06-01 16:42:36,357 INFO Reference: /share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/test/L134_H1398_A05/reference/reference_windows.tsv
+2026-06-01 16:42:36,357 INFO Output dir: /share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/test/L134_H1398_A05/results_smoke
+2026-06-01 16:42:36,357 INFO Loading enriched windows (chrom=HC04_A05)...
+2026-06-01 16:42:36,891 INFO   A05 windows: 2825
+2026-06-01 16:42:36,892 INFO Computing FDR columns (chrom + global)...
+2026-06-01 16:42:37,016 INFO   Loaded global enriched (cols=7, rows=57872)
+2026-06-01 16:42:37,246 INFO Loading reference windows...
+2026-06-01 16:42:37,286 INFO   Reference windows: 52
+2026-06-01 16:42:37,287 INFO Total threshold combinations: 186
+2026-06-01 16:42:37,314 INFO [001] MSE | thresh=0.01 | mode=pvalue      | pass= 390 | overlap=31 | recall=0.596 | f1=0.1403
+2026-06-01 16:42:37,471 INFO [002] MSE | thresh=0.01 | mode=fdr_chrom   | pass=2352 | overlap=46 | recall=0.885 | f1=0.0383
+2026-06-01 16:42:37,657 INFO [003] MSE | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:37,707 INFO [004] MSE | thresh=0.05 | mode=pvalue      | pass= 740 | overlap=36 | recall=0.692 | f1=0.0909
+2026-06-01 16:42:37,890 INFO [005] MSE | thresh=0.05 | mode=fdr_chrom   | pass=2796 | overlap=52 | recall=1.000 | f1=0.0365
+2026-06-01 16:42:38,075 INFO [006] MSE | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:38,083 INFO [007] d_SSIM | thresh=0.01 | mode=pvalue      | pass=  82 | overlap=10 | recall=0.192 | f1=0.1493
+2026-06-01 16:42:38,086 INFO [008] d_SSIM | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:38,271 INFO [009] d_SSIM | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:38,289 INFO [010] d_SSIM | thresh=0.05 | mode=pvalue      | pass= 228 | overlap=21 | recall=0.404 | f1=0.1500
+2026-06-01 16:42:38,291 INFO [011] d_SSIM | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:38,479 INFO [012] d_SSIM | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:38,487 INFO [013] d_Spearman | thresh=0.01 | mode=pvalue      | pass=  78 | overlap=10 | recall=0.192 | f1=0.1538
+2026-06-01 16:42:38,489 INFO [014] d_Spearman | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:38,673 INFO [015] d_Spearman | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:38,692 INFO [016] d_Spearman | thresh=0.05 | mode=pvalue      | pass= 235 | overlap=19 | recall=0.365 | f1=0.1324
+2026-06-01 16:42:38,694 INFO [017] d_Spearman | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:38,878 INFO [018] d_Spearman | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:38,911 INFO [019] tw_score | thresh=0.01 | mode=pvalue      | pass= 460 | overlap=33 | recall=0.635 | f1=0.1289
+2026-06-01 16:42:39,093 INFO [020] tw_score | thresh=0.01 | mode=fdr_chrom   | pass=2775 | overlap=52 | recall=1.000 | f1=0.0368
+2026-06-01 16:42:39,278 INFO [021] tw_score | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:39,339 INFO [022] tw_score | thresh=0.05 | mode=pvalue      | pass= 923 | overlap=40 | recall=0.769 | f1=0.0821
+2026-06-01 16:42:39,526 INFO [023] tw_score | thresh=0.05 | mode=fdr_chrom   | pass=2787 | overlap=52 | recall=1.000 | f1=0.0366
+2026-06-01 16:42:39,712 INFO [024] tw_score | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:39,720 INFO [025] d_NCC | thresh=0.01 | mode=pvalue      | pass=  82 | overlap=10 | recall=0.192 | f1=0.1493
+2026-06-01 16:42:39,723 INFO [026] d_NCC | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:39,908 INFO [027] d_NCC | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:39,925 INFO [028] d_NCC | thresh=0.05 | mode=pvalue      | pass= 227 | overlap=20 | recall=0.385 | f1=0.1434
+2026-06-01 16:42:39,928 INFO [029] d_NCC | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:40,113 INFO [030] d_NCC | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:40,120 INFO [031] MSE,d_SSIM | thresh=0.01 | mode=pvalue      | pass=  62 | overlap=10 | recall=0.192 | f1=0.1754
+2026-06-01 16:42:40,123 INFO [032] MSE,d_SSIM | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:40,308 INFO [033] MSE,d_SSIM | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:40,323 INFO [034] MSE,d_SSIM | thresh=0.05 | mode=pvalue      | pass= 193 | overlap=21 | recall=0.404 | f1=0.1714
+2026-06-01 16:42:40,326 INFO [035] MSE,d_SSIM | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:40,511 INFO [036] MSE,d_SSIM | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:40,518 INFO [037] MSE,d_Spearman | thresh=0.01 | mode=pvalue      | pass=  59 | overlap=10 | recall=0.192 | f1=0.1802
+2026-06-01 16:42:40,520 INFO [038] MSE,d_Spearman | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:40,709 INFO [039] MSE,d_Spearman | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:40,724 INFO [040] MSE,d_Spearman | thresh=0.05 | mode=pvalue      | pass= 184 | overlap=19 | recall=0.365 | f1=0.1610
+2026-06-01 16:42:40,726 INFO [041] MSE,d_Spearman | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:40,917 INFO [042] MSE,d_Spearman | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:40,931 INFO [043] MSE,tw_score | thresh=0.01 | mode=pvalue      | pass= 176 | overlap=26 | recall=0.500 | f1=0.2281
+2026-06-01 16:42:41,088 INFO [044] MSE,tw_score | thresh=0.01 | mode=fdr_chrom   | pass=2352 | overlap=46 | recall=0.885 | f1=0.0383
+2026-06-01 16:42:41,276 INFO [045] MSE,tw_score | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:41,302 INFO [046] MSE,tw_score | thresh=0.05 | mode=pvalue      | pass= 352 | overlap=31 | recall=0.596 | f1=0.1535
+2026-06-01 16:42:41,489 INFO [047] MSE,tw_score | thresh=0.05 | mode=fdr_chrom   | pass=2787 | overlap=52 | recall=1.000 | f1=0.0366
+2026-06-01 16:42:41,674 INFO [048] MSE,tw_score | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:41,681 INFO [049] MSE,d_NCC | thresh=0.01 | mode=pvalue      | pass=  61 | overlap=10 | recall=0.192 | f1=0.1770
+2026-06-01 16:42:41,684 INFO [050] MSE,d_NCC | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:41,869 INFO [051] MSE,d_NCC | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:41,884 INFO [052] MSE,d_NCC | thresh=0.05 | mode=pvalue      | pass= 191 | overlap=20 | recall=0.385 | f1=0.1646
+2026-06-01 16:42:41,886 INFO [053] MSE,d_NCC | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:42,071 INFO [054] MSE,d_NCC | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:42,079 INFO [055] d_SSIM,d_Spearman | thresh=0.01 | mode=pvalue      | pass=  65 | overlap=10 | recall=0.192 | f1=0.1709
+2026-06-01 16:42:42,081 INFO [056] d_SSIM,d_Spearman | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:42,271 INFO [057] d_SSIM,d_Spearman | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:42,287 INFO [058] d_SSIM,d_Spearman | thresh=0.05 | mode=pvalue      | pass= 195 | overlap=18 | recall=0.346 | f1=0.1457
+2026-06-01 16:42:42,289 INFO [059] d_SSIM,d_Spearman | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:42,475 INFO [060] d_SSIM,d_Spearman | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:42,480 INFO [061] d_SSIM,tw_score | thresh=0.01 | mode=pvalue      | pass=  31 | overlap= 8 | recall=0.154 | f1=0.1928
+2026-06-01 16:42:42,482 INFO [062] d_SSIM,tw_score | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:42,668 INFO [063] d_SSIM,tw_score | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:42,678 INFO [064] d_SSIM,tw_score | thresh=0.05 | mode=pvalue      | pass= 107 | overlap=19 | recall=0.365 | f1=0.2390
+2026-06-01 16:42:42,679 INFO [065] d_SSIM,tw_score | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:42,866 INFO [066] d_SSIM,tw_score | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:42,874 INFO [067] d_SSIM,d_NCC | thresh=0.01 | mode=pvalue      | pass=  79 | overlap=10 | recall=0.192 | f1=0.1527
+2026-06-01 16:42:42,876 INFO [068] d_SSIM,d_NCC | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:43,062 INFO [069] d_SSIM,d_NCC | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:43,080 INFO [070] d_SSIM,d_NCC | thresh=0.05 | mode=pvalue      | pass= 224 | overlap=20 | recall=0.385 | f1=0.1449
+2026-06-01 16:42:43,082 INFO [071] d_SSIM,d_NCC | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:43,268 INFO [072] d_SSIM,d_NCC | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:43,272 INFO [073] d_Spearman,tw_score | thresh=0.01 | mode=pvalue      | pass=  32 | overlap= 8 | recall=0.154 | f1=0.1905
+2026-06-01 16:42:43,275 INFO [074] d_Spearman,tw_score | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:43,461 INFO [075] d_Spearman,tw_score | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:43,470 INFO [076] d_Spearman,tw_score | thresh=0.05 | mode=pvalue      | pass= 104 | overlap=17 | recall=0.327 | f1=0.2179
+2026-06-01 16:42:43,473 INFO [077] d_Spearman,tw_score | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:43,659 INFO [078] d_Spearman,tw_score | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:43,665 INFO [079] d_Spearman,d_NCC | thresh=0.01 | mode=pvalue      | pass=  65 | overlap=10 | recall=0.192 | f1=0.1709
+2026-06-01 16:42:43,668 INFO [080] d_Spearman,d_NCC | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:43,854 INFO [081] d_Spearman,d_NCC | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:43,871 INFO [082] d_Spearman,d_NCC | thresh=0.05 | mode=pvalue      | pass= 196 | overlap=17 | recall=0.327 | f1=0.1371
+2026-06-01 16:42:43,873 INFO [083] d_Spearman,d_NCC | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:44,059 INFO [084] d_Spearman,d_NCC | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:44,063 INFO [085] tw_score,d_NCC | thresh=0.01 | mode=pvalue      | pass=  31 | overlap= 8 | recall=0.154 | f1=0.1928
+2026-06-01 16:42:44,066 INFO [086] tw_score,d_NCC | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:44,252 INFO [087] tw_score,d_NCC | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:44,261 INFO [088] tw_score,d_NCC | thresh=0.05 | mode=pvalue      | pass= 104 | overlap=18 | recall=0.346 | f1=0.2308
+2026-06-01 16:42:44,264 INFO [089] tw_score,d_NCC | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:44,449 INFO [090] tw_score,d_NCC | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:44,455 INFO [091] MSE,d_SSIM,d_Spearman | thresh=0.01 | mode=pvalue      | pass=  52 | overlap=10 | recall=0.192 | f1=0.1923
+2026-06-01 16:42:44,458 INFO [092] MSE,d_SSIM,d_Spearman | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:44,643 INFO [093] MSE,d_SSIM,d_Spearman | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:44,657 INFO [094] MSE,d_SSIM,d_Spearman | thresh=0.05 | mode=pvalue      | pass= 163 | overlap=18 | recall=0.346 | f1=0.1674
+2026-06-01 16:42:44,659 INFO [095] MSE,d_SSIM,d_Spearman | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:44,845 INFO [096] MSE,d_SSIM,d_Spearman | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:44,850 INFO [097] MSE,d_SSIM,tw_score | thresh=0.01 | mode=pvalue      | pass=  28 | overlap= 8 | recall=0.154 | f1=0.2000
+2026-06-01 16:42:44,852 INFO [098] MSE,d_SSIM,tw_score | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:45,038 INFO [099] MSE,d_SSIM,tw_score | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:45,047 INFO [100] MSE,d_SSIM,tw_score | thresh=0.05 | mode=pvalue      | pass=  96 | overlap=19 | recall=0.365 | f1=0.2568
+2026-06-01 16:42:45,048 INFO [101] MSE,d_SSIM,tw_score | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:45,234 INFO [102] MSE,d_SSIM,tw_score | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:45,241 INFO [103] MSE,d_SSIM,d_NCC | thresh=0.01 | mode=pvalue      | pass=  60 | overlap=10 | recall=0.192 | f1=0.1786
+2026-06-01 16:42:45,243 INFO [104] MSE,d_SSIM,d_NCC | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:45,429 INFO [105] MSE,d_SSIM,d_NCC | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:45,444 INFO [106] MSE,d_SSIM,d_NCC | thresh=0.05 | mode=pvalue      | pass= 189 | overlap=20 | recall=0.385 | f1=0.1660
+2026-06-01 16:42:45,446 INFO [107] MSE,d_SSIM,d_NCC | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:45,636 INFO [108] MSE,d_SSIM,d_NCC | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:45,641 INFO [109] MSE,d_Spearman,tw_score | thresh=0.01 | mode=pvalue      | pass=  28 | overlap= 8 | recall=0.154 | f1=0.2000
+2026-06-01 16:42:45,643 INFO [110] MSE,d_Spearman,tw_score | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:45,830 INFO [111] MSE,d_Spearman,tw_score | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:45,839 INFO [112] MSE,d_Spearman,tw_score | thresh=0.05 | mode=pvalue      | pass=  90 | overlap=17 | recall=0.327 | f1=0.2394
+2026-06-01 16:42:45,841 INFO [113] MSE,d_Spearman,tw_score | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:46,027 INFO [114] MSE,d_Spearman,tw_score | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:46,033 INFO [115] MSE,d_Spearman,d_NCC | thresh=0.01 | mode=pvalue      | pass=  52 | overlap=10 | recall=0.192 | f1=0.1923
+2026-06-01 16:42:46,036 INFO [116] MSE,d_Spearman,d_NCC | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:46,222 INFO [117] MSE,d_Spearman,d_NCC | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:46,235 INFO [118] MSE,d_Spearman,d_NCC | thresh=0.05 | mode=pvalue      | pass= 163 | overlap=17 | recall=0.327 | f1=0.1581
+2026-06-01 16:42:46,238 INFO [119] MSE,d_Spearman,d_NCC | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:46,423 INFO [120] MSE,d_Spearman,d_NCC | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:46,428 INFO [121] MSE,tw_score,d_NCC | thresh=0.01 | mode=pvalue      | pass=  28 | overlap= 8 | recall=0.154 | f1=0.2000
+2026-06-01 16:42:46,430 INFO [122] MSE,tw_score,d_NCC | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:46,616 INFO [123] MSE,tw_score,d_NCC | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:46,625 INFO [124] MSE,tw_score,d_NCC | thresh=0.05 | mode=pvalue      | pass=  93 | overlap=18 | recall=0.346 | f1=0.2483
+2026-06-01 16:42:46,628 INFO [125] MSE,tw_score,d_NCC | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:46,813 INFO [126] MSE,tw_score,d_NCC | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:46,818 INFO [127] d_SSIM,d_Spearman,tw_score | thresh=0.01 | mode=pvalue      | pass=  28 | overlap= 8 | recall=0.154 | f1=0.2000
+2026-06-01 16:42:46,820 INFO [128] d_SSIM,d_Spearman,tw_score | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:47,007 INFO [129] d_SSIM,d_Spearman,tw_score | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:47,015 INFO [130] d_SSIM,d_Spearman,tw_score | thresh=0.05 | mode=pvalue      | pass=  92 | overlap=16 | recall=0.308 | f1=0.2222
+2026-06-01 16:42:47,018 INFO [131] d_SSIM,d_Spearman,tw_score | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:47,204 INFO [132] d_SSIM,d_Spearman,tw_score | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:47,212 INFO [133] d_SSIM,d_Spearman,d_NCC | thresh=0.01 | mode=pvalue      | pass=  64 | overlap=10 | recall=0.192 | f1=0.1724
+2026-06-01 16:42:47,214 INFO [134] d_SSIM,d_Spearman,d_NCC | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:47,400 INFO [135] d_SSIM,d_Spearman,d_NCC | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:47,415 INFO [136] d_SSIM,d_Spearman,d_NCC | thresh=0.05 | mode=pvalue      | pass= 193 | overlap=17 | recall=0.327 | f1=0.1388
+2026-06-01 16:42:47,418 INFO [137] d_SSIM,d_Spearman,d_NCC | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:47,603 INFO [138] d_SSIM,d_Spearman,d_NCC | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:47,609 INFO [139] d_SSIM,tw_score,d_NCC | thresh=0.01 | mode=pvalue      | pass=  31 | overlap= 8 | recall=0.154 | f1=0.1928
+2026-06-01 16:42:47,611 INFO [140] d_SSIM,tw_score,d_NCC | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:47,798 INFO [141] d_SSIM,tw_score,d_NCC | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:47,808 INFO [142] d_SSIM,tw_score,d_NCC | thresh=0.05 | mode=pvalue      | pass= 104 | overlap=18 | recall=0.346 | f1=0.2308
+2026-06-01 16:42:47,810 INFO [143] d_SSIM,tw_score,d_NCC | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:47,996 INFO [144] d_SSIM,tw_score,d_NCC | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:48,000 INFO [145] d_Spearman,tw_score,d_NCC | thresh=0.01 | mode=pvalue      | pass=  28 | overlap= 8 | recall=0.154 | f1=0.2000
+2026-06-01 16:42:48,003 INFO [146] d_Spearman,tw_score,d_NCC | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:48,189 INFO [147] d_Spearman,tw_score,d_NCC | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:48,197 INFO [148] d_Spearman,tw_score,d_NCC | thresh=0.05 | mode=pvalue      | pass=  91 | overlap=15 | recall=0.288 | f1=0.2098
+2026-06-01 16:42:48,199 INFO [149] d_Spearman,tw_score,d_NCC | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:48,384 INFO [150] d_Spearman,tw_score,d_NCC | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:48,390 INFO [151] MSE,d_SSIM,d_Spearman,tw_score | thresh=0.01 | mode=pvalue      | pass=  25 | overlap= 8 | recall=0.154 | f1=0.2078
+2026-06-01 16:42:48,392 INFO [152] MSE,d_SSIM,d_Spearman,tw_score | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:48,577 INFO [153] MSE,d_SSIM,d_Spearman,tw_score | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:48,585 INFO [154] MSE,d_SSIM,d_Spearman,tw_score | thresh=0.05 | mode=pvalue      | pass=  83 | overlap=16 | recall=0.308 | f1=0.2370
+2026-06-01 16:42:48,588 INFO [155] MSE,d_SSIM,d_Spearman,tw_score | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:48,774 INFO [156] MSE,d_SSIM,d_Spearman,tw_score | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:48,781 INFO [157] MSE,d_SSIM,d_Spearman,d_NCC | thresh=0.01 | mode=pvalue      | pass=  51 | overlap=10 | recall=0.192 | f1=0.1942
+2026-06-01 16:42:48,783 INFO [158] MSE,d_SSIM,d_Spearman,d_NCC | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:48,970 INFO [159] MSE,d_SSIM,d_Spearman,d_NCC | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:48,983 INFO [160] MSE,d_SSIM,d_Spearman,d_NCC | thresh=0.05 | mode=pvalue      | pass= 161 | overlap=17 | recall=0.327 | f1=0.1596
+2026-06-01 16:42:48,986 INFO [161] MSE,d_SSIM,d_Spearman,d_NCC | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:49,171 INFO [162] MSE,d_SSIM,d_Spearman,d_NCC | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:49,176 INFO [163] MSE,d_SSIM,tw_score,d_NCC | thresh=0.01 | mode=pvalue      | pass=  28 | overlap= 8 | recall=0.154 | f1=0.2000
+2026-06-01 16:42:49,178 INFO [164] MSE,d_SSIM,tw_score,d_NCC | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:49,364 INFO [165] MSE,d_SSIM,tw_score,d_NCC | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:49,374 INFO [166] MSE,d_SSIM,tw_score,d_NCC | thresh=0.05 | mode=pvalue      | pass=  93 | overlap=18 | recall=0.346 | f1=0.2483
+2026-06-01 16:42:49,376 INFO [167] MSE,d_SSIM,tw_score,d_NCC | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:49,562 INFO [168] MSE,d_SSIM,tw_score,d_NCC | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:49,567 INFO [169] MSE,d_Spearman,tw_score,d_NCC | thresh=0.01 | mode=pvalue      | pass=  25 | overlap= 8 | recall=0.154 | f1=0.2078
+2026-06-01 16:42:49,569 INFO [170] MSE,d_Spearman,tw_score,d_NCC | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:49,755 INFO [171] MSE,d_Spearman,tw_score,d_NCC | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:49,763 INFO [172] MSE,d_Spearman,tw_score,d_NCC | thresh=0.05 | mode=pvalue      | pass=  82 | overlap=15 | recall=0.288 | f1=0.2239
+2026-06-01 16:42:49,766 INFO [173] MSE,d_Spearman,tw_score,d_NCC | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:49,952 INFO [174] MSE,d_Spearman,tw_score,d_NCC | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:49,957 INFO [175] d_SSIM,d_Spearman,tw_score,d_NCC | thresh=0.01 | mode=pvalue      | pass=  28 | overlap= 8 | recall=0.154 | f1=0.2000
+2026-06-01 16:42:49,959 INFO [176] d_SSIM,d_Spearman,tw_score,d_NCC | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:50,148 INFO [177] d_SSIM,d_Spearman,tw_score,d_NCC | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:50,157 INFO [178] d_SSIM,d_Spearman,tw_score,d_NCC | thresh=0.05 | mode=pvalue      | pass=  91 | overlap=15 | recall=0.288 | f1=0.2098
+2026-06-01 16:42:50,159 INFO [179] d_SSIM,d_Spearman,tw_score,d_NCC | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:50,344 INFO [180] d_SSIM,d_Spearman,tw_score,d_NCC | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:50,350 INFO [181] MSE,d_SSIM,d_Spearman,tw_score,d_NCC | thresh=0.01 | mode=pvalue      | pass=  25 | overlap= 8 | recall=0.154 | f1=0.2078
+2026-06-01 16:42:50,352 INFO [182] MSE,d_SSIM,d_Spearman,tw_score,d_NCC | thresh=0.01 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:50,538 INFO [183] MSE,d_SSIM,d_Spearman,tw_score,d_NCC | thresh=0.01 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:50,546 INFO [184] MSE,d_SSIM,d_Spearman,tw_score,d_NCC | thresh=0.05 | mode=pvalue      | pass=  82 | overlap=15 | recall=0.288 | f1=0.2239
+2026-06-01 16:42:50,548 INFO [185] MSE,d_SSIM,d_Spearman,tw_score,d_NCC | thresh=0.05 | mode=fdr_chrom   | pass=   0 | overlap= 0 | recall=0.000 | f1=0.0000
+2026-06-01 16:42:50,734 INFO [186] MSE,d_SSIM,d_Spearman,tw_score,d_NCC | thresh=0.05 | mode=fdr_global  | pass=2825 | overlap=52 | recall=1.000 | f1=0.0361
+2026-06-01 16:42:50,764 INFO Written: /share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/test/L134_H1398_A05/results_smoke/threshold_overlap_summary.tsv (186 rows)
+2026-06-01 16:42:53,035 INFO Written: /share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/test/L134_H1398_A05/results_smoke/threshold_overlap_detail.tsv (199402 rows)
+2026-06-01 16:42:53,036 INFO === Done ===

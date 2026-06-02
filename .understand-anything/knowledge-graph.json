@@ -1,0 +1,197 @@
+{
+  "version": "1.0.0",
+  "project": {
+    "name": "SNAP-HiC-Diff",
+    "languages": ["python", "bash"],
+    "frameworks": ["snakemake", "cooler", "hictk", "cooltools", "dsub"],
+    "description": "SNP-Aware Pipeline for Hi-C Differential Analysis - A Snakemake-based bioinformatics workflow for detecting differential chromatin interactions in Hi-C sequencing data",
+    "analyzedAt": "2026-05-27T10:19:00+08:00",
+    "gitCommitHash": "no-git-20260527101900"
+  },
+  "nodes": [
+    {"id": "file:Snakefile", "type": "file", "name": "Snakefile", "filePath": "Snakefile", "summary": "Main Snakemake workflow orchestrator with 8 rules for Hi-C differential analysis pipeline", "tags": ["workflow", "snakemake", "orchestration"]},
+    {"id": "file:run_snakemake.sh", "type": "file", "name": "run_snakemake.sh", "filePath": "run_snakemake.sh", "summary": "Entry point script for local and HPC execution via dsub", "tags": ["workflow", "hpc", "execution"]},
+    {"id": "file:README.md", "type": "document", "name": "README.md", "filePath": "README.md", "summary": "Project documentation with overview, quick start, and pipeline stages", "tags": ["documentation"]},
+    {"id": "file:scripts/validate_inputs.py", "type": "file", "name": "validate_inputs.py", "filePath": "scripts/validate_inputs.py", "summary": "Validates .mcool files using hictk CLI tools", "tags": ["validation", "io", "hictk"]},
+    {"id": "file:scripts/extract_expected.py", "type": "file", "name": "extract_expected.py", "filePath": "scripts/extract_expected.py", "summary": "Extracts expected contact vectors from cool files", "tags": ["io", "normalization"]},
+    {"id": "file:scripts/extract_expected_batch.py", "type": "file", "name": "extract_expected_batch.py", "filePath": "scripts/extract_expected_batch.py", "summary": "Batch wrapper for extract_expected.py", "tags": ["io", "batch"]},
+    {"id": "file:scripts/compute_oe_matrix.py", "type": "file", "name": "compute_oe_matrix.py", "filePath": "scripts/compute_oe_matrix.py", "summary": "Computes O/E (Observed over Expected) normalized matrices", "tags": ["normalization", "matrix"]},
+    {"id": "file:scripts/compute_oe_matrix_batch.py", "type": "file", "name": "compute_oe_matrix_batch.py", "filePath": "scripts/compute_oe_matrix_batch.py", "summary": "Batch wrapper for compute_oe_matrix.py", "tags": ["normalization", "batch"]},
+    {"id": "file:scripts/compute_gap_qc.py", "type": "file", "name": "compute_gap_qc.py", "filePath": "scripts/compute_gap_qc.py", "summary": "Gap quality control and breakpoint detection via gradient thresholding", "tags": ["qc", "gap-detection"]},
+    {"id": "file:scripts/sliding_window.py", "type": "file", "name": "sliding_window.py", "filePath": "scripts/sliding_window.py", "summary": "Sliding window with gap-filling, z-score normalization, and Gaussian smoothing", "tags": ["analysis", "window", "smoothing"]},
+    {"id": "file:scripts/build_windows.py", "type": "file", "name": "build_windows.py", "filePath": "scripts/build_windows.py", "summary": "Builds window coordinates from mcool files", "tags": ["window", "coordinates"]},
+    {"id": "file:scripts/compute_window_pair_covariates.py", "type": "file", "name": "compute_window_pair_covariates.py", "filePath": "scripts/compute_window_pair_covariates.py", "summary": "Computes covariates for window comparison: CPM, EC, IB, SP weights", "tags": ["covariates", "analysis"]},
+    {"id": "file:scripts/compare_gaussian_smoothed_windows.py", "type": "file", "name": "compare_gaussian_smoothed_windows.py", "filePath": "scripts/compare_gaussian_smoothed_windows.py", "summary": "Computes MSE, SSIM, and Spearman correlation between windows", "tags": ["comparison", "statistics"]},
+    {"id": "file:scripts/compare_iced_windows_tw.py", "type": "file", "name": "compare_iced_windows_tw.py", "filePath": "scripts/compare_iced_windows_tw.py", "summary": "Computes Tracy-Widom statistics for ICE-normalized matrices", "tags": ["comparison", "statistics", "tracy-widom"]},
+    {"id": "file:scripts/merge_window_pair_metrics.py", "type": "file", "name": "merge_window_pair_metrics.py", "filePath": "scripts/merge_window_pair_metrics.py", "summary": "Merges all window comparison metrics", "tags": ["aggregation", "comparison"]},
+    {"id": "file:scripts/chunk_windows.py", "type": "file", "name": "chunk_windows.py", "filePath": "scripts/chunk_windows.py", "summary": "Splits windows into chunks for parallel processing", "tags": ["utilities", "parallel"]},
+    {"id": "file:scripts/detect_breakpoint_by_nan_density.py", "type": "file", "name": "detect_breakpoint_by_nan_density.py", "filePath": "scripts/detect_breakpoint_by_nan_density.py", "summary": "Detects breakpoints via NaN density patterns", "tags": ["breakpoint", "detection"]},
+    {"id": "file:config/config.yaml", "type": "config", "name": "config.yaml", "filePath": "config/config.yaml", "summary": "Main pipeline configuration: resolution, window sizes, QC thresholds", "tags": ["configuration", "pipeline"]},
+    {"id": "file:config/chroms.yaml", "type": "config", "name": "chroms.yaml", "filePath": "config/chroms.yaml", "summary": "Chromosome list: 26 chromosomes (HC04_A01-A13, HC04_D01-D13)", "tags": ["configuration", "chromosomes"]},
+    {"id": "file:config/dsub_submit.sh", "type": "file", "name": "dsub_submit.sh", "filePath": "config/dsub_submit.sh", "summary": "HPC dsub job submission wrapper", "tags": ["hpc", "dsub"]},
+    {"id": "file:data/manifest.tsv", "type": "data", "name": "manifest.tsv", "filePath": "data/manifest.tsv", "summary": "Sample metadata: 74 samples with .mcool paths to cotton genome", "tags": ["data", "samples"]},
+    {"id": "file:data/window_compare_pairs.yaml", "type": "config", "name": "window_compare_pairs.yaml", "filePath": "data/window_compare_pairs.yaml", "summary": "Comparison pairs configuration: 36 sample comparisons", "tags": ["configuration", "comparison"]},
+    {"id": "file:env/SNAP-HiC-Diff.yaml", "type": "config", "name": "SNAP-HiC-Diff.yaml", "filePath": "env/SNAP-HiC-Diff.yaml", "summary": "Conda environment specification", "tags": ["environment", "conda"]},
+    {"id": "file:rules/validate_inputs.smk", "type": "pipeline", "name": "validate_inputs.smk", "filePath": "rules/validate_inputs.smk", "summary": "Validates .mcool input files", "tags": ["snakemake", "validation"]},
+    {"id": "file:rules/extract_chrom.smk", "type": "pipeline", "name": "extract_chrom.smk", "filePath": "rules/extract_chrom.smk", "summary": "Extracts per-chromosome cool files", "tags": ["snakemake", "extraction"]},
+    {"id": "file:rules/extract_expected.smk", "type": "pipeline", "name": "extract_expected.smk", "filePath": "rules/extract_expected.smk", "summary": "Extracts expected contact vectors", "tags": ["snakemake", "extraction"]},
+    {"id": "file:rules/compute_oe_matrix.smk", "type": "pipeline", "name": "compute_oe_matrix.smk", "filePath": "rules/compute_oe_matrix.smk", "summary": "Computes O/E normalized matrices", "tags": ["snakemake", "normalization"]},
+    {"id": "file:rules/compute_gap_qc.smk", "type": "pipeline", "name": "compute_gap_qc.smk", "filePath": "rules/compute_gap_qc.smk", "summary": "Gap quality control analysis", "tags": ["snakemake", "qc"]},
+    {"id": "file:rules/sliding_window.smk", "type": "pipeline", "name": "sliding_window.smk", "filePath": "rules/sliding_window.smk", "summary": "Sliding window decomposition", "tags": ["snakemake", "analysis"]},
+    {"id": "file:rules/build_windows.smk", "type": "pipeline", "name": "build_windows.smk", "filePath": "rules/build_windows.smk", "summary": "Builds window coordinates", "tags": ["snakemake", "windows"]},
+    {"id": "file:rules/window_compare.smk", "type": "pipeline", "name": "window_compare.smk", "filePath": "rules/window_compare.smk", "summary": "Differential window comparison", "tags": ["snakemake", "comparison"]},
+    {"id": "function:Snakefile:collect_samples", "type": "function", "name": "collect_samples", "filePath": "Snakefile", "summary": "Collects sample information from manifest", "tags": ["workflow"]},
+    {"id": "function:validate_inputs.py:run_hictk_validate", "type": "function", "name": "run_hictk_validate", "filePath": "scripts/validate_inputs.py", "summary": "Runs hictk validate on mcool file", "tags": ["validation"]},
+    {"id": "function:sliding_window.py:_fill_gaps_2d_nearest", "type": "function", "name": "_fill_gaps_2d_nearest", "filePath": "scripts/sliding_window.py", "summary": "2D nearest-neighbor gap filling", "tags": ["gap-fill", "interpolation"]},
+    {"id": "function:sliding_window.py:distance_stratified_zscore", "type": "function", "name": "distance_stratified_zscore", "filePath": "scripts/sliding_window.py", "summary": "Distance-stratified z-score normalization using median + MAD", "tags": ["normalization", "zscore"]},
+    {"id": "function:sliding_window.py:process_chromosome", "type": "function", "name": "process_chromosome", "filePath": "scripts/sliding_window.py", "summary": "Main sliding window processor for a chromosome", "tags": ["analysis"]},
+    {"id": "function:compute_gap_qc.py:detect_gaps_in_window", "type": "function", "name": "detect_gaps_in_window", "filePath": "scripts/compute_gap_qc.py", "summary": "Detects gaps via gradient thresholding", "tags": ["gap-detection"]},
+    {"id": "function:compute_gap_qc.py:compute_top_right_bin_zero_ratio", "type": "function", "name": "compute_top_right_bin_zero_ratio", "filePath": "scripts/compute_gap_qc.py", "summary": "Computes top-right bin zero ratio for QC", "tags": ["qc"]},
+    {"id": "function:compare_gaussian_smoothed_windows.py:compute_window_metrics", "type": "function", "name": "compute_window_metrics", "filePath": "scripts/compare_gaussian_smoothed_windows.py", "summary": "Computes MSE, SSIM, Spearman between windows", "tags": ["comparison", "metrics"]},
+    {"id": "function:compare_iced_windows_tw.py:compute_tracy_widom_stat", "type": "function", "name": "compute_tracy_widom_stat", "filePath": "scripts/compare_iced_windows_tw.py", "summary": "Computes Tracy-Widom p-value", "tags": ["statistics", "tracy-widom"]},
+    {"id": "concept:gap-filling", "type": "concept", "name": "Gap Filling", "filePath": null, "summary": "Two-stage nearest-neighbor 2D interpolation for handling missing chromosomal regions", "tags": ["bioinformatics", "hi-c"]},
+    {"id": "concept:z-score-normalization", "type": "concept", "name": "Z-Score Normalization", "filePath": null, "summary": "Robust z-score using median + MAD for outlier resistance", "tags": ["bioinformatics", "normalization"]},
+    {"id": "concept:tracy-widom", "type": "concept", "name": "Tracy-Widom Statistics", "filePath": null, "summary": "Statistical test for matrix eigenvalue distributions", "tags": ["statistics", "random-matrix-theory"]}
+  ],
+  "edges": [
+    {"source": "file:Snakefile", "target": "file:run_snakemake.sh", "type": "contains", "weight": 1.0},
+    {"source": "file:Snakefile", "target": "file:rules/validate_inputs.smk", "type": "contains", "weight": 1.0},
+    {"source": "file:Snakefile", "target": "file:rules/extract_chrom.smk", "type": "contains", "weight": 1.0},
+    {"source": "file:Snakefile", "target": "file:rules/extract_expected.smk", "type": "contains", "weight": 1.0},
+    {"source": "file:Snakefile", "target": "file:rules/compute_oe_matrix.smk", "type": "contains", "weight": 1.0},
+    {"source": "file:Snakefile", "target": "file:rules/compute_gap_qc.smk", "type": "contains", "weight": 1.0},
+    {"source": "file:Snakefile", "target": "file:rules/sliding_window.smk", "type": "contains", "weight": 1.0},
+    {"source": "file:Snakefile", "target": "file:rules/build_windows.smk", "type": "contains", "weight": 1.0},
+    {"source": "file:Snakefile", "target": "file:rules/window_compare.smk", "type": "contains", "weight": 1.0},
+    {"source": "file:rules/validate_inputs.smk", "target": "file:scripts/validate_inputs.py", "type": "calls", "weight": 0.8},
+    {"source": "file:rules/extract_expected.smk", "target": "file:scripts/extract_expected.py", "type": "calls", "weight": 0.8},
+    {"source": "file:rules/compute_oe_matrix.smk", "target": "file:scripts/compute_oe_matrix.py", "type": "calls", "weight": 0.8},
+    {"source": "file:rules/compute_gap_qc.smk", "target": "file:scripts/compute_gap_qc.py", "type": "calls", "weight": 0.8},
+    {"source": "file:rules/sliding_window.smk", "target": "file:scripts/sliding_window.py", "type": "calls", "weight": 0.8},
+    {"source": "file:rules/build_windows.smk", "target": "file:scripts/build_windows.py", "type": "calls", "weight": 0.8},
+    {"source": "file:rules/window_compare.smk", "target": "file:scripts/compare_gaussian_smoothed_windows.py", "type": "calls", "weight": 0.8},
+    {"source": "file:rules/window_compare.smk", "target": "file:scripts/compare_iced_windows_tw.py", "type": "calls", "weight": 0.8},
+    {"source": "file:rules/window_compare.smk", "target": "file:scripts/compute_window_pair_covariates.py", "type": "calls", "weight": 0.8},
+    {"source": "file:rules/window_compare.smk", "target": "file:scripts/merge_window_pair_metrics.py", "type": "calls", "weight": 0.8},
+    {"source": "file:scripts/sliding_window.py", "target": "function:sliding_window.py:_fill_gaps_2d_nearest", "type": "contains", "weight": 1.0},
+    {"source": "file:scripts/sliding_window.py", "target": "function:sliding_window.py:distance_stratified_zscore", "type": "contains", "weight": 1.0},
+    {"source": "file:scripts/sliding_window.py", "target": "function:sliding_window.py:process_chromosome", "type": "contains", "weight": 1.0},
+    {"source": "file:scripts/compute_gap_qc.py", "target": "function:compute_gap_qc.py:detect_gaps_in_window", "type": "contains", "weight": 1.0},
+    {"source": "file:scripts/compute_gap_qc.py", "target": "function:compute_gap_qc.py:compute_top_right_bin_zero_ratio", "type": "contains", "weight": 1.0},
+    {"source": "file:scripts/compare_gaussian_smoothed_windows.py", "target": "function:compare_gaussian_smoothed_windows.py:compute_window_metrics", "type": "contains", "weight": 1.0},
+    {"source": "file:scripts/compare_iced_windows_tw.py", "target": "function:compare_iced_windows_tw.py:compute_tracy_widom_stat", "type": "contains", "weight": 1.0},
+    {"source": "file:config/config.yaml", "target": "file:config/chroms.yaml", "type": "configures", "weight": 0.6},
+    {"source": "file:config/config.yaml", "target": "file:data/window_compare_pairs.yaml", "type": "configures", "weight": 0.6},
+    {"source": "file:data/manifest.tsv", "target": "file:scripts/validate_inputs.py", "type": "reads_from", "weight": 0.5},
+    {"source": "file:scripts/validate_inputs.py", "target": "concept:gap-filling", "type": "related", "weight": 0.5},
+    {"source": "file:scripts/sliding_window.py", "target": "concept:gap-filling", "type": "related", "weight": 0.5},
+    {"source": "file:scripts/sliding_window.py", "target": "concept:z-score-normalization", "type": "related", "weight": 0.5},
+    {"source": "file:scripts/compare_iced_windows_tw.py", "target": "concept:tracy-widom", "type": "related", "weight": 0.5}
+  ],
+  "layers": [
+    {
+      "id": "layer:workflow-orchestration",
+      "name": "Workflow Orchestration",
+      "description": "Snakemake workflow and HPC execution",
+      "nodeIds": ["file:Snakefile", "file:run_snakemake.sh"]
+    },
+    {
+      "id": "layer:io-validation",
+      "name": "Input/Output & Validation",
+      "description": "File validation and data I/O",
+      "nodeIds": ["file:scripts/validate_inputs.py", "file:scripts/extract_expected.py", "file:scripts/extract_expected_batch.py"]
+    },
+    {
+      "id": "layer:normalization",
+      "name": "Normalization",
+      "description": "O/E computation and gap QC",
+      "nodeIds": ["file:scripts/compute_oe_matrix.py", "file:scripts/compute_oe_matrix_batch.py", "file:scripts/compute_gap_qc.py"]
+    },
+    {
+      "id": "layer:window-analysis",
+      "name": "Window Analysis",
+      "description": "Sliding window processing and covariate computation",
+      "nodeIds": ["file:scripts/sliding_window.py", "file:scripts/build_windows.py", "file:scripts/compute_window_pair_covariates.py"]
+    },
+    {
+      "id": "layer:comparison",
+      "name": "Statistical Comparison",
+      "description": "Differential analysis with MSE, SSIM, Tracy-Widom",
+      "nodeIds": ["file:scripts/compare_gaussian_smoothed_windows.py", "file:scripts/compare_iced_windows_tw.py", "file:scripts/merge_window_pair_metrics.py"]
+    },
+    {
+      "id": "layer:utilities",
+      "name": "Utilities",
+      "description": "Chunking and breakpoint detection",
+      "nodeIds": ["file:scripts/chunk_windows.py", "file:scripts/detect_breakpoint_by_nan_density.py"]
+    },
+    {
+      "id": "layer:configuration",
+      "name": "Configuration",
+      "description": "Pipeline parameters and sample definitions",
+      "nodeIds": ["file:config/config.yaml", "file:config/chroms.yaml", "file:config/dsub_submit.sh", "file:data/manifest.tsv", "file:data/window_compare_pairs.yaml", "file:env/SNAP-HiC-Diff.yaml"]
+    },
+    {
+      "id": "layer:snakemake-rules",
+      "name": "Snakemake Rules",
+      "description": "Rule definitions for workflow stages",
+      "nodeIds": ["file:rules/validate_inputs.smk", "file:rules/extract_chrom.smk", "file:rules/extract_expected.smk", "file:rules/compute_oe_matrix.smk", "file:rules/compute_gap_qc.smk", "file:rules/sliding_window.smk", "file:rules/build_windows.smk", "file:rules/window_compare.smk"]
+    },
+    {
+      "id": "layer:concepts",
+      "name": "Concepts",
+      "description": "Key algorithmic concepts",
+      "nodeIds": ["concept:gap-filling", "concept:z-score-normalization", "concept:tracy-widom"]
+    }
+  ],
+  "tour": [
+    {
+      "order": 1,
+      "title": "Project Overview",
+      "description": "SNAP-HiC-Diff is a Snakemake-based pipeline for detecting differential chromatin interactions in Hi-C data.",
+      "nodeIds": ["file:README.md"]
+    },
+    {
+      "order": 2,
+      "title": "Workflow Entry Point",
+      "description": "Snakefile orchestrates 8 stages from validation to comparison.",
+      "nodeIds": ["file:Snakefile"]
+    },
+    {
+      "order": 3,
+      "title": "HPC Execution",
+      "description": "run_snakemake.sh launches jobs via dsub on HPC clusters.",
+      "nodeIds": ["file:run_snakemake.sh"]
+    },
+    {
+      "order": 4,
+      "title": "Data Validation",
+      "description": "validate_inputs.py checks .mcool files using hictk.",
+      "nodeIds": ["file:scripts/validate_inputs.py"]
+    },
+    {
+      "order": 5,
+      "title": "Normalization Pipeline",
+      "description": "O/E normalization and gap QC prepare matrices for comparison.",
+      "nodeIds": ["file:scripts/compute_oe_matrix.py", "file:scripts/compute_gap_qc.py"]
+    },
+    {
+      "order": 6,
+      "title": "Sliding Window Analysis",
+      "description": "Gap-filling, z-score normalization, and Gaussian smoothing.",
+      "nodeIds": ["file:scripts/sliding_window.py"]
+    },
+    {
+      "order": 7,
+      "title": "Differential Comparison",
+      "description": "MSE, SSIM, Spearman correlation, and Tracy-Widom statistics.",
+      "nodeIds": ["file:scripts/compare_gaussian_smoothed_windows.py", "file:scripts/compare_iced_windows_tw.py"]
+    },
+    {
+      "order": 8,
+      "title": "Configuration",
+      "description": "Parameters defined in config.yaml and sample pairs in window_compare_pairs.yaml.",
+      "nodeIds": ["file:config/config.yaml"]
+    }
+  ]
+}

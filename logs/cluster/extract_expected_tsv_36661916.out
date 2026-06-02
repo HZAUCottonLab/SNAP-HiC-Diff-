@@ -1,0 +1,200 @@
+[INFO] Sample: L227
+[INFO] Chromosomes: HC04_A01 HC04_A02 HC04_A03 HC04_A04 HC04_A05 HC04_A06 HC04_A07 HC04_A08 HC04_A09 HC04_A10 HC04_A11 HC04_A12 HC04_A13 HC04_D01 HC04_D02 HC04_D03 HC04_D04 HC04_D05 HC04_D06 HC04_D07 HC04_D08 HC04_D09 HC04_D10 HC04_D11 HC04_D12 HC04_D13
+
+[INFO] Processing chromosome: HC04_A01
+INFO:root:creating a Pool of 10 workers
+/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/lib/python3.12/site-packages/cooltools/api/expected.py:351: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  groups = dict(iter(bins.groupby("chrom")[clr_weight_name]))
+[INFO] Finished chromosome: HC04_A01
+
+[INFO] Processing chromosome: HC04_A02
+INFO:root:creating a Pool of 10 workers
+/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/lib/python3.12/site-packages/cooltools/api/expected.py:351: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  groups = dict(iter(bins.groupby("chrom")[clr_weight_name]))
+[INFO] Finished chromosome: HC04_A02
+
+[INFO] Processing chromosome: HC04_A03
+INFO:root:creating a Pool of 10 workers
+/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/lib/python3.12/site-packages/cooltools/api/expected.py:351: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  groups = dict(iter(bins.groupby("chrom")[clr_weight_name]))
+[INFO] Finished chromosome: HC04_A03
+
+[INFO] Processing chromosome: HC04_A04
+INFO:root:creating a Pool of 10 workers
+/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/lib/python3.12/site-packages/cooltools/api/expected.py:351: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  groups = dict(iter(bins.groupby("chrom")[clr_weight_name]))
+[INFO] Finished chromosome: HC04_A04
+
+[INFO] Processing chromosome: HC04_A05
+INFO:root:creating a Pool of 10 workers
+/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/lib/python3.12/site-packages/cooltools/api/expected.py:351: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  groups = dict(iter(bins.groupby("chrom")[clr_weight_name]))
+[INFO] Finished chromosome: HC04_A05
+
+[INFO] Processing chromosome: HC04_A06
+INFO:root:creating a Pool of 10 workers
+/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/lib/python3.12/site-packages/cooltools/api/expected.py:351: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  groups = dict(iter(bins.groupby("chrom")[clr_weight_name]))
+[INFO] Finished chromosome: HC04_A06
+
+[INFO] Processing chromosome: HC04_A07
+INFO:root:creating a Pool of 10 workers
+/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/lib/python3.12/site-packages/cooltools/api/expected.py:351: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  groups = dict(iter(bins.groupby("chrom")[clr_weight_name]))
+[INFO] Finished chromosome: HC04_A07
+
+[INFO] Processing chromosome: HC04_A08
+INFO:root:creating a Pool of 10 workers
+/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/lib/python3.12/site-packages/cooltools/api/expected.py:351: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  groups = dict(iter(bins.groupby("chrom")[clr_weight_name]))
+[INFO] Finished chromosome: HC04_A08
+
+[INFO] Processing chromosome: HC04_A09
+INFO:root:creating a Pool of 10 workers
+/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/lib/python3.12/site-packages/cooltools/api/expected.py:351: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  groups = dict(iter(bins.groupby("chrom")[clr_weight_name]))
+[INFO] Finished chromosome: HC04_A09
+
+[INFO] Processing chromosome: HC04_A10
+INFO:root:creating a Pool of 10 workers
+/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/lib/python3.12/site-packages/cooltools/api/expected.py:351: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  groups = dict(iter(bins.groupby("chrom")[clr_weight_name]))
+[INFO] Finished chromosome: HC04_A10
+
+[INFO] Processing chromosome: HC04_A11
+INFO:root:creating a Pool of 10 workers
+/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/lib/python3.12/site-packages/cooltools/api/expected.py:351: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  groups = dict(iter(bins.groupby("chrom")[clr_weight_name]))
+[INFO] Finished chromosome: HC04_A11
+
+[INFO] Processing chromosome: HC04_A12
+INFO:root:creating a Pool of 10 workers
+/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/lib/python3.12/site-packages/cooltools/api/expected.py:351: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  groups = dict(iter(bins.groupby("chrom")[clr_weight_name]))
+[INFO] Finished chromosome: HC04_A12
+
+[INFO] Processing chromosome: HC04_A13
+INFO:root:creating a Pool of 10 workers
+/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/lib/python3.12/site-packages/cooltools/api/expected.py:351: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  groups = dict(iter(bins.groupby("chrom")[clr_weight_name]))
+[INFO] Finished chromosome: HC04_A13
+
+[INFO] Processing chromosome: HC04_D01
+INFO:root:creating a Pool of 10 workers
+/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/lib/python3.12/site-packages/cooltools/api/expected.py:351: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  groups = dict(iter(bins.groupby("chrom")[clr_weight_name]))
+[INFO] Finished chromosome: HC04_D01
+
+[INFO] Processing chromosome: HC04_D02
+INFO:root:creating a Pool of 10 workers
+/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/lib/python3.12/site-packages/cooltools/api/expected.py:351: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  groups = dict(iter(bins.groupby("chrom")[clr_weight_name]))
+[INFO] Finished chromosome: HC04_D02
+
+[INFO] Processing chromosome: HC04_D03
+INFO:root:creating a Pool of 10 workers
+/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/lib/python3.12/site-packages/cooltools/api/expected.py:351: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  groups = dict(iter(bins.groupby("chrom")[clr_weight_name]))
+[INFO] Finished chromosome: HC04_D03
+
+[INFO] Processing chromosome: HC04_D04
+INFO:root:creating a Pool of 10 workers
+/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/lib/python3.12/site-packages/cooltools/api/expected.py:351: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  groups = dict(iter(bins.groupby("chrom")[clr_weight_name]))
+[INFO] Finished chromosome: HC04_D04
+
+[INFO] Processing chromosome: HC04_D05
+INFO:root:creating a Pool of 10 workers
+/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/lib/python3.12/site-packages/cooltools/api/expected.py:351: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  groups = dict(iter(bins.groupby("chrom")[clr_weight_name]))
+[INFO] Finished chromosome: HC04_D05
+
+[INFO] Processing chromosome: HC04_D06
+INFO:root:creating a Pool of 10 workers
+/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/lib/python3.12/site-packages/cooltools/api/expected.py:351: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  groups = dict(iter(bins.groupby("chrom")[clr_weight_name]))
+[INFO] Finished chromosome: HC04_D06
+
+[INFO] Processing chromosome: HC04_D07
+INFO:root:creating a Pool of 10 workers
+/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/lib/python3.12/site-packages/cooltools/api/expected.py:351: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  groups = dict(iter(bins.groupby("chrom")[clr_weight_name]))
+[INFO] Finished chromosome: HC04_D07
+
+[INFO] Processing chromosome: HC04_D08
+INFO:root:creating a Pool of 10 workers
+/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/lib/python3.12/site-packages/cooltools/api/expected.py:351: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  groups = dict(iter(bins.groupby("chrom")[clr_weight_name]))
+[INFO] Finished chromosome: HC04_D08
+
+[INFO] Processing chromosome: HC04_D09
+INFO:root:creating a Pool of 10 workers
+/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/lib/python3.12/site-packages/cooltools/api/expected.py:351: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  groups = dict(iter(bins.groupby("chrom")[clr_weight_name]))
+[INFO] Finished chromosome: HC04_D09
+
+[INFO] Processing chromosome: HC04_D10
+INFO:root:creating a Pool of 10 workers
+/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/lib/python3.12/site-packages/cooltools/api/expected.py:351: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  groups = dict(iter(bins.groupby("chrom")[clr_weight_name]))
+[INFO] Finished chromosome: HC04_D10
+
+[INFO] Processing chromosome: HC04_D11
+INFO:root:creating a Pool of 10 workers
+/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/lib/python3.12/site-packages/cooltools/api/expected.py:351: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  groups = dict(iter(bins.groupby("chrom")[clr_weight_name]))
+[INFO] Finished chromosome: HC04_D11
+
+[INFO] Processing chromosome: HC04_D12
+INFO:root:creating a Pool of 10 workers
+/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/lib/python3.12/site-packages/cooltools/api/expected.py:351: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  groups = dict(iter(bins.groupby("chrom")[clr_weight_name]))
+[INFO] Finished chromosome: HC04_D12
+
+[INFO] Processing chromosome: HC04_D13
+INFO:root:creating a Pool of 10 workers
+/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/lib/python3.12/site-packages/cooltools/api/expected.py:351: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  groups = dict(iter(bins.groupby("chrom")[clr_weight_name]))
+[INFO] Finished chromosome: HC04_D13
+
+[INFO] Finished sample: L227
+
+TASK_INFO:
+    JOB_ID:                     36661916
+    JOB_NAME:                   extract_expected_tsv
+    TASK_NAME:                  rg0.0
+    REPLICA:                    1
+    TASKGROUP_NAME:             rg0
+    SUBMIT_NODE:                agent-ARM-10
+    EXEC_NODE:                  agent-ARM-39
+    EXIT_CODE:                  0
+    EXIT_MESSAGE:               Job execution succeeded
+
+RESOURCE_USAGE_SUMMARY:
+    REQ_CPU:                    10
+    REQ_MEM:                    128
+    REQ_GPU:                    0
+    REQ_NPU:                    0
+    USER_CPU_TIME:              171
+    SYSTEM_CPU_TIME:            41
+    MEMSW_MAX:                  4869
+    SWAP_MAX:                   0
+    MEM_MAX:                    4869
+    MEM_AVG:                    314
+    MRUN_TIME:                  241
+    SSTOPPED_TIME:              0
+    CPU_UTIL_AVG(%):            88
+    CPU_UTIL_RECENT(%):         91
+    USER_CPU_TIME_SUM:          171
+    SYSTEM_CPU_TIME_SUM:        41
+    MEMSW_MAX_SUM:              4869
+    SWAP_MAX_SUM:               0
+    MEM_MAX_SUM:                4869
+    MEM_AVG_SUM:                314
+    CPU_UTIL_AVG_SUM(%):        88
+    CPU_UTIL_RECENT_SUM(%):     91
+    GPU_SM_UTIL_AVG(%):         -
+    GPU_SM_UTIL_RECENT(%):      -
+    NPU_SM_MEM_SUM(MB):         -
+    NPU_SM_AICORE_UTIL(%):      -
+

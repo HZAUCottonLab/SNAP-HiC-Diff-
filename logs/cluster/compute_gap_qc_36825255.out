@@ -1,0 +1,40 @@
+
+TASK_INFO:
+    JOB_ID:                     36825255
+    JOB_NAME:                   compute_gap_qc
+    TASK_NAME:                  rg0.0
+    REPLICA:                    1
+    TASKGROUP_NAME:             rg0
+    SUBMIT_NODE:                agent-ARM-35
+    EXEC_NODE:                  agent-ARM-09
+    EXIT_CODE:                  0
+    EXIT_MESSAGE:               Job execution succeeded
+
+RESOURCE_USAGE_SUMMARY:
+    REQ_CPU:                    80
+    REQ_MEM:                    128
+    REQ_GPU:                    0
+    REQ_NPU:                    0
+    USER_CPU_TIME:              524
+    SYSTEM_CPU_TIME:            629
+    MEMSW_MAX:                  24056
+    SWAP_MAX:                   0
+    MEM_MAX:                    24056
+    MEM_AVG:                    11089
+    MRUN_TIME:                  359
+    SSTOPPED_TIME:              0
+    CPU_UTIL_AVG(%):            321
+    CPU_UTIL_RECENT(%):         536
+    USER_CPU_TIME_SUM:          524
+    SYSTEM_CPU_TIME_SUM:        629
+    MEMSW_MAX_SUM:              24056
+    SWAP_MAX_SUM:               0
+    MEM_MAX_SUM:                24056
+    MEM_AVG_SUM:                11089
+    CPU_UTIL_AVG_SUM(%):        321
+    CPU_UTIL_RECENT_SUM(%):     536
+    GPU_SM_UTIL_AVG(%):         -
+    GPU_SM_UTIL_RECENT(%):      -
+    NPU_SM_MEM_SUM(MB):         -
+    NPU_SM_AICORE_UTIL(%):      -
+

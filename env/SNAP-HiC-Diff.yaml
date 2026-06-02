@@ -1,0 +1,66 @@
+# SNAP-HiC-Diff Conda Environment Specification
+# For background_build pipeline
+
+name: snaphic
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  # Core Python
+  - python>=3.10
+  - pip
+
+  # Workflow engine
+  - snakemake>=8.0.0
+
+  # Hi-C specific tools
+  - cooler>=0.9.0
+  - cooltools>=0.5.4
+  - hicexplorer>=3.7.0
+  - hicmatrix
+
+  # hictk for fast Hi-C operations
+  - hictk>=0.9.0
+
+  # Scientific computing
+  - numpy>=1.24
+  - scipy>=1.10
+  - pandas>=2.0
+  - numba>=0.58
+  - joblib>=1.3
+
+  # Machine learning (for BallTree null model)
+  - scikit-learn>=1.3
+
+  # Visualization
+  - matplotlib>=3.7
+  - seaborn>=0.12
+  - plotly>=5.17
+
+  # I/O and utilities
+  - h5py>=3.10
+  - pyyaml>=6.0
+  - jinja2>=3.1
+  - rich>=13.0
+
+  # Tracy-Widom / Statistical testing
+  - tracywidom>=0.1.0
+  - numdifftools>=0.9.40
+
+  # Optional: GPU acceleration
+  # - cupy>=12.0
+
+  # Testing
+  - pytest>=7.4
+  - pytest-cov>=4.1
+
+  # Jupyter support
+  - jupyterlab>=4.0
+  - ipykernel>=6.25
+
+  # Pip-installed packages
+  - pip:
+    - pysam>=0.21
+    - bioframe>=0.6
+    - scikit-image>=0.22

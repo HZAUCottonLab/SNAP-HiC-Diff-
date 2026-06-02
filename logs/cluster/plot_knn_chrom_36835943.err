@@ -1,0 +1,112 @@
+Config file config/config.yaml is extended by additional config specified via the command line.
+Config file config/chroms.yaml is extended by additional config specified via the command line.
+host: agent-ARM-29
+Building DAG of jobs...
+Using shell: /usr/bin/bash
+Provided cores: 128
+Rules claiming more threads will be scaled down.
+Select jobs to execute...
+Execute 1 jobs...
+
+[Tue Jun  2 08:56:08 2026]
+localrule plot_knn_chrom:
+    input: results/logs/knn_significant_heatmap/H1398_vs_L134/significant_windows.tsv, /share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/scripts/plot_knn_significant_heatmap.py, results/knn_empirical_pvalue/H1398_vs_L134/H1398_vs_L134_knn_enriched.tsv
+    output: results/logs/knn_significant_heatmap/H1398_vs_L134/HC04_A03.done
+    log: results/logs/knn_significant_heatmap/H1398_vs_L134/HC04_A03.log
+    jobid: 0
+    benchmark: results/benchmark/knn_significant_heatmap/H1398_vs_L134/HC04_A03.tsv
+    reason: Forced execution
+    wildcards: comparison=H1398_vs_L134, chrom=HC04_A03
+    threads: 80
+    resources: mem_mb=1000, mem_mib=954, disk_mb=1000, disk_mib=954, tmpdir=/tmp
+
+Activating conda environment: .snakemake/conda/59271960b794774df1c934b1e7affef8_
+Terminating processes on user request, this might take some time.
+RuleException:
+CalledProcessError in file /share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/rules/knn_significant_heatmap.smk, line 72:
+Command 'source /share/home/xhhuang24/biosoft/miniconda3/bin/activate '/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_'; set -euo pipefail;  
+        set -euo pipefail
+        COMPARISON="H1398_vs_L134"
+        CHROM="HC04_A03"
+        python /share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/scripts/plot_knn_significant_heatmap.py \
+            --chrom-mode \
+            --comparison "$COMPARISON" \
+            --chrom "$CHROM" \
+            --enriched "results/knn_empirical_pvalue/H1398_vs_L134/H1398_vs_L134_knn_enriched.tsv" \
+            --manifest "results/logs/knn_significant_heatmap/H1398_vs_L134/significant_windows.tsv" \
+            --out-dir "results/knn_significant_heatmap/H1398_vs_L134" \
+            --fdr-threshold "0.05" \
+            --pass-mode "all" \
+            --metrics "MSE,d_SSIM,d_Spearman,tw_score,d_NCC" \
+            > "results/logs/knn_significant_heatmap/H1398_vs_L134/HC04_A03.log" 2>&1
+        touch "results/logs/knn_significant_heatmap/H1398_vs_L134/HC04_A03.done"' died with <Signals.SIGINT: 2>.
+[Tue Jun  2 09:43:11 2026]
+Error in rule plot_knn_chrom:
+    jobid: 0
+    input: results/logs/knn_significant_heatmap/H1398_vs_L134/significant_windows.tsv, /share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/scripts/plot_knn_significant_heatmap.py, results/knn_empirical_pvalue/H1398_vs_L134/H1398_vs_L134_knn_enriched.tsv
+    output: results/logs/knn_significant_heatmap/H1398_vs_L134/HC04_A03.done
+    log: results/logs/knn_significant_heatmap/H1398_vs_L134/HC04_A03.log (check log file(s) for error details)
+    conda-env: /share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_
+    shell:
+        
+        set -euo pipefail
+        COMPARISON="H1398_vs_L134"
+        CHROM="HC04_A03"
+        python /share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/scripts/plot_knn_significant_heatmap.py \
+            --chrom-mode \
+            --comparison "$COMPARISON" \
+            --chrom "$CHROM" \
+            --enriched "results/knn_empirical_pvalue/H1398_vs_L134/H1398_vs_L134_knn_enriched.tsv" \
+            --manifest "results/logs/knn_significant_heatmap/H1398_vs_L134/significant_windows.tsv" \
+            --out-dir "results/knn_significant_heatmap/H1398_vs_L134" \
+            --fdr-threshold "0.05" \
+            --pass-mode "all" \
+            --metrics "MSE,d_SSIM,d_Spearman,tw_score,d_NCC" \
+            > "results/logs/knn_significant_heatmap/H1398_vs_L134/HC04_A03.log" 2>&1
+        touch "results/logs/knn_significant_heatmap/H1398_vs_L134/HC04_A03.done"
+        
+        (one of the commands exited with non-zero exit code; note that snakemake uses bash strict mode!)
+
+Storing output in storage.
+WorkflowError:
+At least one job did not complete successfully.
+
+TASK_INFO:
+    JOB_ID:                     36835943
+    JOB_NAME:                   plot_knn_chrom
+    TASK_NAME:                  rg0.0
+    REPLICA:                    1
+    TASKGROUP_NAME:             rg0
+    SUBMIT_NODE:                agent-ARM-35
+    EXEC_NODE:                  agent-ARM-29
+    EXIT_CODE:                  10003
+    EXIT_MESSAGE:               Job was terminated by xhhuang24
+
+RESOURCE_USAGE_SUMMARY:
+    REQ_CPU:                    80
+    REQ_MEM:                    128
+    REQ_GPU:                    0
+    REQ_NPU:                    0
+    USER_CPU_TIME:              2400
+    SYSTEM_CPU_TIME:            14
+    MEMSW_MAX:                  513
+    SWAP_MAX:                   0
+    MEM_MAX:                    513
+    MEM_AVG:                    466
+    MRUN_TIME:                  2839
+    SSTOPPED_TIME:              0
+    CPU_UTIL_AVG(%):            85
+    CPU_UTIL_RECENT(%):         85
+    USER_CPU_TIME_SUM:          2400
+    SYSTEM_CPU_TIME_SUM:        14
+    MEMSW_MAX_SUM:              513
+    SWAP_MAX_SUM:               0
+    MEM_MAX_SUM:                513
+    MEM_AVG_SUM:                466
+    CPU_UTIL_AVG_SUM(%):        85
+    CPU_UTIL_RECENT_SUM(%):     85
+    GPU_SM_UTIL_AVG(%):         -
+    GPU_SM_UTIL_RECENT(%):      -
+    NPU_SM_MEM_SUM(MB):         -
+    NPU_SM_AICORE_UTIL(%):      -
+

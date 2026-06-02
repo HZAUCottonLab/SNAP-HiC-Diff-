@@ -1,0 +1,31 @@
+Config file config/config.yaml is extended by additional config specified via the command line.
+Config file config/chroms.yaml is extended by additional config specified via the command line.
+host: agent-ARM-35
+Building DAG of jobs...
+Using shell: /usr/bin/bash
+Provided remote nodes: 500
+Job stats:
+job                             count
+----------------------------  -------
+all                                 1
+knn_empirical_pvalue                1
+plot_knn_chrom                     26
+plot_knn_significant_heatmap        1
+total                              29
+
+Select jobs to execute...
+Execute 1 jobs...
+
+[Tue Jun  2 10:30:45 2026]
+rule knn_empirical_pvalue:
+    input: /share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/scripts/compute_knn_empirical_pvalue.py, results/window_compare/H1398_vs_L134/H1398_vs_L134_window_pair_metrics.tsv
+    output: results/knn_empirical_pvalue/H1398_vs_L134/H1398_vs_L134_knn_enriched.tsv
+    log: results/logs/knn_empirical_pvalue/H1398_vs_L134/knn_empirical_pvalue.log
+    jobid: 223
+    benchmark: results/benchmark/knn_empirical_pvalue/H1398_vs_L134/knn_empirical_pvalue.tsv
+    reason: Updated input files: /share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/scripts/compute_knn_empirical_pvalue.py
+    wildcards: comparison=H1398_vs_L134
+    threads: 80
+    resources: tmpdir=<TBD>
+
+Submitted job 223 with external jobid '36836566'.

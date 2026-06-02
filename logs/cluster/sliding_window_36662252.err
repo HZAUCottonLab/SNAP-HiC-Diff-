@@ -1,0 +1,68 @@
+Config file config/config.yaml is extended by additional config specified via the command line.
+Config file config/chroms.yaml is extended by additional config specified via the command line.
+host: agent-ARM-33
+Building DAG of jobs...
+Using shell: /usr/bin/bash
+Provided cores: 128
+Rules claiming more threads will be scaled down.
+Select jobs to execute...
+Execute 1 jobs...
+
+[Sat May 30 11:19:13 2026]
+localcheckpoint sliding_window:
+    input: results/windows/L149/L149__HC04_A01_gaps.tsv, results/windows/L149/L149__HC04_A02_gaps.tsv, results/windows/L149/L149__HC04_A03_gaps.tsv, results/windows/L149/L149__HC04_A04_gaps.tsv, results/windows/L149/L149__HC04_A05_gaps.tsv, results/windows/L149/L149__HC04_A06_gaps.tsv, results/windows/L149/L149__HC04_A07_gaps.tsv, results/windows/L149/L149__HC04_A08_gaps.tsv, results/windows/L149/L149__HC04_A09_gaps.tsv, results/windows/L149/L149__HC04_A10_gaps.tsv, results/windows/L149/L149__HC04_A11_gaps.tsv, results/windows/L149/L149__HC04_A12_gaps.tsv, results/windows/L149/L149__HC04_A13_gaps.tsv, results/windows/L149/L149__HC04_D01_gaps.tsv, results/windows/L149/L149__HC04_D02_gaps.tsv, results/windows/L149/L149__HC04_D03_gaps.tsv, results/windows/L149/L149__HC04_D04_gaps.tsv, results/windows/L149/L149__HC04_D05_gaps.tsv, results/windows/L149/L149__HC04_D06_gaps.tsv, results/windows/L149/L149__HC04_D07_gaps.tsv, results/windows/L149/L149__HC04_D08_gaps.tsv, results/windows/L149/L149__HC04_D09_gaps.tsv, results/windows/L149/L149__HC04_D10_gaps.tsv, results/windows/L149/L149__HC04_D11_gaps.tsv, results/windows/L149/L149__HC04_D12_gaps.tsv, results/windows/L149/L149__HC04_D13_gaps.tsv, results/oe/L149/L149__HC04_A01_oe.npz, results/oe/L149/L149__HC04_A02_oe.npz, results/oe/L149/L149__HC04_A03_oe.npz, results/oe/L149/L149__HC04_A04_oe.npz, results/oe/L149/L149__HC04_A05_oe.npz, results/oe/L149/L149__HC04_A06_oe.npz, results/oe/L149/L149__HC04_A07_oe.npz, results/oe/L149/L149__HC04_A08_oe.npz, results/oe/L149/L149__HC04_A09_oe.npz, results/oe/L149/L149__HC04_A10_oe.npz, results/oe/L149/L149__HC04_A11_oe.npz, results/oe/L149/L149__HC04_A12_oe.npz, results/oe/L149/L149__HC04_A13_oe.npz, results/oe/L149/L149__HC04_D01_oe.npz, results/oe/L149/L149__HC04_D02_oe.npz, results/oe/L149/L149__HC04_D03_oe.npz, results/oe/L149/L149__HC04_D04_oe.npz, results/oe/L149/L149__HC04_D05_oe.npz, results/oe/L149/L149__HC04_D06_oe.npz, results/oe/L149/L149__HC04_D07_oe.npz, results/oe/L149/L149__HC04_D08_oe.npz, results/oe/L149/L149__HC04_D09_oe.npz, results/oe/L149/L149__HC04_D10_oe.npz, results/oe/L149/L149__HC04_D11_oe.npz, results/oe/L149/L149__HC04_D12_oe.npz, results/oe/L149/L149__HC04_D13_oe.npz, /share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/scripts/sliding_window.py
+    output: results/logs/windows/L149.done
+    log: results/logs/windows/L149.log
+    jobid: 0
+    benchmark: results/benchmark/windows/L149.tsv
+    reason: Forced execution
+    wildcards: sample=L149
+    threads: 80
+    resources: mem_mb=6374, mem_mib=6079, disk_mb=6374, disk_mib=6079, tmpdir=/tmp
+DAG of jobs will be updated after completion.
+
+Activating conda environment: .snakemake/conda/59271960b794774df1c934b1e7affef8_
+[Sat May 30 12:22:41 2026]
+Finished job 0.
+1 of 1 steps (100%) done
+Storing output in storage.
+
+TASK_INFO:
+    JOB_ID:                     36662252
+    JOB_NAME:                   sliding_window
+    TASK_NAME:                  rg0.0
+    REPLICA:                    1
+    TASKGROUP_NAME:             rg0
+    SUBMIT_NODE:                agent-ARM-10
+    EXEC_NODE:                  agent-ARM-33
+    EXIT_CODE:                  0
+    EXIT_MESSAGE:               Job execution succeeded
+
+RESOURCE_USAGE_SUMMARY:
+    REQ_CPU:                    80
+    REQ_MEM:                    128
+    REQ_GPU:                    0
+    REQ_NPU:                    0
+    USER_CPU_TIME:              143770
+    SYSTEM_CPU_TIME:            526
+    MEMSW_MAX:                  23048
+    SWAP_MAX:                   0
+    MEM_MAX:                    23048
+    MEM_AVG:                    7377
+    MRUN_TIME:                  3821
+    SSTOPPED_TIME:              0
+    CPU_UTIL_AVG(%):            3776
+    CPU_UTIL_RECENT(%):         74
+    USER_CPU_TIME_SUM:          143770
+    SYSTEM_CPU_TIME_SUM:        526
+    MEMSW_MAX_SUM:              23048
+    SWAP_MAX_SUM:               0
+    MEM_MAX_SUM:                23048
+    MEM_AVG_SUM:                7377
+    CPU_UTIL_AVG_SUM(%):        3776
+    CPU_UTIL_RECENT_SUM(%):     74
+    GPU_SM_UTIL_AVG(%):         -
+    GPU_SM_UTIL_RECENT(%):      -
+    NPU_SM_MEM_SUM(MB):         -
+    NPU_SM_AICORE_UTIL(%):      -
+
