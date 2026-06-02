@@ -21,3 +21,123 @@ localrule knn_empirical_pvalue:
     resources: mem_mb=1000, mem_mib=954, disk_mb=1000, disk_mib=954, tmpdir=/tmp
 
 Activating conda environment: .snakemake/conda/59271960b794774df1c934b1e7affef8_
+Terminating processes on user request, this might take some time.
+Traceback (most recent call last):
+  File "/share/home/xhhuang24/biosoft/miniconda3/lib/python3.12/site-packages/snakemake/scheduler.py", line 190, in schedule
+    self._open_jobs.acquire()
+  File "/share/home/xhhuang24/biosoft/miniconda3/lib/python3.12/threading.py", line 507, in acquire
+    self._cond.wait(timeout)
+  File "/share/home/xhhuang24/biosoft/miniconda3/lib/python3.12/threading.py", line 355, in wait
+    waiter.acquire()
+KeyboardInterrupt
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/share/home/xhhuang24/biosoft/miniconda3/lib/python3.12/site-packages/snakemake/__main__.py", line 4, in <module>
+    main()
+  File "/share/home/xhhuang24/biosoft/miniconda3/lib/python3.12/site-packages/snakemake/cli.py", line 2243, in main
+    success = args_to_api(args, parser)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/share/home/xhhuang24/biosoft/miniconda3/lib/python3.12/site-packages/snakemake/cli.py", line 2164, in args_to_api
+    dag_api.execute_workflow(
+  File "/share/home/xhhuang24/biosoft/miniconda3/lib/python3.12/site-packages/snakemake/api.py", line 597, in execute_workflow
+    workflow.execute(
+  File "/share/home/xhhuang24/biosoft/miniconda3/lib/python3.12/site-packages/snakemake/workflow.py", line 1279, in execute
+RuleException:
+CalledProcessError in file /share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/rules/knn_empirical_pvalue.smk, line 25:
+Command 'source /share/home/xhhuang24/biosoft/miniconda3/bin/activate '/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_'; set -euo pipefail;  
+        set -euo pipefail
+
+        COMPARISON="H1398_vs_L134"
+
+        mkdir -p "$(dirname "results/knn_empirical_pvalue/H1398_vs_L134/H1398_vs_L134_knn_enriched.tsv")" "$(dirname "results/logs/knn_empirical_pvalue/H1398_vs_L134/knn_empirical_pvalue.log")"
+
+        python /share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/scripts/compute_knn_empirical_pvalue.py \
+            --comparison "$COMPARISON" \
+            --input "results/window_compare/H1398_vs_L134/H1398_vs_L134_window_pair_metrics.tsv" \
+            --background "/share/home/xhhuang24/project/PanTE/background_pool/results/window_compare/HiC_window_background.tsv" \
+            --out "results/knn_empirical_pvalue/H1398_vs_L134/H1398_vs_L134_knn_enriched.tsv" \
+            --log "results/logs/knn_empirical_pvalue/H1398_vs_L134/knn_empirical_pvalue.log" \
+            > "results/logs/knn_empirical_pvalue/H1398_vs_L134/knn_empirical_pvalue.log" 2>&1' died with <Signals.SIGTERM: 15>.
+    success = self.scheduler.schedule()
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/share/home/xhhuang24/biosoft/miniconda3/lib/python3.12/site-packages/snakemake/scheduler.py", line 330, in schedule
+[Tue Jun  2 10:40:36 2026]
+    self._executor.cancel()
+Error in rule knn_empirical_pvalue:
+    jobid: 0
+    input: /share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/scripts/compute_knn_empirical_pvalue.py, results/window_compare/H1398_vs_L134/H1398_vs_L134_window_pair_metrics.tsv
+    output: results/knn_empirical_pvalue/H1398_vs_L134/H1398_vs_L134_knn_enriched.tsv
+    log: results/logs/knn_empirical_pvalue/H1398_vs_L134/knn_empirical_pvalue.log (check log file(s) for error details)
+    conda-env: /share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_
+    shell:
+        
+        set -euo pipefail
+
+        COMPARISON="H1398_vs_L134"
+
+        mkdir -p "$(dirname "results/knn_empirical_pvalue/H1398_vs_L134/H1398_vs_L134_knn_enriched.tsv")" "$(dirname "results/logs/knn_empirical_pvalue/H1398_vs_L134/knn_empirical_pvalue.log")"
+
+        python /share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/scripts/compute_knn_empirical_pvalue.py \
+            --comparison "$COMPARISON" \
+            --input "results/window_compare/H1398_vs_L134/H1398_vs_L134_window_pair_metrics.tsv" \
+            --background "/share/home/xhhuang24/project/PanTE/background_pool/results/window_compare/HiC_window_background.tsv" \
+            --out "results/knn_empirical_pvalue/H1398_vs_L134/H1398_vs_L134_knn_enriched.tsv" \
+            --log "results/logs/knn_empirical_pvalue/H1398_vs_L134/knn_empirical_pvalue.log" \
+            > "results/logs/knn_empirical_pvalue/H1398_vs_L134/knn_empirical_pvalue.log" 2>&1
+        
+        (one of the commands exited with non-zero exit code; note that snakemake uses bash strict mode!)
+
+  File "/share/home/xhhuang24/biosoft/miniconda3/lib/python3.12/site-packages/snakemake/executors/local.py", line 255, in cancel
+    self.pool.shutdown()
+  File "/share/home/xhhuang24/biosoft/miniconda3/lib/python3.12/concurrent/futures/thread.py", line 239, in shutdown
+    t.join()
+  File "/share/home/xhhuang24/biosoft/miniconda3/lib/python3.12/threading.py", line 1149, in join
+    self._wait_for_tstate_lock()
+  File "/share/home/xhhuang24/biosoft/miniconda3/lib/python3.12/threading.py", line 1169, in _wait_for_tstate_lock
+    if lock.acquire(block, timeout):
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt
+
+TASK_INFO:
+    JOB_ID:                     36836566
+    JOB_NAME:                   knn_empirical_pvalue
+    TASK_NAME:                  rg0.0
+    REPLICA:                    1
+    TASKGROUP_NAME:             rg0
+    SUBMIT_NODE:                agent-ARM-35
+    EXEC_NODE:                  agent-ARM-03
+    EXIT_CODE:                  10003
+    EXIT_MESSAGE:               Job was terminated by xhhuang24
+
+RESOURCE_USAGE_SUMMARY:
+    REQ_CPU:                    80
+    REQ_MEM:                    128
+    REQ_GPU:                    0
+    REQ_NPU:                    0
+    USER_CPU_TIME:              567
+    SYSTEM_CPU_TIME:            5
+    MEMSW_MAX:                  7544
+    SWAP_MAX:                   0
+    MEM_MAX:                    7544
+    MEM_AVG:                    5416
+    MRUN_TIME:                  592
+    SSTOPPED_TIME:              0
+    CPU_UTIL_AVG(%):            96
+    CPU_UTIL_RECENT(%):         96
+    USER_CPU_TIME_SUM:          567
+    SYSTEM_CPU_TIME_SUM:        5
+    MEMSW_MAX_SUM:              7544
+    SWAP_MAX_SUM:               0
+    MEM_MAX_SUM:                7544
+    MEM_AVG_SUM:                5416
+    CPU_UTIL_AVG_SUM(%):        96
+    CPU_UTIL_RECENT_SUM(%):     96
+    GPU_SM_UTIL_AVG(%):         -
+    GPU_SM_UTIL_RECENT(%):      -
+    NPU_SM_MEM_SUM(MB):         -
+    NPU_SM_AICORE_UTIL(%):      -
+
