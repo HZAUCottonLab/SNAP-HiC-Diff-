@@ -1,0 +1,8 @@
+# Window Compare Pairs Configuration
+# Define sample pairs for comparison
+# Format: comparison name, sample_a, sample_b
+
+comparisons:
+  - name: "H1398_vs_L134"
+    sample_a: "H1398"
+    sample_b: "L134"

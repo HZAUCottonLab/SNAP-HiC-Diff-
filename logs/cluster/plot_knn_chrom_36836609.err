@@ -21,3 +21,47 @@ localrule plot_knn_chrom:
     resources: mem_mb=1000, mem_mib=954, disk_mb=1000, disk_mib=954, tmpdir=/tmp
 
 Activating conda environment: .snakemake/conda/59271960b794774df1c934b1e7affef8_
+[Tue Jun  2 10:59:34 2026]
+Finished job 0.
+1 of 1 steps (100%) done
+Storing output in storage.
+
+TASK_INFO:
+    JOB_ID:                     36836609
+    JOB_NAME:                   plot_knn_chrom
+    TASK_NAME:                  rg0.0
+    REPLICA:                    1
+    TASKGROUP_NAME:             rg0
+    SUBMIT_NODE:                agent-ARM-35
+    EXEC_NODE:                  agent-ARM-42
+    EXIT_CODE:                  0
+    EXIT_MESSAGE:               Job execution succeeded
+
+RESOURCE_USAGE_SUMMARY:
+    REQ_CPU:                    80
+    REQ_MEM:                    128
+    REQ_GPU:                    0
+    REQ_NPU:                    0
+    USER_CPU_TIME:              134
+    SYSTEM_CPU_TIME:            2
+    MEMSW_MAX:                  392
+    SWAP_MAX:                   0
+    MEM_MAX:                    392
+    MEM_AVG:                    246
+    MRUN_TIME:                  159
+    SSTOPPED_TIME:              0
+    CPU_UTIL_AVG(%):            85
+    CPU_UTIL_RECENT(%):         86
+    USER_CPU_TIME_SUM:          134
+    SYSTEM_CPU_TIME_SUM:        2
+    MEMSW_MAX_SUM:              392
+    SWAP_MAX_SUM:               0
+    MEM_MAX_SUM:                392
+    MEM_AVG_SUM:                246
+    CPU_UTIL_AVG_SUM(%):        85
+    CPU_UTIL_RECENT_SUM(%):     86
+    GPU_SM_UTIL_AVG(%):         -
+    GPU_SM_UTIL_RECENT(%):      -
+    NPU_SM_MEM_SUM(MB):         -
+    NPU_SM_AICORE_UTIL(%):      -
+

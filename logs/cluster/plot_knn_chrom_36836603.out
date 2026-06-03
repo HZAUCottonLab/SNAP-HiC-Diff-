@@ -1,0 +1,40 @@
+
+TASK_INFO:
+    JOB_ID:                     36836603
+    JOB_NAME:                   plot_knn_chrom
+    TASK_NAME:                  rg0.0
+    REPLICA:                    1
+    TASKGROUP_NAME:             rg0
+    SUBMIT_NODE:                agent-ARM-35
+    EXEC_NODE:                  agent-ARM-23
+    EXIT_CODE:                  0
+    EXIT_MESSAGE:               Job execution succeeded
+
+RESOURCE_USAGE_SUMMARY:
+    REQ_CPU:                    80
+    REQ_MEM:                    128
+    REQ_GPU:                    0
+    REQ_NPU:                    0
+    USER_CPU_TIME:              288
+    SYSTEM_CPU_TIME:            7
+    MEMSW_MAX:                  399
+    SWAP_MAX:                   0
+    MEM_MAX:                    399
+    MEM_AVG:                    308
+    MRUN_TIME:                  360
+    SSTOPPED_TIME:              0
+    CPU_UTIL_AVG(%):            82
+    CPU_UTIL_RECENT(%):         81
+    USER_CPU_TIME_SUM:          288
+    SYSTEM_CPU_TIME_SUM:        7
+    MEMSW_MAX_SUM:              399
+    SWAP_MAX_SUM:               0
+    MEM_MAX_SUM:                399
+    MEM_AVG_SUM:                308
+    CPU_UTIL_AVG_SUM(%):        82
+    CPU_UTIL_RECENT_SUM(%):     81
+    GPU_SM_UTIL_AVG(%):         -
+    GPU_SM_UTIL_RECENT(%):      -
+    NPU_SM_MEM_SUM(MB):         -
+    NPU_SM_AICORE_UTIL(%):      -
+

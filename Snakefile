@@ -30,8 +30,16 @@ def get_chroms():
 
 
 def get_sample_mcool(sample):
-    """Get mcool path for a sample."""
-    manifest = pd.read_csv(config["manifest"], sep="\t")
+    """Get mcool path for a sample.
+    
+    Reads data/manifest_mcool.tsv if it exists (output of convert_to_mcool),
+    otherwise falls back to the original config manifest.
+    Raises KeyError if sample not found in the active manifest.
+    """
+    if os.path.exists("data/manifest_mcool.tsv"):
+        manifest = pd.read_csv("data/manifest_mcool.tsv", sep="\t")
+    else:
+        manifest = pd.read_csv(config["manifest"], sep="\t")
     row = manifest[manifest["sample_id"] == sample].iloc[0]
     return row["cool_uri"]
 
@@ -105,6 +113,7 @@ def knn_heatmap_chrom_done_by_comp(wildcards):
 # Include Rule Files
 # ==============================================================================
 
+include: "rules/convert_to_mcool.smk"
 include: "rules/validate_inputs.smk"
 include: "rules/build_windows.smk"
 include: "rules/extract_chrom.smk"
@@ -122,6 +131,8 @@ include: "rules/knn_significant_heatmap.smk"
 
 rule all:
     input:
+        # 0. Convert .cool to .mcool (if needed) → data/manifest_mcool.tsv
+        "data/manifest_mcool.tsv",
         # 1. Validated manifest
         OUTDIR + "/validated/manifest.validated.tsv",
         # 2. Windows
