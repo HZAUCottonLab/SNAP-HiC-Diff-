@@ -27,6 +27,7 @@ Snakefile
 
 ### Global Variables
 - `CHROMS`：从 `config/chroms.yaml` 加载，26 条染色体
+  - **⚠️ 命名必须和 mcool 文件一致**（`hictk dump --table chroms` 的输出）。项目历史上用过两套：`Ghir_*`（旧）和 `HC04_*`（当前）。不一致会导致 `extract_and_balance_sample` 全量失败。详见 `docs/BUG_FIX_GUIDE.md`
 - `SAMPLES`：从 `manifest.tsv` 动态加载，74 个样本
 - `OUTDIR`：来自 config["outdir"]，默认 "results"
 - `RESOLUTION`：来自 config["resolution"]，默认 4000
@@ -96,6 +97,7 @@ rule all (final target)
 - **Output**：`{OUTDIR}/logs/extract_balance/{sample}.done`
 - **Threads**：`config["hictk"]["threads"]`（10）
 - **功能**：每个 sample 循环 26 条染色体，`hictk dump` + `hictk load` + `hictk balance ice`
+- **⚠️ 依赖 `config/chroms.yaml` 的值**：染色体名必须和 mcool 文件一致。详见 `docs/BUG_FIX_GUIDE.md` B-01
 
 ### rule extract_expected_tsv
 - **文件**：`rules/extract_expected.smk`

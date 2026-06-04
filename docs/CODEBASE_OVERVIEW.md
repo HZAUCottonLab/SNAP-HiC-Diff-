@@ -130,7 +130,38 @@ extract_chrom.smk (checkpoint × 74 samples)
 2. 读取对应 stage 的 H5 文件
 3. 在 `merge_window_pair_metrics.py` 中追加 merge 逻辑
 
-## 8. 需要人工确认
+## 5a. Chromosome Naming Convention — CRITICAL
+
+**Two naming schemes exist in this project:**
+
+| Scheme | Prefix | Example | Used by |
+|--------|--------|---------|---------|
+| Old | `Ghir_` | `Ghir_A01` | `Ghir_Pyb` mcool files |
+| Current | `HC04_` | `HC04_A01` | `compare_mtx_v2` mcool files |
+
+**`config/chroms.yaml` must match the actual mcool files.** Mismatch causes all 36 `extract_and_balance_sample` jobs to fail with `exit 1`.
+
+**How to verify:**
+
+```bash
+# Check what names the mcool files actually use
+# (extract mcool path from data/manifest_mcool.tsv first column)
+hictk dump /path/to/sample.mcool::/resolutions/4000 --table chroms | head -3
+
+# Compare with chroms.yaml
+cat config/chroms.yaml
+```
+
+**`dsub` runs from git HEAD, NOT the working tree.** Working-tree-only changes to `config/chroms.yaml` are invisible to dsub. Always commit before submitting:
+
+```bash
+git add config/chroms.yaml && git commit -m "fix: align chroms.yaml"
+dsub -s run_snakemake.sh
+```
+
+See `docs/BUG_FIX_GUIDE.md` for the full fix procedure.
+
+## 6. 需要人工确认
 
 1. `extract_expected.py` 支持 `snakemake` 对象（与 `chunk_windows.py` 相同的双模式设计），但从未在 rule 中以 snakemake 方式调用——是否应删除 snakemake 分支？
 2. `compute_gap_qc.py` 的动态 P20 阈值设计为 per-chromosome 级别应用，但 QC PASS/Fail 状态在每个样本内部不一致——是否有全局统一阈值的需求？
