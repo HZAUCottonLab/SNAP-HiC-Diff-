@@ -827,6 +827,29 @@ params:
     section=config.get("section", {})
 ```
 
+### ⚠️ Chromosome naming: git HEAD vs working tree
+
+> **CRITICAL**: `dsub` jobs run from git HEAD, NOT the working tree. Working tree changes to `config/chroms.yaml` are invisible to dsub.
+
+```
+git checkout chroms.yaml       → changes to Ghir_* (committed version)
+# working tree: HC04_*         → invisible to dsub!
+git add chroms.yaml
+git commit                     → now dsub sees HC04_*
+```
+
+**Failure mode**: All 36 `extract_and_balance_sample` jobs fail with:
+
+```
+[ERROR] Chromosome Ghir_A01 not found in /path/to/sample.mcool::/resolutions/4000
+```
+
+The mcool files use `HC04_*`, `chroms.yaml` in git HEAD has `Ghir_*`, `hictk dump` output doesn't match `awk '$1 == chr'`.
+
+**Rule of thumb**: Any config change that affects all samples must be committed before `dsub -s run_snakemake.sh`. Always run `git status` before submission.
+
+**Prevention**: After any `config/chroms.yaml` change, immediately commit before running dsub. Add chromosome naming column to manifest TSV for automatic inference.
+
 ### Tabular config (samples.tsv, comparisons.tsv)
 
 ```python

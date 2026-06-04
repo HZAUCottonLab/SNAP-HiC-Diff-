@@ -124,6 +124,8 @@ include: "rules/sliding_window.smk"
 include: "rules/window_compare.smk"
 include: "rules/knn_empirical_pvalue.smk"
 include: "rules/knn_significant_heatmap.smk"
+include: "rules/compute_IS.smk"
+include: "rules/meltron.smk"
 
 # ==============================================================================
 # Default Rules
@@ -169,6 +171,14 @@ rule all:
             OUTDIR + "/logs/knn_significant_heatmap/{comparison}/{chrom}.done",
             comparison=get_window_compare_pairs(),
             chrom=get_chroms(),
+        ),
+        # 11. Compute IS per sample (checkpoint + IS TSV)
+        expand(OUTDIR + "/logs/compute_IS/{sample}.done", sample=SAMPLES),
+        expand(OUTDIR + "/IS/{sample}/{sample}_IS.tsv", sample=SAMPLES),
+        # 12. Meltron per comparison (both directions, merged)
+        expand(
+            OUTDIR + "/meltron/{comparison}/{comparison}_meltron_merged.tsv",
+            comparison=get_window_compare_pairs()
         ),
 
 

@@ -1,6 +1,6 @@
 
 TASK_INFO:
-    JOB_ID:                     36929017
+    JOB_ID:                     36930160
     JOB_NAME:                   SNAPHiCDiff_background_build
     TASK_NAME:                  rg0.0
     REPLICA:                    1
@@ -15,24 +15,24 @@ RESOURCE_USAGE_SUMMARY:
     REQ_MEM:                    128
     REQ_GPU:                    0
     REQ_NPU:                    0
-    USER_CPU_TIME:              7
-    SYSTEM_CPU_TIME:            1
-    MEMSW_MAX:                  166
+    USER_CPU_TIME:              16
+    SYSTEM_CPU_TIME:            4
+    MEMSW_MAX:                  191
     SWAP_MAX:                   0
-    MEM_MAX:                    166
-    MEM_AVG:                    55
-    MRUN_TIME:                  100
+    MEM_MAX:                    191
+    MEM_AVG:                    118
+    MRUN_TIME:                  8320
     SSTOPPED_TIME:              0
-    CPU_UTIL_AVG(%):            8
-    CPU_UTIL_RECENT(%):         1
-    USER_CPU_TIME_SUM:          7
-    SYSTEM_CPU_TIME_SUM:        1
-    MEMSW_MAX_SUM:              166
+    CPU_UTIL_AVG(%):            0
+    CPU_UTIL_RECENT(%):         3
+    USER_CPU_TIME_SUM:          16
+    SYSTEM_CPU_TIME_SUM:        4
+    MEMSW_MAX_SUM:              191
     SWAP_MAX_SUM:               0
-    MEM_MAX_SUM:                166
-    MEM_AVG_SUM:                55
-    CPU_UTIL_AVG_SUM(%):        8
-    CPU_UTIL_RECENT_SUM(%):     1
+    MEM_MAX_SUM:                191
+    MEM_AVG_SUM:                118
+    CPU_UTIL_AVG_SUM(%):        0
+    CPU_UTIL_RECENT_SUM(%):     3
     GPU_SM_UTIL_AVG(%):         -
     GPU_SM_UTIL_RECENT(%):      -
     NPU_SM_MEM_SUM(MB):         -

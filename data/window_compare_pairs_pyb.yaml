@@ -1,0 +1,14 @@
+# Window Compare Pairs Configuration
+# Define sample pairs for comparison
+# Format: comparison name, sample_a, sample_b
+
+comparisons:
+  - name: "Mutant1_vs_Mutant2"
+    sample_a: "Mutant1"
+    sample_b: "Mutant2"
+  - name: "Wild_vs_Mutant1"
+    sample_a: "Wild"
+    sample_b: "Mutant1"
+  - name: "Wild_vs_Mutant2"
+    sample_a: "Wild"
+    sample_b: "Mutant2"

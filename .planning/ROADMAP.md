@@ -10,7 +10,8 @@ SNAP-HiC-Diff is a pipeline for differential chromatin interaction analysis betw
 |---|-------|--------|-------|
 | 01 | KNN Empirical P-Value | Completed | 5 |
 | 02 | KNN 结果可视化 | Completed | 1 |
-| 03 | KNN 显著窗口热图绘制 | Planned | 2 |
+| 03 | KNN 显著窗口热图绘制 | Completed | 2 |
+| 04 | Meltron 融解/凝结分析 | Planned | 1 |
 
 **Plans:**
 - [ ] 03-01-PLAN.md — Plotting script + Snakemake rules (2 tasks, wave 1)
@@ -55,6 +56,31 @@ SNAP-HiC-Diff is a pipeline for differential chromatin interaction analysis betw
 - jupyter/knn_eda.ipynb: 25+ cells covering setup through all 10+ figure types
 - results/figures/H1398_vs_L134/: 11+ PNG files (dpi=150) and 11+ SVG files
 - All 5 score metrics (MSE, d_SSIM, d_Spearman, tw_score, d_NCC) visualized
+
+---
+
+## Phase 04: Meltron 融解/凝结分析
+
+**Goal:** 在 KNN 显著差异窗口（FDR < 0.05）上，通过 Meltron 框架计算 chromatin 融解/凝结 score。Meltron 通过 KS 检验比较两组 insulation score（IS）分布，判断基因组区间在条件间是否发生了 chromatin 拓扑变化。
+
+**Depends on:** Phase 03 (significant windows) + Phase 01 (knn_enriched.tsv 数据)
+
+**Deliverables:**
+- `rules/compute_IS.smk` — IS 计算 Snakemake rule（cooltools CLI + Python 格式转换）
+- `rules/meltron.smk` — Meltron 分析 Snakemake rule（R subprocess 调用）
+- `scripts/compute_IS_batch.py` — 多档 IS 计算 + 格式转换脚本
+- `scripts/run_meltron.py` — Meltron CLI 包装脚本
+- `config/config.yaml` — IS 距离和 threshold 配置
+- `Snakefile` — 包含新 rule 和 all target
+
+**Criteria:**
+- IS 计算：cooltools cis-insulation，按 sample 输出，多档 IS distances（config 配置）
+- IS 格式：`(chrom, viewpoint_start, IS_distance, IS)`，与 Meltron CLI 兼容
+- ROI 来源：KNN 显著窗口（FDR < 0.05 的窗口）
+- ROI ID：双 ID 格式 `{chrom}_{window_idx}` + 基因组坐标列
+- Meltron CLI：通过 R subprocess 调用，Bonferroni 校正
+- Score threshold：通过 config 配置，不写死
+- 输出：`results/meltron/{comparison}/{comparison}_meltron.tsv`
 
 ---
 

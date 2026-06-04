@@ -3,6 +3,6 @@
 
 # Pipeline outputs
 results/
-results2/
+result_old/
+result_pyb/
 logs/
-

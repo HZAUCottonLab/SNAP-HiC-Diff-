@@ -133,6 +133,21 @@ window_compare:
     n_jobs: 80                       # Parallel jobs for Tracy-Widom test
 
 # ============================================================================
+# Meltron Parameters
+# ============================================================================
+meltron:
+  # Insulation score calculation
+  is_distances: [100000, 200000, 500000, 1000000]  # bp, passed as positional args to cooltools
+  # Meltron run parameters
+  comparison_directions: [decondensation, condensation]  # run both per comparison
+  cutoff_na: 0.5          # acceptable fraction of missing IS values per interval
+  # Scoring
+  score_threshold: 5.0    # advisory threshold for melting_score (-log10(Bonferroni pval))
+                          # NOTE: not genome-wide significance; calibrate empirically with null windows
+  # Candidate selection (per Phase 03 FDR output)
+  min_significant: 1      # min metrics with FDR < 0.05 to enter Meltron (1 = any strong signal)
+
+# ============================================================================
 # Dsub Parameters
 # ============================================================================
 # Note: memory/disk are auto-allocated by queue (arm: 5GB/core)
