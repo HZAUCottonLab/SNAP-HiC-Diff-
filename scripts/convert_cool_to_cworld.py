@@ -50,11 +50,8 @@ def convert_cool_to_cworld(cool_path, chrom, output_path, log_file=None):
 
     log(f"[INFO] Fetching balanced matrix...", log_file)
     mat = clr.matrix(balance=True).fetch(chrom).astype(np.float64)
-    log(f"[INFO] Matrix loaded: {n_bins}x{n_bins}, NaN cells: {np.isnan(mat).sum()}", log_file)
+    log(f"[INFO] Matrix loaded: {n_bins}x{n_bins}, NaN cells: {int(np.isnan(mat).sum())}", log_file)
 
-    # Replace NaN with 0: balanced matrix values are normalized floats,
-    # NaN means no/bad contacts → coded as 0 (same as reference ICE matrix).
-    # Reference format uses "0" for empty cells (not "" or "NA").
     mat = np.nan_to_num(mat, nan=0.0)
 
     bin_labels = [
@@ -62,7 +59,7 @@ def convert_cool_to_cworld(cool_path, chrom, output_path, log_file=None):
         for i in range(n_bins)
     ]
 
-    log(f"[INFO] Writing matrix: {output_path}")
+    log(f"[INFO] Writing matrix: {output_path}", log_file)
     with gzip.open(output_path, "wt") as f:
         f.write("\t" + "\t".join(bin_labels) + "\n")
         for i in range(n_bins):
