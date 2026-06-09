@@ -11,15 +11,12 @@ set -euo pipefail
 PROJ=/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff
 export CONDA_ENVS_PATH="${PROJ}/.snakemake/conda"
 
-# Activate pre-built conda env (same env used by compute_IS rule)
 CONDA_PREFIX="${CONDA_ENVS_PATH}/59271960b794774df1c934b1e7affef8_"
 export PATH="${CONDA_PREFIX}/bin:$PATH"
-export PYTHONPATH="${CONDA_PREFIX}/lib/python3.12/site-packages:$PYTHONPATH"
 
 echo "=== Test Start: $(date) ==="
 echo "Branch: $(git rev-parse --abbrev-ref HEAD)"
 echo "Python: $(which python3)"
-echo "Conda env: $CONDA_PREFIX"
 
 cd "$PROJ"
 
