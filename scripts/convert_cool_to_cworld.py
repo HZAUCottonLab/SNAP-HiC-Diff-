@@ -50,7 +50,7 @@ def convert_cool_to_cworld(cool_path, chrom, output_path, log_file=None):
 
     log(f"[INFO] Fetching balanced matrix...", log_file)
     mat = clr.matrix(balance=True).fetch(chrom).astype(np.float64)
-    log(f"[INFO] Matrix loaded: {n_bins}x{n_bins}, NaN cells: {np.isnan(mat).sum()}")
+    log(f"[INFO] Matrix loaded: {n_bins}x{n_bins}, NaN cells: {np.isnan(mat).sum()}", log_file)
 
     # Replace NaN with 0: balanced matrix values are normalized floats,
     # NaN means no/bad contacts → coded as 0 (same as reference ICE matrix).

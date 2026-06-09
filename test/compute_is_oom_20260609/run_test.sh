@@ -15,7 +15,6 @@ CONDA_PREFIX="${CONDA_ENVS_PATH}/59271960b794774df1c934b1e7affef8_"
 export PATH="${CONDA_PREFIX}/bin:$PATH"
 
 echo "=== Test Start: $(date) ==="
-echo "Branch: $(git rev-parse --abbrev-ref HEAD)"
 echo "Python: $(which python3)"
 
 cd "$PROJ"
