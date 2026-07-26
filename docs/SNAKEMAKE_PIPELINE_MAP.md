@@ -215,7 +215,7 @@ Pipeline 使用了 4 个 checkpoint 动态追踪产出：
 
 | Wildcard | 来源 | 取值范围 | 用于 |
 |---------|------|---------|------|
-| `{sample}` | checkpoint `extract_and_balance_sample` | 74 个样本（从 manifest.tsv） | extract_chrom, extract_expected, compute_oe_matrix, compute_gap_qc, sliding_window, compute_IS |
+| `{sample}` | checkpoint `extract_and_balance_sample` | N 个样本（由 manifest.tsv 动态确定） | extract_chrom, extract_expected, compute_oe_matrix, compute_gap_qc, sliding_window, compute_IS |
 | `{comparison}` | `window_compare_pairs.yaml` | 36 个 comparison | window_compare 下的 5 个 rule |
 | `{chrom}` | `config/chroms.yaml` | 26 条染色体 | 通过 expand() 批量生成输入 |
 | `{stage}` | 硬编码 | `ln_oe`, `gap_filled`, `zscore`, `gaussian` | `sliding_window_h5` 输出 |
