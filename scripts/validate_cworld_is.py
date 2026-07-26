@@ -143,9 +143,11 @@ def run():
     args = parser.parse_args()
 
     os.makedirs(args.outdir, exist_ok=True)
+    cworld_sample_dir = os.path.join(args.outdir, "cworld_insulation", args.sample)
+    os.makedirs(cworld_sample_dir, exist_ok=True)
 
-    matrix_out = os.path.join(args.outdir, f"{args.sample}__{args.chrom}.matrix.gz")
-    prefix_out = os.path.join(args.outdir, f"{args.sample}__{args.chrom}")
+    matrix_out = os.path.join(cworld_sample_dir, f"{args.sample}__{args.chrom}.matrix.gz")
+    prefix_out = os.path.join(cworld_sample_dir, f"{args.sample}__{args.chrom}")
     bedgraph_out = os.path.join(args.outdir, f"{args.sample}__{args.chrom}.insulation.bedGraph")
 
     log(f"=== cworld IS Validation ===")

@@ -41,4 +41,4 @@ def test_compute_is_schedules_one_cworld_job_per_requested_sample():
     assert re.search(r"^\s*compute_IS\s+10\s*$", plan, re.MULTILINE), plan
     assert "localrule compute_IS_bedgraphs" not in plan
     assert "merge_IS" not in plan
-    assert "matrix2insulation.pl" in plan
+    assert plan.count("matrix2insulation.pl") == len(SAMPLES) == 10, plan
