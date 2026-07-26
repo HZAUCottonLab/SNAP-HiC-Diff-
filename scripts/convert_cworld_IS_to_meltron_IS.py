@@ -132,15 +132,16 @@ def run():
     is_out = os.path.join(args.outdir, "IS", args.sample, f"{args.sample}_IS.tsv")
 
     all_rows = []
+    missing = []
     for chrom in chrom_list:
         for dist in distances:
             pattern = os.path.join(
                 cworld_dir,
-                f"{args.sample}__{chrom}_*--is{dist}--*--immean.insulation.bedGraph"
+                f"{args.sample}__{chrom}--is{dist}--*.insulation.bedGraph"
             )
             matched = glob.glob(pattern)
             if not matched:
-                log(f"[WARN] No bedGraph matched for {chrom} dist={dist}: {pattern}", args.log)
+                missing.append(f"{chrom} dist={dist}: {pattern}")
                 continue
             bedgraph_path = matched[0]
 
@@ -153,6 +154,11 @@ def run():
             log(f"[INFO] Converting {bedgraph_path} (dist={dist_to_write})", args.log)
             df = convert_bedgraph_to_meltron(bedgraph_path, dist_to_write, args.log)
             all_rows.append(df)
+
+    if missing:
+        for item in missing:
+            log(f"[ERROR] Missing CWorld bedGraph: {item}", args.log)
+        raise SystemExit(1)
 
     if not all_rows:
         log("[ERROR] No insulation bedGraph files found", args.log)
@@ -167,7 +173,9 @@ def run():
     merged = merged[["chrom", "viewpoint", "IS_distance", "IS"]]
 
     os.makedirs(os.path.dirname(is_out), exist_ok=True)
-    merged.to_csv(is_out, sep="\t", index=False)
+    temp_out = f"{is_out}.tmp"
+    merged.to_csv(temp_out, sep="\t", index=False)
+    os.replace(temp_out, is_out)
 
     log(f"[INFO] Meltron IS file written: {is_out} ({len(merged)} rows)", args.log)
 
