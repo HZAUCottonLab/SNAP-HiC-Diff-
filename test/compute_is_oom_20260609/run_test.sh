@@ -8,7 +8,7 @@
 
 set -euo pipefail
 
-PROJ=/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff
+PROJ="${PROJ:-/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff}"
 export CONDA_ENVS_PATH="${PROJ}/.snakemake/conda"
 
 CONDA_PREFIX="${CONDA_ENVS_PATH}/59271960b794774df1c934b1e7affef8_"
@@ -52,6 +52,29 @@ if [ "$LINES" -ne 17936 ]; then
     echo "ERROR: unexpected line count"
     exit 1
 fi
+
+python3 "$PROJ/scripts/validate_cworld_is.py" \
+    --cool "$PROJ/results/balanced/L021/L021__HC04_D08_iced.cool" \
+    --sample L021 \
+    --chrom HC04_D08 \
+    --is-distance 32000 \
+    --cworld-dir "$PROJ/env/cworld-dekker" \
+    --outdir /tmp/cworld_validate_L021_D08
+
+MELTRON_TSV=/tmp/cworld_validate_L021_D08/IS/L021/L021_IS.tsv
+if [ ! -s "$MELTRON_TSV" ]; then
+    echo "ERROR: Meltron TSV is missing or empty: $MELTRON_TSV"
+    exit 1
+fi
+
+EXPECTED_HEADER=$'chrom\tviewpoint\tIS_distance\tIS'
+ACTUAL_HEADER="$(head -n 1 "$MELTRON_TSV")"
+if [ "$ACTUAL_HEADER" != "$EXPECTED_HEADER" ]; then
+    echo "ERROR: unexpected Meltron TSV columns: $ACTUAL_HEADER"
+    exit 1
+fi
+
+echo "Meltron TSV columns: $ACTUAL_HEADER"
 
 echo "=== Test End: $(date) ==="
 echo "TEST PASSED"
