@@ -9,7 +9,9 @@
 set -euo pipefail
 
 PROJ="${PROJ:-/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff}"
-export CONDA_ENVS_PATH="${PROJ}/.snakemake/conda"
+DATA_PROJ="${DATA_PROJ:-$PROJ}"
+ENV_PROJ="${ENV_PROJ:-$PROJ}"
+export CONDA_ENVS_PATH="${ENV_PROJ}/.snakemake/conda"
 
 CONDA_PREFIX="${CONDA_ENVS_PATH}/59271960b794774df1c934b1e7affef8_"
 export PATH="${CONDA_PREFIX}/bin:$PATH"
@@ -21,7 +23,7 @@ cd "$PROJ"
 
 # Test on L021 (17935 bins - small but real)
 python3 "$PROJ/scripts/convert_cool_to_cworld.py" \
-    --cool "$PROJ/results/balanced/L021/L021__HC04_D08_iced.cool" \
+    --cool "$DATA_PROJ/results/balanced/L021/L021__HC04_D08_iced.cool" \
     --chrom HC04_D08 \
     --out /tmp/L021__HC04_D08_test.matrix.gz \
     --log /tmp/test_convert.log
@@ -54,7 +56,7 @@ if [ "$LINES" -ne 17936 ]; then
 fi
 
 python3 "$PROJ/scripts/validate_cworld_is.py" \
-    --cool "$PROJ/results/balanced/L021/L021__HC04_D08_iced.cool" \
+    --cool "$DATA_PROJ/results/balanced/L021/L021__HC04_D08_iced.cool" \
     --sample L021 \
     --chrom HC04_D08 \
     --is-distance 32000 \
