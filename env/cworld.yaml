@@ -8,15 +8,6 @@ dependencies:
   - cooler>=0.10
   - numpy
   - pandas
-  - perl>=5.32
-  - perl-gd>=2.83
-  - perl-statistics-basic>=1.6611
-  - perl-math-statistics>=1.0000
-  - perl-set-intervaltree>=0.01
-  - perl-list-moreutils>=0.430
-  - perl-list-util>=1.60
-  - perl-file-slurp>=9999.34
-  - perl-data-dumper>=0.250
-  - perl-file-copy-recursive>=0.14
-  - perl-text-csv>=2.04
+  - perl=5.32
+  - perl-gd>=2.57
   - zlib
