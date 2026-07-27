@@ -4,6 +4,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 CWORLD_ENV = REPO / "env" / "cworld.yaml"
 CONDA_HELPER = REPO / "scripts" / "conda_envs.sh"
+RUN_SNAKEMAKE = REPO / "run_snakemake.sh"
+DSUB_SUBMIT = REPO / "config" / "dsub_submit.sh"
 
 
 def dependency_lines(path):
@@ -62,3 +64,24 @@ def test_conda_helper_declares_all_specs_marker_and_runtime_checks():
     assert '"$snap_prefix/bin/hictk" --version' in script
     assert "Rscript" in script
     assert "source \"$READY_MARKER\"" not in script
+
+
+def test_launcher_verifies_marker_and_forces_offline_conda_before_snakemake():
+    script = RUN_SNAKEMAKE.read_text()
+
+    verify_pos = script.index('scripts/conda_envs.sh" verify')
+    snakemake_pos = script.index("    --executor cluster-generic")
+    assert verify_pos < snakemake_pos
+    assert "export CONDA_OFFLINE=true" in script
+    assert 'export CONDA_PREFIX_DIR="${WORKDIR}/.snakemake/conda"' in script
+    assert '--conda-prefix "${CONDA_PREFIX_DIR}"' in script
+    assert "--conda-create-envs-only" not in script
+
+
+def test_dsub_wrapper_injects_offline_mode_into_generated_worker_script():
+    script = DSUB_SUBMIT.read_text()
+
+    assert "printf '#!/usr/bin/env bash\\n'" in script
+    assert "printf 'export CONDA_OFFLINE=true\\n'" in script
+    assert 'cat "$_jobscript"' in script
+    assert script.index("export CONDA_OFFLINE=true") < script.index('cat "$_jobscript"')

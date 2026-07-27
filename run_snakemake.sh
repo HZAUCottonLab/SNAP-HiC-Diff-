@@ -18,6 +18,11 @@ SNAKEFILE="${SNAKEFILE:-Snakefile}"
 CONFIG="${CONFIG:-config/config.yaml}"
 DSUB_SUBMIT_CMD="${DSUB_SUBMIT_CMD:-config/dsub_submit.sh}"
 
+# Conda environments are built on the login node; compute nodes must stay offline.
+export CONDA_PREFIX_DIR="${WORKDIR}/.snakemake/conda"
+bash "${WORKDIR}/scripts/conda_envs.sh" verify
+export CONDA_OFFLINE=true
+
 # Create log directories
 mkdir -p logs/cluster
 
@@ -28,6 +33,7 @@ mkdir -p logs/cluster
 snakemake \
     --executor cluster-generic \
     --use-conda \
+    --conda-prefix "${CONDA_PREFIX_DIR}" \
     -j 500 \
     -s "${SNAKEFILE}" \
     --configfile "${CONFIG}" \

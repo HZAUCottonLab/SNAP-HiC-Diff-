@@ -26,6 +26,8 @@ _wrapper="${_wrapper_dir}/.dsub_wrapper_$$.sh"
 
 # Build wrapper: exports + original script + self-deletion
 {
+    printf '#!/usr/bin/env bash\n'
+    printf 'export CONDA_OFFLINE=true\n'
     cat "$_jobscript"
     printf 'rm -f "%s"\n' "$_wrapper"
 } > "$_wrapper"
