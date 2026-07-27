@@ -186,6 +186,7 @@ def run():
     cmd_cworld = [
         "perl", "-I", os.path.join(args.cworld_dir, "lib"),
         perl_script,
+        "-v",
         "--is", str(args.is_distance),
         "--ids", str(args.is_distance // 2),
         "-i", matrix_out,
@@ -194,11 +195,23 @@ def run():
     log(f"CMD: {' '.join(cmd_cworld)}")
     env = os.environ.copy()
     env["PERL5LIB"] = f"{args.cworld_dir}/lib:{env.get('PERL5LIB', '')}"
-    result = subprocess.run(cmd_cworld, env=env, check=True, capture_output=True, text=True)
+    result = subprocess.run(cmd_cworld, env=env, check=False, capture_output=True, text=True)
+    Path(args.outdir, "cworld_stdout.log").write_text(result.stdout)
+    Path(args.outdir, "cworld_stderr.log").write_text(result.stderr)
     log(result.stdout)
+    if result.stderr:
+        log(f"[CWorld STDERR]\n{result.stderr}")
     if result.returncode != 0:
         log(f"[FAIL] cworld insulation failed: {result.stderr}")
         sys.exit(1)
+
+    prefix_artifacts = sorted(glob.glob(prefix_out + "*"))
+    Path(args.outdir, "cworld_artifacts.txt").write_text(
+        "\n".join(prefix_artifacts) + ("\n" if prefix_artifacts else "")
+    )
+    log(f"[CHECK] CWorld prefix artifacts: {len(prefix_artifacts)}")
+    for artifact in prefix_artifacts:
+        log(f"[ARTIFACT] {artifact}")
 
     matched_bedgraph = glob.glob(prefix_out + "--is" + str(args.is_distance) + "--*--immean.insulation.bedGraph")
     if not matched_bedgraph:

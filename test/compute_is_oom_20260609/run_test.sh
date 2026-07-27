@@ -21,19 +21,22 @@ echo "Python: $(which python3)"
 
 cd "$PROJ"
 
+RUN_DIR="$PROJ/tmp/cworld_smoke/L021_HC04_D08_is32000"
+mkdir -p "$RUN_DIR"
+
 # Test on L021 (17935 bins - small but real)
 python3 "$PROJ/scripts/convert_cool_to_cworld.py" \
     --cool "$DATA_PROJ/results/balanced/L021/L021__HC04_D08_iced.cool" \
     --chrom HC04_D08 \
-    --out /tmp/L021__HC04_D08_test.matrix.gz \
-    --log /tmp/test_convert.log
+    --out "$RUN_DIR/L021__HC04_D08_test.matrix.gz" \
+    --log "$RUN_DIR/test_convert.log"
 
-if [ ! -f /tmp/L021__HC04_D08_test.matrix.gz ]; then
+if [ ! -f "$RUN_DIR/L021__HC04_D08_test.matrix.gz" ]; then
     echo "ERROR: output file not created"
     exit 1
 fi
 
-SIZE=$(stat -c%s /tmp/L021__HC04_D08_test.matrix.gz)
+SIZE=$(stat -c%s "$RUN_DIR/L021__HC04_D08_test.matrix.gz")
 if [ "$SIZE" -eq 0 ]; then
     echo "ERROR: output file is empty"
     exit 1
@@ -42,13 +45,13 @@ fi
 echo "Output size: $SIZE bytes"
 
 # Verify gzip integrity
-if ! gzip -t /tmp/L021__HC04_D08_test.matrix.gz 2>&1; then
+if ! gzip -t "$RUN_DIR/L021__HC04_D08_test.matrix.gz" 2>&1; then
     echo "ERROR: gzip integrity check failed"
     exit 1
 fi
 
 # Count lines
-LINES=$(zcat /tmp/L021__HC04_D08_test.matrix.gz | wc -l)
+LINES=$(zcat "$RUN_DIR/L021__HC04_D08_test.matrix.gz" | wc -l)
 echo "Output lines: $LINES (expected 17936 = 1 header + 17935 data rows)"
 if [ "$LINES" -ne 17936 ]; then
     echo "ERROR: unexpected line count"
@@ -61,9 +64,9 @@ python3 "$PROJ/scripts/validate_cworld_is.py" \
     --chrom HC04_D08 \
     --is-distance 32000 \
     --cworld-dir "$PROJ/env/cworld-dekker" \
-    --outdir /tmp/cworld_validate_L021_D08
+    --outdir "$RUN_DIR"
 
-MELTRON_TSV=/tmp/cworld_validate_L021_D08/IS/L021/L021_IS.tsv
+MELTRON_TSV="$RUN_DIR/IS/L021/L021_IS.tsv"
 if [ ! -s "$MELTRON_TSV" ]; then
     echo "ERROR: Meltron TSV is missing or empty: $MELTRON_TSV"
     exit 1
