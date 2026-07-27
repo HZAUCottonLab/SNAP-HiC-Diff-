@@ -24,9 +24,16 @@ Supported samples: **HC04_A01-A13** (A compartments) and **HC04_D01-D13** (D com
 
 ### 1. Setup environment
 
+On an ARM login node with Conda channel access, build every workflow environment. Repeat this command after changing any `env/*.yaml` file:
+
 ```bash
-conda env create -f env/SNAP-HiC-Diff.yaml
-conda activate SNAP-HiC-Diff
+bash scripts/conda_envs.sh bootstrap
+```
+
+Compute nodes are offline. Validate the prepared cache without channel access:
+
+```bash
+CONDA_OFFLINE=true bash scripts/conda_envs.sh verify
 ```
 
 ### 2. Configure
@@ -54,14 +61,14 @@ Edit `data/manifest.tsv` with your sample paths.
 ### 3. Run locally (dry-run)
 
 ```bash
-bash run_snakemake.sh --dryrun
+CONDA_OFFLINE=true snakemake -n --use-conda --conda-prefix "$PWD/.snakemake/conda" --configfile config/config.yaml
 ```
 
 ### 4. Run on HPC
 
 ```bash
-# Via dsub
-bash run_snakemake.sh --dsub --jobs 200
+# Submit only after the login-node bootstrap and offline verification succeed.
+dsub -s run_snakemake.sh
 ```
 
 See [docs/dsub_hpc_standard.md](docs/dsub_hpc_standard.md) for HPC setup details.

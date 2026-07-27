@@ -3,6 +3,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 CWORLD_ENV = REPO / "env" / "cworld.yaml"
+CONDA_HELPER = REPO / "scripts" / "conda_envs.sh"
 
 
 def dependency_lines(path):
@@ -38,3 +39,26 @@ def test_cworld_environment_uses_only_the_required_arm_runtime():
         or dependency.startswith("perl-file-copy-recursive")
         or dependency.startswith("perl-text-csv")
     }
+
+
+def test_conda_helper_declares_all_specs_marker_and_runtime_checks():
+    script = CONDA_HELPER.read_text()
+
+    for spec in (
+        "env/SNAP-HiC-Diff.yaml",
+        "env/cworld.yaml",
+        "env/meltron.yaml",
+    ):
+        assert spec in script
+    assert 'ACTION="${1:-}"' in script
+    assert "offline.ready.tsv" in script
+    assert "--conda-create-envs-only" not in script
+    assert 'MAMBA_BIN="${MAMBA_BIN:-mamba}"' in script
+    assert "environment_hash()" in script
+    assert "md5sum" in script
+    assert '"$MAMBA_BIN" env create --yes --prefix "$prefix"' in script
+    assert "conda-meta/history" in script
+    assert '-I "$ROOT/env/cworld-dekker/lib" -Mcworld::dekker' in script
+    assert '"$snap_prefix/bin/hictk" --version' in script
+    assert "Rscript" in script
+    assert "source \"$READY_MARKER\"" not in script
