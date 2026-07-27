@@ -21,9 +21,11 @@ echo "Python: $(which python3)"
 
 cd "$PROJ"
 
-RUN_DIR="$PROJ/tmp/cworld_smoke/L021_HC04_D08_is32000"
+BASE_DIR="$PROJ/tmp/cworld_smoke/L021_HC04_D08_is32000"
+mkdir -p "$BASE_DIR"
+RUN_DIR="$(mktemp -d "$BASE_DIR/run_XXXXXX")"
+echo "Diagnostic artifacts: $RUN_DIR"
 mkdir -p "$RUN_DIR"
-
 # Test on L021 (17935 bins - small but real)
 python3 "$PROJ/scripts/convert_cool_to_cworld.py" \
     --cool "$DATA_PROJ/results/balanced/L021/L021__HC04_D08_iced.cool" \

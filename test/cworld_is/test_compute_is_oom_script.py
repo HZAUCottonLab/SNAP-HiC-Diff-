@@ -22,7 +22,8 @@ def test_smoke_retains_cworld_diagnostics():
     script = SCRIPT.read_text()
     validator = VALIDATOR.read_text()
 
-    assert 'RUN_DIR="$PROJ/tmp/cworld_smoke/L021_HC04_D08_is32000"' in script
+    assert 'BASE_DIR="$PROJ/tmp/cworld_smoke/L021_HC04_D08_is32000"' in script
+    assert 'RUN_DIR="$(mktemp -d "$BASE_DIR/run_XXXXXX")"' in script
     assert '--outdir "$RUN_DIR"' in script
     assert 'MELTRON_TSV="$RUN_DIR/IS/L021/L021_IS.tsv"' in script
     assert '"-v",' in validator
