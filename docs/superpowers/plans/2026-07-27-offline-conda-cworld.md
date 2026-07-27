@@ -210,7 +210,8 @@ find_completed_prefix() {
 Then locate one complete prefix for every spec, run these validations, and atomically rename a temporary marker into place:
 
 ```bash
-"$snap_prefix/bin/python" -c 'import cooler, cooltools, hictk, numpy, pandas'
+"$snap_prefix/bin/python" -c 'import cooler, cooltools, numpy, pandas'
+"$snap_prefix/bin/hictk" --version
 "$cworld_prefix/bin/python" -c 'import cooler, numpy, pandas'
 "$cworld_prefix/bin/perl" -I "$ROOT/env/cworld-dekker/lib" -Mcworld::dekker -e 'print $cworld::dekker::VERSION, "\n"'
 "$meltron_prefix/bin/Rscript" -e 'library(argparse); library(data.table); library(DescTools)'
