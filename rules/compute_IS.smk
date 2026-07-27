@@ -32,25 +32,41 @@ checkpoint compute_IS:
         SAMPLE="{wildcards.sample}"
         OUTDIR="{params.outdir}"
 
-        mkdir -p "${{OUTDIR}}/cworld_insulation/${{SAMPLE}}" \
+        CWORLD_SAMPLE_DIR="${{OUTDIR}}/cworld_insulation/${{SAMPLE}}"
+        mkdir -p "$CWORLD_SAMPLE_DIR" \
                  "${{OUTDIR}}/IS/${{SAMPLE}}" \
                  "${{OUTDIR}}/logs/compute_IS"
 
         for CHR in {params.chroms}; do
             COOL="${{OUTDIR}}/balanced/${{SAMPLE}}/${{SAMPLE}}__${{CHR}}_iced.cool"
-            MATRIX="${{OUTDIR}}/cworld_insulation/${{SAMPLE}}/${{SAMPLE}}__${{CHR}}.matrix.gz"
-            PREFIX="${{OUTDIR}}/cworld_insulation/${{SAMPLE}}/${{SAMPLE}}__${{CHR}}"
+            MATRIX="$CWORLD_SAMPLE_DIR/${{SAMPLE}}__${{CHR}}.matrix.gz"
+            PREFIX="$CWORLD_SAMPLE_DIR/${{SAMPLE}}__${{CHR}}"
+            MANIFEST="${{PREFIX}}.is_manifest.tsv"
+            : > "$MANIFEST"
 
             python "{params.script_convert}" --cool "$COOL" --chrom "$CHR" --out "$MATRIX" --log "{log}"
 
             for DIST in {params.is_dists_str}; do
-                PERL5LIB="{params.cworld_dir}/lib" perl -I "{params.cworld_dir}/lib" \
+                MARKER="${{PREFIX}}.is${{DIST}}.started"
+                : > "$MARKER"
+                if ! PERL5LIB="{params.cworld_dir}/lib" perl -I "{params.cworld_dir}/lib" \
                     "{params.cworld_dir}/scripts/perl/matrix2insulation.pl" \
-                    --is "$DIST" --ids "$((DIST / 2))" -i "$MATRIX" -o "$PREFIX" >> "{log}" 2>&1
-                compgen -G "${{PREFIX}}--is${{DIST}}--*.insulation.bedGraph" > /dev/null || {{
-                    echo "[ERROR] Missing CWorld output for ${{SAMPLE}} ${{CHR}} distance ${{DIST}}" >> "{log}"
+                    --is "$DIST" --ids "$((DIST / 2))" -i "$MATRIX" -o "$PREFIX" >> "{log}" 2>&1; then
+                    rm -f "$MARKER"
                     exit 1
-                }}
+                fi
+                mapfile -t BEDGRAPHS < <(
+                    find "$CWORLD_SAMPLE_DIR" -maxdepth 1 -type f \
+                        -name "${{SAMPLE}}__${{CHR}}--is*--*.insulation.bedGraph" \
+                        -newer "$MARKER" -print
+                )
+                rm -f "$MARKER"
+                if [ "${{#BEDGRAPHS[@]}}" -ne 1 ]; then
+                    echo "[ERROR] Expected one new CWorld bedGraph for ${{SAMPLE}} ${{CHR}} distance ${{DIST}}, found ${{#BEDGRAPHS[@]}}" >> "{log}"
+                    exit 1
+                fi
+                BEDGRAPH="${{BEDGRAPHS[0]}}"
+                printf '%s\t%s\n' "$DIST" "${{BEDGRAPH##*/}}" >> "$MANIFEST"
             done
         done
 

@@ -30,4 +30,4 @@ def test_smoke_retains_cworld_diagnostics():
     assert '"cworld_stdout.log"' in validator
     assert '"cworld_stderr.log"' in validator
     assert '"cworld_artifacts.txt"' in validator
-    assert validator.index('"cworld_artifacts.txt"') < validator.index('if not matched_bedgraph:')
+    assert validator.index('"cworld_artifacts.txt"') < validator.index('if len(matched_bedgraph) != 1:')

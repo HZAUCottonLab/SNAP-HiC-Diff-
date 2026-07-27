@@ -213,11 +213,19 @@ def run():
     for artifact in prefix_artifacts:
         log(f"[ARTIFACT] {artifact}")
 
-    matched_bedgraph = glob.glob(prefix_out + "--is" + str(args.is_distance) + "--*--immean.insulation.bedGraph")
-    if not matched_bedgraph:
-        log(f"[FAIL] No bedGraph output found for prefix: {prefix_out}")
+    # The smoke harness creates a fresh outdir for every run, so exactly one
+    # bedGraph with this prefix must have been produced, regardless of the
+    # CWorld-normalized --is suffix.
+    matched_bedgraph = glob.glob(prefix_out + "--is*--*--immean.insulation.bedGraph")
+    if len(matched_bedgraph) != 1:
+        log(
+            f"[FAIL] Expected one CWorld bedGraph for prefix: {prefix_out}; "
+            f"found {len(matched_bedgraph)}"
+        )
         sys.exit(1)
     bedgraph_path = matched_bedgraph[0]
+    manifest_path = Path(cworld_sample_dir, f"{args.sample}__{args.chrom}.is_manifest.tsv")
+    manifest_path.write_text(f"{args.is_distance}\t{Path(bedgraph_path).name}\n")
     log(f"[PASS] cworld insulation done: {bedgraph_path}")
 
     with cooler.Cooler(args.cool) as clr:

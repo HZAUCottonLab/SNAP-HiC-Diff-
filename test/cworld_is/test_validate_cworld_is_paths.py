@@ -61,7 +61,7 @@ def test_validator_uses_converter_cworld_layout_for_single_sample(monkeypatch, t
             expected_parent_created_before_cworld = expected_sample_dir.is_dir()
             prefix = Path(option_value(command, "-o"))
             bedgraph_path = prefix.with_name(
-                f"{prefix.name}--is{distance}--nt0--ids16000--ss0--immean.insulation.bedGraph"
+                f"{prefix.name}--is64001--nt0--ids32001--ss1--immean.insulation.bedGraph"
             )
             bedgraph_path.write_text(
                 "track type=bedGraph name=IS\n"

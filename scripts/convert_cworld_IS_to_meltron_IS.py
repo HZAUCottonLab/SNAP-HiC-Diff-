@@ -135,24 +135,45 @@ def run():
     missing = []
     for chrom in chrom_list:
         for dist in distances:
-            pattern = os.path.join(
-                cworld_dir,
-                f"{args.sample}__{chrom}--is{dist}--*.insulation.bedGraph"
-            )
-            matched = glob.glob(pattern)
-            if not matched:
-                missing.append(f"{chrom} dist={dist}: {pattern}")
-                continue
-            bedgraph_path = matched[0]
-
-            extracted_dist = extract_is_from_filename(bedgraph_path)
-            if extracted_dist is not None:
-                dist_to_write = extracted_dist
+            manifest_path = Path(cworld_dir, f"{args.sample}__{chrom}.is_manifest.tsv")
+            if manifest_path.exists():
+                manifest_matches = []
+                for line in manifest_path.read_text().splitlines():
+                    requested_dist, separator, filename = line.partition("\t")
+                    if separator and requested_dist == str(dist):
+                        manifest_matches.append(filename)
+                if len(manifest_matches) != 1:
+                    missing.append(
+                        f"{chrom} dist={dist}: expected one entry in {manifest_path}, "
+                        f"found {len(manifest_matches)}"
+                    )
+                    continue
+                bedgraph_path = Path(cworld_dir, manifest_matches[0])
+                if not bedgraph_path.is_file():
+                    missing.append(f"{chrom} dist={dist}: manifest target missing: {bedgraph_path}")
+                    continue
             else:
-                dist_to_write = dist
+                legacy_pattern = os.path.join(
+                    cworld_dir,
+                    f"{args.sample}__{chrom}--is{dist}--*.insulation.bedGraph",
+                )
+                matched = glob.glob(legacy_pattern)
+                if len(matched) != 1:
+                    all_pattern = os.path.join(
+                        cworld_dir,
+                        f"{args.sample}__{chrom}--is*--*.insulation.bedGraph",
+                    )
+                    matched = glob.glob(all_pattern)
+                if len(matched) != 1:
+                    missing.append(
+                        f"{chrom} dist={dist}: expected one unmapped CWorld bedGraph, "
+                        f"found {len(matched)}"
+                    )
+                    continue
+                bedgraph_path = Path(matched[0])
 
-            log(f"[INFO] Converting {bedgraph_path} (dist={dist_to_write})", args.log)
-            df = convert_bedgraph_to_meltron(bedgraph_path, dist_to_write, args.log)
+            log(f"[INFO] Converting {bedgraph_path} (requested dist={dist})", args.log)
+            df = convert_bedgraph_to_meltron(bedgraph_path, dist, args.log)
             all_rows.append(df)
 
     if missing:

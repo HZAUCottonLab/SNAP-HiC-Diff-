@@ -14,7 +14,7 @@ def write_bedgraph(root, sample, chrom, distance):
         root
         / "cworld_insulation"
         / sample
-        / f"{sample}__{chrom}--is{distance}--nt0--ids16000--ss0--immean.insulation.bedGraph"
+        / f"{sample}__{chrom}--is{distance + 1}--nt0--ids{distance // 2 + 1}--ss1--immean.insulation.bedGraph"
     )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -55,6 +55,15 @@ def test_converter_writes_complete_meltron_tsv(tmp_path):
         {"chrom": "HC04_A01", "viewpoint": 24000, "IS_distance": 32000, "IS": 0.75},
     ]
 
+
+def test_converter_accepts_single_noncanonical_cworld_suffix(tmp_path):
+    write_bedgraph(tmp_path, "S1", "HC04_A01", 64000)
+
+    result = run_converter(tmp_path, ["HC04_A01"])
+
+    assert result.returncode == 0, result.stderr
+    frame = pd.read_csv(tmp_path / "IS" / "S1" / "S1_IS.tsv", sep="\t")
+    assert set(frame["IS_distance"]) == {32000}
 
 def test_converter_rejects_missing_chromosome_distance(tmp_path):
     write_bedgraph(tmp_path, "S1", "HC04_A01", 32000)
