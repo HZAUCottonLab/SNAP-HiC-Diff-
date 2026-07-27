@@ -6,3 +6,6 @@ results/
 result_old/
 result_pyb/
 logs/
+
+# Isolated development worktrees
+.worktrees/
