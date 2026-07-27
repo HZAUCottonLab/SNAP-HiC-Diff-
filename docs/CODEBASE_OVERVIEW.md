@@ -12,14 +12,14 @@ SNAP-HiC-Diff 是一个基于 Snakemake 的 Hi-C 差异分析流程，从 `.mcoo
 
 | 路径 | 作用 | 关键输入/输出 | 备注 |
 |------|------|--------------|------|
-| `Snakefile` | 入口编排，8 个 rule include | config + manifest | `rule all` 定义最终产物 |
+| `Snakefile` | 入口编排（含 `compute_IS`、`meltron`） | config + manifest | `rule all` 定义最终产物 |
 | `run_snakemake.sh` | 本地/HPC 启动脚本 | — | 支持 `--dsub` 走 HPC |
 | `config/config.yaml` | 主配置：分辨率、窗口、QC 阈值 | — | 74 个参数 |
 | `config/chroms.yaml` | 染色体列表 | — | 26 条（HC04_A01-A13, D01-D13）|
 | `data/manifest.tsv` | 74 个样本元数据 | `.mcool` URI | 样本 = rep1 + rep2 配对 |
 | `data/window_compare_pairs.yaml` | 36 对样本比较配置 | — | 36 个 comparison |
 | `env/SNAP-HiC-Diff.yaml` | Conda 环境 | — | snakemake>=8.0, hictk, cooltools |
-| `rules/*.smk` | Snakemake 规则定义（8 个文件）| checkpoint/rule | 含 2 个 checkpoint |
+| `rules/*.smk` | Snakemake 规则定义 | checkpoint/rule | 含 per-sample CWorld IS 与 Meltron 分支 |
 | `scripts/*.py` | Python 执行脚本（13 个）| argparse / snakemake 双模式 | subprocess 调子脚本避免 pickle |
 | `jupyter/` | 探索性 notebook | — | 不参与主流程 |
 
@@ -58,7 +58,23 @@ extract_chrom.smk (checkpoint × 74 samples)
                     ├─ compare_gaussian_smoothed_windows → {cmp}_gaussian_metrics.tsv
                     ├─ compare_iced_windows_tw → {cmp}_tw.tsv
                     └─ merge_window_pair_metrics → {cmp}_window_pair_metrics.tsv
+
+extract_chrom.smk (balanced `iced.cool` per sample)
+    │
+    ▼
+compute_IS.smk (checkpoint × N samples; one dsub worker per sample)
+    │ worker loops all chromosomes × configured IS distances
+    │ `.cool` → CWorld matrix → native CWorld `.insulation.bedGraph`
+    ▼
+convert_cworld_IS_to_meltron_IS.py
+    ▼
+results/IS/{sample}/{sample}_IS.tsv
+    │ `chrom<TAB>viewpoint<TAB>IS_distance<TAB>IS`
+    ▼
+meltron.smk (per comparison; reads the unchanged TSV contract for both samples)
 ```
+
+`compute_IS_bedgraphs` 与 `merge_IS` 已不再存在：每个 `compute_IS(sample)` worker 自行完成 native CWorld bedGraph 的生成和转换。因此 N 个样本会提交 N 个 IS dsub worker，而不会按 chromosome 或 IS distance 再拆分 job。
 
 ## 4. 关键文件说明
 
@@ -66,11 +82,13 @@ extract_chrom.smk (checkpoint × 74 samples)
 
 | 文件 | 作用 |
 |------|------|
-| `Snakefile` | include 顺序：validate_inputs → build_windows → extract_chrom → extract_expected → compute_oe_matrix → compute_gap_qc → sliding_window → window_compare |
+| `Snakefile` | include 顺序：validate_inputs → build_windows → extract_chrom → extract_expected → compute_oe_matrix → compute_gap_qc → sliding_window → window_compare → compute_IS → meltron |
 | `rules/extract_chrom.smk` | **checkpoint** `extract_and_balance_sample`；每个 sample 一个 job，shell 循环 26 条染色体；`hictk load + balance` |
 | `rules/extract_expected.smk` | 2 个 rule：`extract_expected_tsv`（cooltools）和 `extract_expected_npz`（子脚本）|
 | `rules/compute_gap_qc.smk` | **checkpoint** `compute_gap_qc`；调用 `compute_gap_qc.py` |
 | `rules/sliding_window.smk` | **checkpoint** `sliding_window` + `rule sliding_window_h5`（声明 H5 输出）|
+| `rules/compute_IS.smk` | **checkpoint** `compute_IS`；每个 sample 一个 dsub worker，循环全部 chromosome × IS distance，生成 native CWorld bedGraph 并转换为 `results/IS/{sample}/{sample}_IS.tsv` |
+| `rules/meltron.smk` | `meltron_per_comparison`；读取双方不变的四列 IS TSV 契约和 KNN-enriched windows |
 
 ### Python 脚本
 
@@ -85,6 +103,7 @@ extract_chrom.smk (checkpoint × 74 samples)
 | `detect_breakpoint_by_nan_density.py` | 5×5 滑动窗口 NaN 密度断点检测；被 `compute_gap_qc.py` 调用 |
 | `compute_window_pair_covariates.py` | EC（调和均值 CPM）、IB（|log2 比率|）、SP（nz_frac 均值）|
 | `merge_window_pair_metrics.py` | 合并 3 路指标 + 加 comparison 元数据 |
+| `convert_cworld_IS_to_meltron_IS.py` | 汇总 native CWorld insulation bedGraph，写出 Meltron 兼容的 `chrom, viewpoint, IS_distance, IS` TSV |
 
 ## 5. Config 关键参数
 

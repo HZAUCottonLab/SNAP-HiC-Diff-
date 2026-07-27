@@ -66,6 +66,9 @@ smoothing:
 parallel:
   threads_per_job: 80          # Threads per compute job (passed to joblib)
 
+compute_is:
+  threads: 4  # CPUs requested by one per-sample CWorld dsub worker
+
 # ============================================================================
 # Tracy-Widom Parameters
 # ============================================================================
