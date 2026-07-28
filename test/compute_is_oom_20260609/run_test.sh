@@ -13,8 +13,14 @@ DATA_PROJ="${DATA_PROJ:-$PROJ}"
 ENV_PROJ="${ENV_PROJ:-$PROJ}"
 export CONDA_ENVS_PATH="${ENV_PROJ}/.snakemake/conda"
 
-CONDA_PREFIX="${CONDA_ENVS_PATH}/59271960b794774df1c934b1e7affef8_"
-export PATH="${CONDA_PREFIX}/bin:$PATH"
+CONDA_OFFLINE=true CONDA_PREFIX_DIR="$CONDA_ENVS_PATH" bash "$PROJ/scripts/conda_envs.sh" verify
+CWORLD_PREFIX="$(awk -F '\t' '$1 == "env/cworld.yaml" {print $3}' "$CONDA_ENVS_PATH/offline.ready.tsv")"
+if [ -z "$CWORLD_PREFIX" ] || [ ! -x "$CWORLD_PREFIX/bin/bedtools" ]; then
+    echo "ERROR: ready CWorld prefix with bedtools is required"
+    exit 1
+fi
+export PATH="$CWORLD_PREFIX/bin:$PATH"
+"$CWORLD_PREFIX/bin/bedtools" --version
 
 echo "=== Test Start: $(date) ==="
 echo "Python: $(which python3)"

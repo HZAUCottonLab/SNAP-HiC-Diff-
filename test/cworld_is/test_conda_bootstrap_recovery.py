@@ -38,7 +38,7 @@ state = prefix_dir / "snakemake.calls"
 
 def make_prefix(prefix, tools):
     (prefix / "conda-meta").mkdir(parents=True, exist_ok=True)
-    (prefix / "conda-meta" / "history").touch()
+    (prefix / "conda-meta" / "history").write_text("complete\\n")
     bin_dir = prefix / "bin"
     bin_dir.mkdir(exist_ok=True)
     for tool in tools:
@@ -55,7 +55,7 @@ if not state.exists():
 
 for spec, tools in {
     "SNAP-HiC-Diff.yaml": ("python", "hictk"),
-    "cworld.yaml": ("python", "perl"),
+    "cworld.yaml": ("python", "perl", "bedtools"),
 }.items():
     cache = prefix_dir / f"{spec}.cache.yaml"
     shutil.copyfile(root / "env" / spec, cache)
@@ -73,7 +73,7 @@ from pathlib import Path
 args = sys.argv[1:]
 prefix = Path(args[args.index("--prefix") + 1])
 (prefix / "conda-meta").mkdir(parents=True, exist_ok=True)
-(prefix / "conda-meta" / "history").touch()
+(prefix / "conda-meta" / "history").write_text("complete\\n")
 bin_dir = prefix / "bin"
 bin_dir.mkdir(exist_ok=True)
 rscript = bin_dir / "Rscript"
@@ -82,7 +82,7 @@ rscript.chmod(0o755)
 spec = Path(args[args.index("--file") + 1]).name
 for tool in {
     "SNAP-HiC-Diff.yaml": ("python", "hictk"),
-    "cworld.yaml": ("python", "perl"),
+    "cworld.yaml": ("python", "perl", "bedtools"),
     "meltron.yaml": ("Rscript",),
 }[spec]:
     executable = bin_dir / tool

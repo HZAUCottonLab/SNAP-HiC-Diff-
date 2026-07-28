@@ -26,6 +26,7 @@ def test_cworld_environment_uses_only_the_required_arm_runtime():
         "pandas",
         "perl=5.32",
         "perl-gd>=2.57",
+        "bedtools",
         "zlib",
     } <= dependencies
     assert not {
@@ -60,10 +61,36 @@ def test_conda_helper_declares_all_specs_marker_and_runtime_checks():
     assert "md5sum" in script
     assert '"$MAMBA_BIN" env create --yes --prefix "$prefix"' in script
     assert "conda-meta/history" in script
+    assert "write_snakemake_cache_metadata()" in script
+    assert '"$CONDA_PREFIX_DIR/${hash}_.yaml"' in script
+    assert '"$CONDA_PREFIX_DIR/${hash}_.env_setup_done"' in script
+    assert 'cp "$ROOT/$spec" "$cache_yaml"' in script
     assert '-I "$ROOT/env/cworld-dekker/lib" -Mcworld::dekker' in script
+    assert '[[ -x "$cworld_prefix/bin/bedtools" ]]' in script
+    assert '"$cworld_prefix/bin/bedtools" --version' in script
     assert '"$snap_prefix/bin/hictk" --version' in script
     assert "Rscript" in script
     assert "source \"$READY_MARKER\"" not in script
+
+
+def test_python_package_validation_reads_metadata_without_importing_modules():
+    script = CONDA_HELPER.read_text()
+
+    assert "from importlib.metadata import version" in script
+    for module in ("cooler", "cooltools", "numpy", "pandas"):
+        assert f"'import {module}'" not in script
+
+    for package in ("cooler", "cooltools", "numpy", "pandas"):
+        assert f'validate_python_package "$snap_prefix/bin/python" {package}' in script
+    for package in ("cooler", "numpy", "pandas"):
+        assert f'validate_python_package "$cworld_prefix/bin/python" {package}' in script
+
+
+def test_conda_helper_requires_nonempty_conda_history():
+    script = CONDA_HELPER.read_text()
+
+    assert '[[ -s "$prefix/conda-meta/history" ]]' in script
+    assert '[[ -f "$prefix/conda-meta/history" ]]' not in script
 
 
 def test_launcher_verifies_marker_and_forces_offline_conda_before_snakemake():

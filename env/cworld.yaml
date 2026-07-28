@@ -10,4 +10,5 @@ dependencies:
   - pandas
   - perl=5.32
   - perl-gd>=2.57
+  - bedtools
   - zlib

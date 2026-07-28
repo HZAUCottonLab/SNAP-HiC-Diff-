@@ -34,6 +34,20 @@ desired_prefix() {
     printf '%s/%s_\n' "$CONDA_PREFIX_DIR" "$(environment_hash "$1")"
 }
 
+write_snakemake_cache_metadata() {
+    local spec="$1"
+    local hash cache_yaml setup_marker
+
+    hash="$(environment_hash "$spec")"
+    cache_yaml="$CONDA_PREFIX_DIR/${hash}_.yaml"
+    setup_marker="$CONDA_PREFIX_DIR/${hash}_.env_setup_done"
+
+    if [[ ! -f "$cache_yaml" ]] || ! cmp -s "$ROOT/$spec" "$cache_yaml"; then
+        cp "$ROOT/$spec" "$cache_yaml"
+    fi
+    : > "$setup_marker"
+}
+
 find_completed_prefix() {
     local spec="$1"
     local hash candidate prefix
@@ -41,13 +55,20 @@ find_completed_prefix() {
     hash="$(environment_hash "$spec")"
     for candidate in "${hash:0:8}" "$hash" "${hash}_"; do
         prefix="$CONDA_PREFIX_DIR/$candidate"
-        if [[ -f "$prefix/conda-meta/history" ]]; then
+        if [[ -s "$prefix/conda-meta/history" ]]; then
             printf '%s\n' "$prefix"
             return 0
         fi
     done
 
     return 1
+}
+
+validate_python_package() {
+    local python="$1"
+    local package="$2"
+
+    "$python" -c 'from importlib.metadata import version; import sys; print(version(sys.argv[1]))' "$package"
 }
 
 validate_prefix() {
@@ -59,17 +80,22 @@ validate_prefix() {
             local snap_prefix="$prefix"
             [[ -x "$snap_prefix/bin/python" ]] || die "Missing Python in $snap_prefix"
             [[ -x "$snap_prefix/bin/hictk" ]] || die "Missing hictk CLI in $snap_prefix"
-            "$snap_prefix/bin/python" -c 'import cooler, cooltools, numpy, pandas'
+            validate_python_package "$snap_prefix/bin/python" cooler
+            validate_python_package "$snap_prefix/bin/python" cooltools
+            validate_python_package "$snap_prefix/bin/python" numpy
+            validate_python_package "$snap_prefix/bin/python" pandas
             "$snap_prefix/bin/hictk" --version
             ;;
         env/cworld.yaml)
             local cworld_prefix="$prefix"
             [[ -x "$cworld_prefix/bin/python" ]] || die "Missing Python in $cworld_prefix"
             [[ -x "$cworld_prefix/bin/perl" ]] || die "Missing Perl in $cworld_prefix"
-            "$cworld_prefix/bin/python" -c 'import cooler'
-            "$cworld_prefix/bin/python" -c 'import numpy'
-            "$cworld_prefix/bin/python" -c 'import pandas'
+            [[ -x "$cworld_prefix/bin/bedtools" ]] || die "Missing bedtools CLI in $cworld_prefix"
+            validate_python_package "$cworld_prefix/bin/python" cooler
+            validate_python_package "$cworld_prefix/bin/python" numpy
+            validate_python_package "$cworld_prefix/bin/python" pandas
             "$cworld_prefix/bin/perl" -I "$ROOT/env/cworld-dekker/lib" -Mcworld::dekker -e 'print $cworld::dekker::VERSION, "\n"'
+            "$cworld_prefix/bin/bedtools" --version
             ;;
         env/meltron.yaml)
             local meltron_prefix="$prefix"
@@ -108,17 +134,18 @@ bootstrap() {
     local spec prefix backup
     for spec in "${SPECS[@]}"; do
         prefix="$(desired_prefix "$spec")"
-        if [[ -f "$prefix/conda-meta/history" ]]; then
+        if [[ -s "$prefix/conda-meta/history" ]]; then
             printf '[INFO] Reusing completed Conda prefix for %s: %s\n' "$spec" "$prefix"
-            continue
+        else
+            if [[ -e "$prefix" ]]; then
+                backup="${prefix}.incomplete.$$"
+                printf '[INFO] Preserving incomplete prefix as %s\n' "$backup" >&2
+                mv "$prefix" "$backup"
+            fi
+            printf '[INFO] Creating %s with Mamba: %s\n' "$spec" "$prefix" >&2
+            "$MAMBA_BIN" env create --yes --prefix "$prefix" --file "$ROOT/$spec"
         fi
-        if [[ -e "$prefix" ]]; then
-            backup="${prefix}.incomplete.$$"
-            printf '[INFO] Preserving incomplete prefix as %s\n' "$backup" >&2
-            mv "$prefix" "$backup"
-        fi
-        printf '[INFO] Creating %s with Mamba: %s\n' "$spec" "$prefix" >&2
-        "$MAMBA_BIN" env create --yes --prefix "$prefix" --file "$ROOT/$spec"
+        write_snakemake_cache_metadata "$spec"
     done
 
     write_ready_marker
@@ -144,7 +171,7 @@ verify() {
         [[ -n "$hash" && -n "$prefix" && -z "${extra:-}" ]] || die "Malformed ready marker: $READY_MARKER"
         actual_hash="$(spec_sha256 "$spec")"
         [[ "$hash" == "$actual_hash" ]] || die "Environment YAML changed: $spec"
-        [[ -f "$prefix/conda-meta/history" ]] || die "Incomplete Conda prefix: $prefix"
+        [[ -s "$prefix/conda-meta/history" ]] || die "Incomplete Conda prefix: $prefix"
         validate_prefix "$spec" "$prefix"
         printf '[INFO] Verified %s -> %s\n' "$spec" "$prefix"
     done

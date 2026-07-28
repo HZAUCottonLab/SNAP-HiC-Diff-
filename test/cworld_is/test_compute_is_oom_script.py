@@ -18,6 +18,15 @@ def test_smoke_script_allows_data_outside_code_checkout():
     assert script.count('"$DATA_PROJ/results/balanced/L021/L021__HC04_D08_iced.cool"') == 2
 
 
+def test_smoke_uses_the_prebuilt_cworld_prefix_for_perl_and_bedtools():
+    script = SCRIPT.read_text()
+
+    assert 'CONDA_OFFLINE=true CONDA_PREFIX_DIR="$CONDA_ENVS_PATH" bash "$PROJ/scripts/conda_envs.sh" verify' in script
+    assert 'CWORLD_PREFIX="$(awk -F \'\\t\' \'$1 == "env/cworld.yaml" {print $3}\' "$CONDA_ENVS_PATH/offline.ready.tsv")"' in script
+    assert 'export PATH="$CWORLD_PREFIX/bin:$PATH"' in script
+    assert '"$CWORLD_PREFIX/bin/bedtools" --version' in script
+
+
 def test_smoke_retains_cworld_diagnostics():
     script = SCRIPT.read_text()
     validator = VALIDATOR.read_text()
