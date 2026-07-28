@@ -24,6 +24,7 @@ def test_cworld_environment_uses_only_the_required_arm_runtime():
         "cooler>=0.10",
         "numpy",
         "pandas",
+        "r-base",
         "perl=5.32",
         "perl-gd>=2.57",
         "bedtools",
@@ -68,6 +69,8 @@ def test_conda_helper_declares_all_specs_marker_and_runtime_checks():
     assert '-I "$ROOT/env/cworld-dekker/lib" -Mcworld::dekker' in script
     assert '[[ -x "$cworld_prefix/bin/bedtools" ]]' in script
     assert '"$cworld_prefix/bin/bedtools" --version' in script
+    assert '[[ -x "$cworld_prefix/bin/Rscript" ]]' in script
+    assert '"$cworld_prefix/bin/Rscript" --version' in script
     assert '"$snap_prefix/bin/hictk" --version' in script
     assert "Rscript" in script
     assert "source \"$READY_MARKER\"" not in script
@@ -108,7 +111,36 @@ def test_launcher_verifies_marker_and_forces_offline_conda_before_snakemake():
 def test_dsub_wrapper_injects_offline_mode_into_generated_worker_script():
     script = DSUB_SUBMIT.read_text()
 
-    assert "printf '#!/usr/bin/env bash\\n'" in script
-    assert "printf 'export CONDA_OFFLINE=true\\n'" in script
-    assert 'cat "$_jobscript"' in script
-    assert script.index("export CONDA_OFFLINE=true") < script.index('cat "$_jobscript"')
+    wrapper_start = script.index("    printf '#!/usr/bin/env bash\\n'")
+    wrapper_end = script.index('} > "$_wrapper"', wrapper_start)
+    wrapper = script[wrapper_start:wrapper_end]
+
+    assert "printf 'set -euo pipefail\\n'" in wrapper
+    assert "printf 'export CONDA_OFFLINE=true\\n'" in wrapper
+    assert 'cat "$_jobscript"' in wrapper
+    assert wrapper.index("#!/usr/bin/env bash") < wrapper.index("set -euo pipefail") < wrapper.index("export CONDA_OFFLINE=true") < wrapper.index('cat "$_jobscript"')
+
+
+def test_cworld_rscript_checks_follow_cworld_prefix_declaration():
+    script = CONDA_HELPER.read_text()
+
+    cworld_case = script.index("env/cworld.yaml)")
+    cworld_prefix = script.index('local cworld_prefix="$prefix"', cworld_case)
+    cworld_case_end = script.index("            ;;", cworld_case)
+
+    for statement in (
+        '[[ -x "$cworld_prefix/bin/Rscript" ]]',
+        '"$cworld_prefix/bin/Rscript" --version',
+    ):
+        assert cworld_prefix < script.index(statement) < cworld_case_end
+
+
+def test_conda_helper_checks_meltron_r_package_metadata_without_loading_packages():
+    script = CONDA_HELPER.read_text()
+
+    for package in ("argparse", "data.table", "DescTools"):
+        assert f'"$meltron_prefix/lib/R/library/{package}/DESCRIPTION"' in script
+
+    assert 'library(argparse)' not in script
+    assert 'library(data.table)' not in script
+    assert 'library(DescTools)' not in script

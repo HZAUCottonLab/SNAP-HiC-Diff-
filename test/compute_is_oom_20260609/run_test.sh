@@ -19,7 +19,8 @@ if [ -z "$CWORLD_PREFIX" ] || [ ! -x "$CWORLD_PREFIX/bin/bedtools" ]; then
     echo "ERROR: ready CWorld prefix with bedtools is required"
     exit 1
 fi
-export PATH="$CWORLD_PREFIX/bin:$PATH"
+export PATH="$CWORLD_PREFIX/bin:/usr/bin:/bin"
+"$CWORLD_PREFIX/bin/Rscript" --version
 "$CWORLD_PREFIX/bin/bedtools" --version
 
 echo "=== Test Start: $(date) ==="

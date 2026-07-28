@@ -228,8 +228,8 @@ def run():
     manifest_path.write_text(f"{args.is_distance}\t{Path(bedgraph_path).name}\n")
     log(f"[PASS] cworld insulation done: {bedgraph_path}")
 
-    with cooler.Cooler(args.cool) as clr:
-        n_bins = len(clr.bins()[:][clr.bins()[:]["chrom"] == args.chrom])
+    clr = cooler.Cooler(args.cool)
+    n_bins = len(clr.bins()[:][clr.bins()[:]["chrom"] == args.chrom])
     if not validate_bedgraph(bedgraph_path, n_bins):
         log(f"[FAIL] bedGraph validation failed")
         sys.exit(1)

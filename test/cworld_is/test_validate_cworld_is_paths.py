@@ -83,12 +83,6 @@ def test_validator_uses_converter_cworld_layout_for_single_sample(monkeypatch, t
         def __init__(self, _):
             pass
 
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_):
-            return False
-
         def bins(self):
             return FakeBins()
 

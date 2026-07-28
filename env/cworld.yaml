@@ -8,6 +8,7 @@ dependencies:
   - cooler>=0.10
   - numpy
   - pandas
+  - r-base
   - perl=5.32
   - perl-gd>=2.57
   - bedtools

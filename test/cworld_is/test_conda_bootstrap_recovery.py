@@ -89,6 +89,12 @@ for tool in {
     executable.write_text("#!/usr/bin/env bash")
     executable.chmod(0o755)
 Path(os.environ["MAMBA_LOG"]).write_text("\\n".join(args))
+if spec == "meltron.yaml":
+    for package in ("argparse", "data.table", "DescTools"):
+        description = prefix / "lib" / "R" / "library" / package / "DESCRIPTION"
+        description.parent.mkdir(parents=True, exist_ok=True)
+        description.write_text(f"Package: {package}\\n")
+
 """,
     )
 

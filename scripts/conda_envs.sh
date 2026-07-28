@@ -88,6 +88,8 @@ validate_prefix() {
             ;;
         env/cworld.yaml)
             local cworld_prefix="$prefix"
+            [[ -x "$cworld_prefix/bin/Rscript" ]] || die "Missing Rscript in $cworld_prefix"
+            "$cworld_prefix/bin/Rscript" --version
             [[ -x "$cworld_prefix/bin/python" ]] || die "Missing Python in $cworld_prefix"
             [[ -x "$cworld_prefix/bin/perl" ]] || die "Missing Perl in $cworld_prefix"
             [[ -x "$cworld_prefix/bin/bedtools" ]] || die "Missing bedtools CLI in $cworld_prefix"
@@ -100,9 +102,10 @@ validate_prefix() {
         env/meltron.yaml)
             local meltron_prefix="$prefix"
             [[ -x "$meltron_prefix/bin/Rscript" ]] || die "Missing Rscript in $meltron_prefix"
-            "$meltron_prefix/bin/Rscript" -e 'library(argparse)'
-            "$meltron_prefix/bin/Rscript" -e 'library(data.table)'
-            "$meltron_prefix/bin/Rscript" -e 'library(DescTools)'
+            "$meltron_prefix/bin/Rscript" --version
+            [[ -f "$meltron_prefix/lib/R/library/argparse/DESCRIPTION" ]] || die "Missing R package argparse in $meltron_prefix"
+            [[ -f "$meltron_prefix/lib/R/library/data.table/DESCRIPTION" ]] || die "Missing R package data.table in $meltron_prefix"
+            [[ -f "$meltron_prefix/lib/R/library/DescTools/DESCRIPTION" ]] || die "Missing R package DescTools in $meltron_prefix"
             ;;
         *)
             die "Unknown environment specification: $spec"
