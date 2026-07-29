@@ -45,7 +45,7 @@ Edit `config/config.yaml` to set paths and parameters:
 manifest: data/manifest.tsv
 
 # Resolution (bp)
-resolution: 10000
+resolution: 4000
 
 # Window size & step (bp)
 window_size: 300000
@@ -55,6 +55,8 @@ step_size: 30000
 smoothing:
   sigma: 3
 ```
+
+For the CWorld/Meltron insulation workflow, the source cooler resolution is fixed at 4,000 bp. Other pipeline parameters can be configured independently where supported.
 
 Edit `data/manifest.tsv` with your sample paths.
 
