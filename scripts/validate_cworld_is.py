@@ -241,6 +241,7 @@ def run():
         "scripts/convert_cworld_IS_to_meltron_IS.py",
         "--sample", args.sample,
         "--chroms", args.chrom,
+        "--manifests", str(manifest_path),
         "--outdir", cworld_dir_for_convert,
         "--is-distances", str(args.is_distance),
         "--log", os.path.join(args.outdir, "convert_IS.log"),
