@@ -43,6 +43,8 @@ def collect_targets(root: Path, sample: str) -> list[Path]:
         root / "IS" / sample,
         *sorted((root / "logs" / "compute_IS").glob(f"{sample}__*")),
         *sorted((root / "benchmark" / "compute_IS").glob(f"{sample}__*")),
+        root / "logs" / "compute_IS" / f"{sample}_merge_IS.log",
+        root / "benchmark" / "compute_IS" / f"{sample}_merge_IS.tsv",
     ]
 
 

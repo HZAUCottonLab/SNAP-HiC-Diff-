@@ -18,6 +18,8 @@ def populate(results, sample):
     (results / "IS" / sample / f"{sample}_IS.tsv").write_text("x")
     (results / "logs" / "compute_IS" / f"{sample}__A01.log").write_text("x")
     (results / "benchmark" / "compute_IS" / f"{sample}__A01.tsv").write_text("x")
+    (results / "logs" / "compute_IS" / f"{sample}_merge_IS.log").write_text("x")
+    (results / "benchmark" / "compute_IS" / f"{sample}_merge_IS.tsv").write_text("x")
 
 
 def run_cleanup(results, *extra):
@@ -85,10 +87,14 @@ def test_execute_keeps_shared_prefix_sample_artifacts(tmp_path):
     assert not (results / "IS" / "S1").exists()
     assert not list((results / "logs" / "compute_IS").glob("S1__*"))
     assert not list((results / "benchmark" / "compute_IS").glob("S1__*"))
+    assert not (results / "logs" / "compute_IS" / "S1_merge_IS.log").exists()
+    assert not (results / "benchmark" / "compute_IS" / "S1_merge_IS.tsv").exists()
     assert (results / "cworld_insulation" / "S10" / "a.bedGraph").is_file()
     assert (results / "IS" / "S10" / "S10_IS.tsv").is_file()
     assert (results / "logs" / "compute_IS" / "S10__A01.log").is_file()
     assert (results / "benchmark" / "compute_IS" / "S10__A01.tsv").is_file()
+    assert (results / "logs" / "compute_IS" / "S10_merge_IS.log").is_file()
+    assert (results / "benchmark" / "compute_IS" / "S10_merge_IS.tsv").is_file()
 
 
 @pytest.mark.parametrize(

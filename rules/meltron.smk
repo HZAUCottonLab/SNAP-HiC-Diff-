@@ -2,7 +2,7 @@
 # Runs decondensation AND condensation, then merges results.
 #
 # Inputs:
-#   - IS tables from compute_IS checkpoint (sample A and sample B)
+#   - Final per-sample IS tables produced by merge_IS (sample A and sample B)
 #   - knn_enriched.tsv from Phase 03 (candidate windows)
 # Outputs:
 #   - {comparison}_intervals.tsv (4-col: chrom, start, end, ID)
