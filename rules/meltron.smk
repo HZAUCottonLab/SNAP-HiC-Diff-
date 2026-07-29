@@ -13,12 +13,14 @@
 
 rule meltron_per_comparison:
     input:
-        lambda w: checkpoints.compute_IS.get(
-            sample=w.comparison.split("_vs_")[0]
-        ).output.is_file,
-        lambda w: checkpoints.compute_IS.get(
-            sample=w.comparison.split("_vs_")[1]
-        ).output.is_file,
+        is_a=lambda w: OUTDIR + "/IS/{}/{}_IS.tsv".format(
+            w.comparison.split("_vs_")[0],
+            w.comparison.split("_vs_")[0],
+        ),
+        is_b=lambda w: OUTDIR + "/IS/{}/{}_IS.tsv".format(
+            w.comparison.split("_vs_")[1],
+            w.comparison.split("_vs_")[1],
+        ),
         knn_enriched = OUTDIR + "/knn_empirical_pvalue/{comparison}/{comparison}_knn_enriched.tsv",
         script_prepare = SCRIPT_DIR + "/scripts/prepare_meltron_intervals.py",
         script_run = SCRIPT_DIR + "/scripts/run_meltron.py",
