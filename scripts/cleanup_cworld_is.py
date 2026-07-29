@@ -8,6 +8,10 @@ from pathlib import Path
 import shutil
 import sys
 
+SAFE_SAMPLE_CHARS = frozenset(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"
+)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -29,7 +33,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def validate_sample(sample: str) -> None:
-    if not sample or sample.strip() != sample or any(char in sample for char in "/\\."):
+    if not sample or not set(sample) <= SAFE_SAMPLE_CHARS:
         raise ValueError(f"unsafe sample name: {sample!r}")
 
 
@@ -37,8 +41,8 @@ def collect_targets(root: Path, sample: str) -> list[Path]:
     return [
         root / "cworld_insulation" / sample,
         root / "IS" / sample,
-        *sorted((root / "logs" / "compute_IS").glob(f"{sample}*")),
-        *sorted((root / "benchmark" / "compute_IS").glob(f"{sample}*")),
+        *sorted((root / "logs" / "compute_IS").glob(f"{sample}__*")),
+        *sorted((root / "benchmark" / "compute_IS").glob(f"{sample}__*")),
     ]
 
 
