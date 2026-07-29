@@ -389,9 +389,14 @@ Change the existing write_bedgraph helper to return path after writing it, then 
 
 ~~~python
 def write_bedgraph(root, sample, chrom, distance):
-    path = root / "cworld_insulation" / sample / "generated.insulation.bedGraph"
+    path = (
+        root / "cworld_insulation" / sample /
+        f"{sample}__{chrom}--is{distance + 1}--nt0--ids{distance // 2 + 1}--ss1--immean.insulation.bedGraph"
+    )
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("track type=bedGraph name=IS\nHC04_A01\t0\t16000\t0.25\n")
+    path.write_text(
+        f"track type=bedGraph name=IS\n{chrom}\t0\t16000\t0.25\n"
+    )
     return path
 
 def write_manifest(root, sample, chrom, entries):
@@ -593,8 +598,8 @@ OUTDIR="{params.outdir}"
 TMP="{params.tmpdir}"
 CWORLD_SAMPLE_DIR="$OUTDIR/cworld_insulation/$SAMPLE"
 MATRIX_DIR="$TMP/cworld_matrix/$SAMPLE"
-MATRIX="$MATRIX_DIR/$SAMPLE__$CHR.matrix.gz"
-PREFIX="$CWORLD_SAMPLE_DIR/$SAMPLE__$CHR"
+MATRIX="${MATRIX_DIR}/${SAMPLE}__${CHR}.matrix.gz"
+PREFIX="${CWORLD_SAMPLE_DIR}/${SAMPLE}__${CHR}"
 MANIFEST="$PREFIX.is_manifest.tsv"
 MANIFEST_TMP="$MANIFEST.tmp.$$"
 mkdir -p "$CWORLD_SAMPLE_DIR" "$MATRIX_DIR" "$OUTDIR/logs/compute_IS" "$OUTDIR/benchmark/compute_IS"
