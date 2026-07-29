@@ -15,7 +15,7 @@ Snakefile
   ├─ rules/compute_gap_qc.smk  # checkpoint compute_gap_qc
   ├─ rules/sliding_window.smk  # checkpoint sliding_window + rule sliding_window_h5
   ├─ rules/window_compare.smk   # 5 rules + 1 rule merge_all
-  ├─ rules/compute_IS.smk       # checkpoint compute_IS（每个 sample 一个 CWorld worker）
+  ├─ rules/compute_IS.smk       # compute_IS_chrom（sample × chromosome）+ merge_IS（per sample）
   └─ rules/meltron.smk          # rule meltron_per_comparison
 ```
 
@@ -60,9 +60,14 @@ rule all (final target)
     │                       │
     │                       └─► [sliding_window_h5] × 74 samples (rule)
     │
-    ├─► [compute_IS] × N samples (checkpoint; one dsub worker per sample)
+    ├─► [compute_IS_chrom] × N samples × 26 chromosomes (four CPUs/job)
+    │       │ fixed 4 kb `iced.cool`; ten scales run sequentially:
+    │       │ 32000, 60000, 92000, 120000, 152000, 180000, 212000,
+    │       │ 240000, 272000, 300000 bp
+    │       │ → ten bedGraphs + one manifest/chromosome
     │       │
-    │       └─► results/IS/{sample}/{sample}_IS.tsv
+    │       └─► [merge_IS] × N samples (four CPUs/job; after 26 manifests)
+    │               └─► results/IS/{sample}/{sample}_IS.tsv
     │
     ├─► [meltron_per_comparison] × 36 comparisons
     │       └─► reads the two per-sample IS TSVs and KNN-enriched windows
@@ -81,7 +86,8 @@ rule all (final target)
 - `compute_oe_matrix`：每个 sample 一个 job × 74
 - `compute_gap_qc`：每个 sample 一个 job × 74（checkpoint）
 - `sliding_window`：每个 sample 一个 job × 74（checkpoint）
-- `compute_IS`：每个 sample 一个 dsub worker，因此 N 个 sample = N 个 IS worker；每个 worker 内循环全部 chromosome × 全部 IS distance
+- `compute_IS_chrom`：每个 sample × 26 条 chromosome = 26 个 four-CPU job/sample；每个 job 固定使用 4 kb `iced.cool` 并顺序计算十个 scale（32000, 60000, 92000, 120000, 152000, 180000, 212000, 240000, 272000, 300000 bp）
+- `merge_IS`：每个 sample 一个 four-CPU job，在该 sample 的 26 个 chromosome manifest 都完成后汇总为最终 IS TSV
 - `window_compare`：每个 comparison 一个 job × 36（3 个并行的 sub-rule）
 
 ## 3. Rule 详细说明
@@ -123,14 +129,19 @@ rule all (final target)
 - **Output**：`{OUTDIR}/logs/expected/{sample}_to_npz.done`
 - **功能**：TSV → NPZ 格式转换
 
-### checkpoint compute_IS
+### rule compute_IS_chrom
 - **文件**：`rules/compute_IS.smk`
-- **Wildcard**：`{sample}`（每个 sample 一个 dsub worker）
-- **Input**：`extract_and_balance_sample` checkpoint 产生的全部 balanced `iced.cool`
-- **Output**：`{OUTDIR}/logs/compute_IS/{sample}.done` + `results/IS/{sample}/{sample}_IS.tsv`
-- **功能**：worker 内循环全部 chromosome × `config["meltron"]["is_distances"]`；每个 `.cool` 先转为 CWorld matrix，`matrix2insulation.pl` 生成原生 CWorld `.insulation.bedGraph`，随后 `convert_cworld_IS_to_meltron_IS.py` 读取这些 bedGraph 并写出最终 TSV。
-- **下游契约**：`meltron_per_comparison` 仍读取每个 sample 的最终 TSV，格式保持 `chrom<TAB>viewpoint<TAB>IS_distance<TAB>IS` 不变。
-- **已移除的拆分规则**：不再存在 `compute_IS_bedgraphs` 或 `merge_IS`；所有 bedGraph 生成和转换均在同一个 per-sample worker 内完成。
+- **Wildcard**：`{sample}`, `{chrom}`（每个 sample 26 个 four-CPU job）
+- **Input**：`extract_and_balance_sample` checkpoint 的一个固定 4 kb balanced `iced.cool`
+- **Output**：`{OUTDIR}/cworld_insulation/{sample}/{sample}__{chrom}.is_manifest.tsv`
+- **功能**：一个 chromosome job 先将 `.cool` 转为 `tmp/cworld_matrix/{sample}/` 的 CWorld matrix，再顺序计算固定十个 scale：32000, 60000, 92000, 120000, 152000, 180000, 212000, 240000, 272000, 300000 bp。每个 scale 产生一个 native CWorld `.insulation.bedGraph`；manifest 精确列出这十个 bedGraph。
+
+### rule merge_IS
+- **文件**：`rules/compute_IS.smk`
+- **Wildcard**：`{sample}`（每个 sample 一个 four-CPU job）
+- **Input**：该 sample 的 26 个 `compute_IS_chrom` manifest
+- **Output**：`results/IS/{sample}/{sample}_IS.tsv`
+- **功能**：调用 `convert_cworld_IS_to_meltron_IS.py` 汇总 manifest 指向的 bedGraph；最终 TSV 契约保持 `chrom<TAB>viewpoint<TAB>IS_distance<TAB>IS`。一个 chromosome 失败只阻塞其 sample 的 `merge_IS` 与依赖此 sample 的 Meltron 比较。
 
 ### rule compute_oe_matrix
 - **文件**：`rules/compute_oe_matrix.smk`
@@ -198,14 +209,13 @@ rule all (final target)
 
 ## 4. Checkpoint 使用说明
 
-Pipeline 使用了 4 个 checkpoint 动态追踪产出：
+Pipeline 使用了 3 个 checkpoint 动态追踪产出：
 
 | Checkpoint | 触发条件 | 动态产出 |
 |-----------|---------|---------|
 | `extract_and_balance_sample` | mcool URI 存在 | `.done` marker |
 | `compute_gap_qc` | balanced cool 文件存在 | `gaps.tsv` + `window_qc.tsv` |
 | `sliding_window` | `compute_gap_qc` checkpoint 完成 | `.done` marker |
-| `compute_IS` | `extract_and_balance_sample` checkpoint 完成 | 每个 sample 的 Meltron IS TSV + `.done` marker |
 
 下游规则通过 `checkpoints.<name>.get(...)` 引用 checkpoint，确保 Snakemake 在 checkpoint 真正产生文件后再执行。
 
@@ -215,9 +225,9 @@ Pipeline 使用了 4 个 checkpoint 动态追踪产出：
 
 | Wildcard | 来源 | 取值范围 | 用于 |
 |---------|------|---------|------|
-| `{sample}` | checkpoint `extract_and_balance_sample` | N 个样本（由 manifest.tsv 动态确定） | extract_chrom, extract_expected, compute_oe_matrix, compute_gap_qc, sliding_window, compute_IS |
+| `{sample}` | checkpoint `extract_and_balance_sample` | N 个样本（由 manifest.tsv 动态确定） | extract_chrom, extract_expected, compute_oe_matrix, compute_gap_qc, sliding_window, compute_IS_chrom, merge_IS |
 | `{comparison}` | `window_compare_pairs.yaml` | 36 个 comparison | window_compare 下的 5 个 rule |
-| `{chrom}` | `config/chroms.yaml` | 26 条染色体 | 通过 expand() 批量生成输入 |
+| `{chrom}` | `config/chroms.yaml` | 26 条染色体 | `compute_IS_chrom` wildcard；`merge_IS` 通过 `expand()` 收集每条 chromosome 的 manifest |
 | `{stage}` | 硬编码 | `ln_oe`, `gap_filled`, `zscore`, `gaussian` | `sliding_window_h5` 输出 |
 
 ## 6. 关键设计决策

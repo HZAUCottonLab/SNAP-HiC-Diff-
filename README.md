@@ -73,6 +73,30 @@ dsub -s run_snakemake.sh
 
 See [docs/dsub_hpc_standard.md](docs/dsub_hpc_standard.md) for HPC setup details.
 
+## CWorld insulation scores for Meltron
+
+CWorld IS is produced only for Meltron from 4000 bp balanced `.cool` inputs,
+never from 20 kb or 100 kb levels. The configured windows are 32,000, 60,000,
+92,000, 120,000, 152,000, 180,000, 212,000, 240,000, 272,000, and 300,000 bp;
+each uses `--ids = --is / 2`. A CWorld filename may show `is32001`, but the
+manifest and final table retain requested distance `32000`.
+
+Each sample has 26 four-CPU `compute_IS_chrom` tasks, each processing all ten
+windows sequentially, followed by one four-CPU `merge_IS` task. Donau memory
+is CPU-driven; adjust `meltron.cworld_is.chrom_job_threads`, not a memory
+field. Matrices are retained in `tmp/cworld_matrix/<sample>/`; bedGraphs and
+manifests in `results/cworld_insulation/<sample>/`; final Meltron input is
+`results/IS/<sample>/<sample>_IS.tsv` with `chrom`, `viewpoint`, `IS_distance`,
+and `IS`. One failed chromosome blocks only that sample merge and comparison.
+
+Preview selected-sample cleanup first; add `--execute` only after reviewing its output, then submit the workflow:
+
+```bash
+python scripts/cleanup_cworld_is.py --outdir results --samples H1394 H1395 H1396 H1397 H1398 H1406 H1409 H1410 H1436 L021
+python scripts/cleanup_cworld_is.py --outdir results --samples H1394 H1395 H1396 H1397 H1398 H1406 H1409 H1410 H1436 L021 --execute
+dsub -s run_snakemake.sh
+```
+
 ---
 
 ## Directory Structure
