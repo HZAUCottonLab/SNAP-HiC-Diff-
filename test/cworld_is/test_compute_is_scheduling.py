@@ -20,7 +20,7 @@ SAMPLES = [
 TARGETS = [f"results/IS/{sample}/{sample}_IS.tsv" for sample in SAMPLES]
 
 
-def test_compute_is_schedules_one_cworld_job_per_requested_sample():
+def test_compute_is_schedules_one_cworld_job_per_sample_chromosome():
     result = subprocess.run(
         [
             "snakemake",
@@ -39,18 +39,21 @@ def test_compute_is_schedules_one_cworld_job_per_requested_sample():
     plan = result.stdout + result.stderr
 
     assert result.returncode == 0, plan
-    assert re.search(r"^\s*compute_IS\s+10\s*$", plan, re.MULTILINE), plan
-    assert "localrule compute_IS_bedgraphs" not in plan
-    assert "merge_IS" not in plan
-    assert plan.count("matrix2insulation.pl") == len(SAMPLES) == 10, plan
+    assert re.search(r"^\s*compute_IS_chrom\s+260\s*$", plan, re.MULTILINE), plan
+    assert re.search(r"^\s*merge_IS\s+10\s*$", plan, re.MULTILINE), plan
+    assert "checkpoint compute_IS" not in RULE.read_text()
+    assert 'config["meltron"]["is_distances"]' not in RULE.read_text()
+    assert plan.count("matrix2insulation.pl") == 260, plan
 
 
-
-
-def test_compute_is_records_only_the_bedgraph_created_by_each_perl_call():
+def test_compute_is_rule_uses_chromosome_outputs_and_configured_cpus():
     rule = RULE.read_text()
 
-    assert 'MANIFEST="${{PREFIX}}.is_manifest.tsv"' in rule
-    assert 'MARKER="${{PREFIX}}.is${{DIST}}.started"' in rule
-    assert 'mapfile -t BEDGRAPHS' in rule
-    assert '-newer "$MARKER"' in rule
+    assert "rule compute_IS_chrom:" in rule
+    assert "rule merge_IS:" in rule
+    assert '"--expected-bin-size"' in rule
+    assert "tmp/cworld_matrix" in rule
+    assert "CWORLD_IS.chrom_job_threads" in rule
+    assert "CWORLD_IS.merge_job_threads" in rule
+    assert 'MANIFEST_TMP="$MANIFEST.tmp.$$"' in rule
+    assert "find" in rule and "-newer" in rule
