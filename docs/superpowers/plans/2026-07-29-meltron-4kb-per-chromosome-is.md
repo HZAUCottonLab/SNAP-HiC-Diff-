@@ -850,4 +850,3 @@ git commit -m "docs: describe 4kb per-chromosome meltron IS workflow"
 | Offline Conda/dsub and Meltron interface retained | Tasks 2, 4, and 6 |
 
 The names CworldISSettings, CWORLD_IS, compute_IS_chrom, merge_IS, and the final per-sample TSV path are used consistently. Every code task includes a failing test, implementation detail, verification command, expected result, and isolated commit.
-
