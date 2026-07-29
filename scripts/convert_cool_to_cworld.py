@@ -34,15 +34,23 @@ def log(msg, log_file):
             f.write(f"{msg}\n")
 
 
-def convert_cool_to_cworld(cool_path, chrom, output_path, log_file=None):
+def convert_cool_to_cworld(
+    cool_path, chrom, output_path, log_file=None, expected_bin_size=None
+):
+    output_path = Path(output_path)
     log(f"[INFO] Opening cooler: {cool_path}", log_file)
     clr = cooler.Cooler(cool_path)
 
-    if chrom not in clr.chromnames:
-        log(f"[ERROR] Chromosome {chrom} not found", log_file)
-        sys.exit(1)
-
     resolution = int(clr.info["bin-size"])
+    if expected_bin_size is not None and resolution != expected_bin_size:
+        raise ValueError(
+            f"Cooler {cool_path} has wrong bin size: expected {expected_bin_size} bp, "
+            f"found {resolution} bp"
+        )
+
+    if chrom not in clr.chromnames:
+        raise ValueError(f"Chromosome {chrom} not found in {cool_path}")
+
     bins = clr.bins()[:]
     chrom_bins = bins[bins["chrom"] == chrom].reset_index(drop=True)
     n_bins = len(chrom_bins)
@@ -60,6 +68,7 @@ def convert_cool_to_cworld(cool_path, chrom, output_path, log_file=None):
     ]
 
     log(f"[INFO] Writing matrix: {output_path}", log_file)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     with gzip.open(output_path, "wt") as f:
         f.write("\t" + "\t".join(bin_labels) + "\n")
         for i in range(n_bins):
@@ -82,6 +91,11 @@ def run():
     parser.add_argument("--chrom", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--log")
+    parser.add_argument(
+        "--expected-bin-size",
+        type=int,
+        help="Require this cooler bin size in bp before conversion",
+    )
     args = parser.parse_args()
 
     if args.log:
@@ -91,7 +105,16 @@ def run():
     log(f"[convert_cool_to_cworld] chrom={args.chrom}", args.log)
     log(f"[convert_cool_to_cworld] out={args.out}", args.log)
 
-    convert_cool_to_cworld(args.cool, args.chrom, args.out, args.log)
+    try:
+        convert_cool_to_cworld(
+            args.cool,
+            args.chrom,
+            args.out,
+            log_file=args.log,
+            expected_bin_size=args.expected_bin_size,
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
 
 
 if __name__ == "__main__":
