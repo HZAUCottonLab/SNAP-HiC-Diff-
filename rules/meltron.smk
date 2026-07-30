@@ -43,6 +43,7 @@ rule meltron_per_comparison:
         cutoff_na = config["meltron"]["cutoff_na"],
         score_threshold = config["meltron"]["score_threshold"],
         min_significant = config["meltron"]["min_significant"],
+        meltron_cores = 20,
         script_prepare = SCRIPT_DIR + "/scripts/prepare_meltron_intervals.py",
         script_run = SCRIPT_DIR + "/scripts/run_meltron.py",
         script_merge = SCRIPT_DIR + "/scripts/merge_meltron_scores.py",
@@ -79,6 +80,7 @@ rule meltron_per_comparison:
             --outfile {output.decond} \
             --comparison-direction decondensation \
             --cutoff-na {params.cutoff_na} \
+            --cores {params.meltron_cores} \
             --log-file "{log}" \
             >> "{log}" 2>&1
 
@@ -90,6 +92,7 @@ rule meltron_per_comparison:
             --outfile {output.condens} \
             --comparison-direction condensation \
             --cutoff-na {params.cutoff_na} \
+            --cores {params.meltron_cores} \
             --log-file "{log}" \
             >> "{log}" 2>&1
 
