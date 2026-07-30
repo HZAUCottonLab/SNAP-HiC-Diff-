@@ -111,6 +111,9 @@ def test_validator_uses_converter_cworld_layout_for_single_sample(monkeypatch, t
 
     assert option_value(cworld_command, "-o") == str(expected_prefix)
     assert expected_parent_created_before_cworld
+    assert option_value(converter_command, "--manifests") == str(
+        expected_sample_dir / f"{sample}__{chrom}.is_manifest.tsv"
+    )
     assert option_value(converter_command, "--outdir") == str(outdir)
     assert run_error is None
     assert (outdir / "IS" / sample / f"{sample}_IS.tsv").exists()

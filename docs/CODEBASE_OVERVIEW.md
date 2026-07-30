@@ -59,14 +59,18 @@ extract_chrom.smk (checkpoint × 74 samples)
                     ├─ compare_iced_windows_tw → {cmp}_tw.tsv
                     └─ merge_window_pair_metrics → {cmp}_window_pair_metrics.tsv
 
-extract_chrom.smk (balanced `iced.cool` per sample)
+extract_chrom.smk (4 kb balanced `iced.cool` per sample × chromosome)
     │
     ▼
-compute_IS.smk (checkpoint × N samples; one dsub worker per sample)
-    │ worker loops all chromosomes × configured IS distances
-    │ `.cool` → CWorld matrix → native CWorld `.insulation.bedGraph`
+compute_IS.smk: `compute_IS_chrom` (26 four-CPU jobs per sample)
+    │ each job: one chromosome `.cool` → `tmp/cworld_matrix/{sample}/` matrix
+    │          → ten sequential CWorld scales (32000, 60000, 92000, 120000,
+    │            152000, 180000, 212000, 240000, 272000, 300000 bp)
+    │          → ten `.insulation.bedGraph` files + one manifest in
+    │             `results/cworld_insulation/{sample}/`
     ▼
-convert_cworld_IS_to_meltron_IS.py
+compute_IS.smk: `merge_IS` (one four-CPU job per sample)
+    │ consumes all 26 manifests through convert_cworld_IS_to_meltron_IS.py
     ▼
 results/IS/{sample}/{sample}_IS.tsv
     │ `chrom<TAB>viewpoint<TAB>IS_distance<TAB>IS`
@@ -74,7 +78,7 @@ results/IS/{sample}/{sample}_IS.tsv
 meltron.smk (per comparison; reads the unchanged TSV contract for both samples)
 ```
 
-`compute_IS_bedgraphs` 与 `merge_IS` 已不再存在：每个 `compute_IS(sample)` worker 自行完成 native CWorld bedGraph 的生成和转换。因此 N 个样本会提交 N 个 IS dsub worker，而不会按 chromosome 或 IS distance 再拆分 job。
+`compute_IS.smk` 由两个普通 rule 组成，而非旧的 per-sample `compute_IS` checkpoint：`compute_IS_chrom` 按 sample × chromosome 运行，固定使用 4 kb 输入并在一个 job 中顺序计算十个 scale；`merge_IS` 仅在该 sample 的 26 个 manifest 均存在时生成最终 TSV。任一 chromosome 失败只阻塞所属 sample 的 merge 及其下游比较。
 
 ## 4. 关键文件说明
 
@@ -87,7 +91,7 @@ meltron.smk (per comparison; reads the unchanged TSV contract for both samples)
 | `rules/extract_expected.smk` | 2 个 rule：`extract_expected_tsv`（cooltools）和 `extract_expected_npz`（子脚本）|
 | `rules/compute_gap_qc.smk` | **checkpoint** `compute_gap_qc`；调用 `compute_gap_qc.py` |
 | `rules/sliding_window.smk` | **checkpoint** `sliding_window` + `rule sliding_window_h5`（声明 H5 输出）|
-| `rules/compute_IS.smk` | **checkpoint** `compute_IS`；每个 sample 一个 dsub worker，循环全部 chromosome × IS distance，生成 native CWorld bedGraph 并转换为 `results/IS/{sample}/{sample}_IS.tsv` |
+| `rules/compute_IS.smk` | 两个 rule：`compute_IS_chrom` 为每个 sample × chromosome 使用固定 4 kb `iced.cool`，顺序生成十个 scale（32000, 60000, 92000, 120000, 152000, 180000, 212000, 240000, 272000, 300000 bp）的 bedGraph 和 manifest；`merge_IS` 汇总 26 个 manifest，写出 `results/IS/{sample}/{sample}_IS.tsv` |
 | `rules/meltron.smk` | `meltron_per_comparison`；读取双方不变的四列 IS TSV 契约和 KNN-enriched windows |
 
 ### Python 脚本
@@ -103,7 +107,7 @@ meltron.smk (per comparison; reads the unchanged TSV contract for both samples)
 | `detect_breakpoint_by_nan_density.py` | 5×5 滑动窗口 NaN 密度断点检测；被 `compute_gap_qc.py` 调用 |
 | `compute_window_pair_covariates.py` | EC（调和均值 CPM）、IB（|log2 比率|）、SP（nz_frac 均值）|
 | `merge_window_pair_metrics.py` | 合并 3 路指标 + 加 comparison 元数据 |
-| `convert_cworld_IS_to_meltron_IS.py` | 汇总 native CWorld insulation bedGraph，写出 Meltron 兼容的 `chrom, viewpoint, IS_distance, IS` TSV |
+| `convert_cworld_IS_to_meltron_IS.py` | 由 `merge_IS` 读取每个 chromosome 的 manifest 并汇总 native CWorld insulation bedGraph，写出 Meltron 兼容的 `chrom, viewpoint, IS_distance, IS` TSV |
 
 ## 5. Config 关键参数
 

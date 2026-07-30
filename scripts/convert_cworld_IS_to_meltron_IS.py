@@ -15,17 +15,16 @@ One output TSV per sample (all chromosomes and IS distances merged).
 Usage:
     python scripts/convert_cworld_IS_to_meltron_IS.py \
         --sample HC04_rep1 \
-        --chroms "HC04_A01 HC04_A02" \
+        --chroms HC04_A01 HC04_A02 \
+        --manifests results/cworld_insulation/HC04_rep1/HC04_rep1__HC04_A01.is_manifest.tsv results/cworld_insulation/HC04_rep1/HC04_rep1__HC04_A02.is_manifest.tsv \
         --outdir results \
         --is-distances 100000,200000,500000,1000000 \
         --log /tmp/convert_IS.log
 """
 
 import argparse
-import glob
 import os
 import re
-import sys
 from pathlib import Path
 
 import pandas as pd
@@ -42,14 +41,36 @@ def natural_sort_key(s):
     return [int(t) if t.isdigit() else t.lower() for t in re.split(r'(\d+)', s)]
 
 
-def extract_is_from_filename(filename):
-    """Extract --is value from cworld bedGraph filename like:
-    {prefix}--is100000--nt0--ids50000--ss0--immean.insulation.bedGraph
-    """
-    m = re.search(r'--is(\d+)', filename)
-    if m:
-        return int(m.group(1))
-    return None
+def manifest_bedgraph(manifest_path, distance):
+    if not manifest_path.is_file():
+        raise ValueError(f"{manifest_path}: manifest missing")
+
+    matches = []
+    for line in manifest_path.read_text().splitlines():
+        requested, separator, filename = line.partition("\t")
+        if separator and requested == str(distance):
+            matches.append(filename)
+
+    if len(matches) != 1:
+        raise ValueError(
+            f"{manifest_path}: distance {distance} requires exactly one entry; "
+            f"found {len(matches)}"
+        )
+
+    root = manifest_path.parent.resolve()
+    bedgraph = (root / matches[0]).resolve()
+    if root not in bedgraph.parents or not bedgraph.is_file():
+        raise ValueError(f"{manifest_path}: manifest target missing: {bedgraph}")
+    return bedgraph
+
+
+def convert_manifest(manifest_path, distances, log_file):
+    frames = []
+    for distance in distances:
+        bedgraph = manifest_bedgraph(manifest_path, distance)
+        log(f"[INFO] Converting {bedgraph} (requested dist={distance})", log_file)
+        frames.append(convert_bedgraph_to_meltron(bedgraph, distance, log_file))
+    return frames
 
 
 def convert_bedgraph_to_meltron(bedgraph_path, is_distance, log_file=None):
@@ -106,10 +127,8 @@ def run():
         description="Convert cworld insulation bedGraph files to Meltron IS format."
     )
     parser.add_argument("--sample", required=True, help="Sample name")
-    parser.add_argument(
-        "--chroms", required=True,
-        help="Space-separated chromosome list"
-    )
+    parser.add_argument("--chroms", nargs="+", required=True, help="Chromosome list")
+    parser.add_argument("--manifests", nargs="+", required=True, help="Manifest paths")
     parser.add_argument("--outdir", required=True, help="Top-level results directory (OUTDIR)")
     parser.add_argument(
         "--is-distances", required=True,
@@ -123,69 +142,33 @@ def run():
         Path(args.log).touch()
 
     distances = [int(d.strip()) for d in args.is_distances.split(",")]
-    chrom_list = args.chroms.split()
+    chrom_list = args.chroms
+    manifest_paths = [Path(path) for path in args.manifests]
+    resolved_manifest_paths = [path.resolve() for path in manifest_paths]
+    if len(set(resolved_manifest_paths)) != len(resolved_manifest_paths):
+        parser.error("duplicate manifest path")
+
+    if len(chrom_list) != len(manifest_paths):
+        parser.error("--chroms and --manifests must have equal lengths")
 
     log(f"[convert_cworld_IS_to_meltron_IS] sample={args.sample}", args.log)
     log(f"[convert_cworld_IS_to_meltron_IS] distances={args.is_distances}", args.log)
 
-    cworld_dir = os.path.join(args.outdir, "cworld_insulation", args.sample)
-    is_out = os.path.join(args.outdir, "IS", args.sample, f"{args.sample}_IS.tsv")
+    frames = []
+    try:
+        for chrom, manifest_path in zip(chrom_list, manifest_paths, strict=True):
+            log(f"[INFO] Converting chromosome {chrom} from {manifest_path}", args.log)
+            manifest_frames = convert_manifest(manifest_path, distances, args.log)
+            if any(frame.empty for frame in manifest_frames):
+                raise ValueError(f"{manifest_path}: empty frame")
+            frames.extend(manifest_frames)
+    except ValueError as error:
+        parser.error(str(error))
 
-    all_rows = []
-    missing = []
-    for chrom in chrom_list:
-        for dist in distances:
-            manifest_path = Path(cworld_dir, f"{args.sample}__{chrom}.is_manifest.tsv")
-            if manifest_path.exists():
-                manifest_matches = []
-                for line in manifest_path.read_text().splitlines():
-                    requested_dist, separator, filename = line.partition("\t")
-                    if separator and requested_dist == str(dist):
-                        manifest_matches.append(filename)
-                if len(manifest_matches) != 1:
-                    missing.append(
-                        f"{chrom} dist={dist}: expected one entry in {manifest_path}, "
-                        f"found {len(manifest_matches)}"
-                    )
-                    continue
-                bedgraph_path = Path(cworld_dir, manifest_matches[0])
-                if not bedgraph_path.is_file():
-                    missing.append(f"{chrom} dist={dist}: manifest target missing: {bedgraph_path}")
-                    continue
-            else:
-                legacy_pattern = os.path.join(
-                    cworld_dir,
-                    f"{args.sample}__{chrom}--is{dist}--*.insulation.bedGraph",
-                )
-                matched = glob.glob(legacy_pattern)
-                if len(matched) != 1:
-                    all_pattern = os.path.join(
-                        cworld_dir,
-                        f"{args.sample}__{chrom}--is*--*.insulation.bedGraph",
-                    )
-                    matched = glob.glob(all_pattern)
-                if len(matched) != 1:
-                    missing.append(
-                        f"{chrom} dist={dist}: expected one unmapped CWorld bedGraph, "
-                        f"found {len(matched)}"
-                    )
-                    continue
-                bedgraph_path = Path(matched[0])
+    if not frames:
+        parser.error("No insulation bedGraph files selected from manifests")
 
-            log(f"[INFO] Converting {bedgraph_path} (requested dist={dist})", args.log)
-            df = convert_bedgraph_to_meltron(bedgraph_path, dist, args.log)
-            all_rows.append(df)
-
-    if missing:
-        for item in missing:
-            log(f"[ERROR] Missing CWorld bedGraph: {item}", args.log)
-        raise SystemExit(1)
-
-    if not all_rows:
-        log("[ERROR] No insulation bedGraph files found", args.log)
-        sys.exit(1)
-
-    merged = pd.concat(all_rows, ignore_index=True)
+    merged = pd.concat(frames, ignore_index=True)
     merged = merged.sort_values(
         by="chrom",
         key=lambda col: col.map(natural_sort_key)
@@ -193,8 +176,9 @@ def run():
 
     merged = merged[["chrom", "viewpoint", "IS_distance", "IS"]]
 
-    os.makedirs(os.path.dirname(is_out), exist_ok=True)
-    temp_out = f"{is_out}.tmp"
+    is_out = Path(args.outdir, "IS", args.sample, f"{args.sample}_IS.tsv")
+    is_out.parent.mkdir(parents=True, exist_ok=True)
+    temp_out = is_out.with_name(f".{is_out.name}.tmp")
     merged.to_csv(temp_out, sep="\t", index=False)
     os.replace(temp_out, is_out)
 

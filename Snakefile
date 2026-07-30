@@ -12,6 +12,12 @@ configfile: "config/chroms.yaml"
 
 # Snakefile directory (resolved at parse time)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(workflow.snakefile))
+import sys
+
+sys.path.insert(0, os.path.join(SCRIPT_DIR, "scripts"))
+from cworld_is_config import parse_cworld_is_settings
+CWORLD_IS = parse_cworld_is_settings(config)
+
 
 # Derived paths
 OUTDIR = config["outdir"]
