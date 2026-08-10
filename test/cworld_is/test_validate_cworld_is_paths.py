@@ -31,6 +31,13 @@ def test_validator_uses_converter_cworld_layout_for_single_sample(monkeypatch, t
     sample = "S1"
     chrom = "HC04_A01"
     distance = 32000
+    source_resolution_bp = 10000
+    configfile = tmp_path / "config.yaml"
+    configfile.write_text(
+        "meltron:\n"
+        "  cworld_is:\n"
+        f"    source_resolution_bp: {source_resolution_bp}\n"
+    )
     cworld_dir = tmp_path / "cworld"
     perl_script = cworld_dir / "scripts" / "perl" / "matrix2insulation.pl"
     perl_script.parent.mkdir(parents=True)
@@ -65,7 +72,8 @@ def test_validator_uses_converter_cworld_layout_for_single_sample(monkeypatch, t
             )
             bedgraph_path.write_text(
                 "track type=bedGraph name=IS\n"
-                f"{chrom}\t0\t16000\t0.25\n"
+                f"{chrom}\t0\t{source_resolution_bp}\t0.25\n"
+                f"{chrom}\t{source_resolution_bp}\t{source_resolution_bp * 2}\t0.75\n"
             )
             return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
@@ -100,6 +108,7 @@ def test_validator_uses_converter_cworld_layout_for_single_sample(monkeypatch, t
             "--is-distance", str(distance),
             "--cworld-dir", str(cworld_dir),
             "--outdir", str(outdir),
+            "--configfile", str(configfile),
         ],
     )
 
@@ -115,5 +124,8 @@ def test_validator_uses_converter_cworld_layout_for_single_sample(monkeypatch, t
         expected_sample_dir / f"{sample}__{chrom}.is_manifest.tsv"
     )
     assert option_value(converter_command, "--outdir") == str(outdir)
+    assert option_value(converter_command, "--expected-bin-size") == str(
+        source_resolution_bp
+    )
     assert run_error is None
     assert (outdir / "IS" / sample / f"{sample}_IS.tsv").exists()

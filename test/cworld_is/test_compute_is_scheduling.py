@@ -65,6 +65,14 @@ def test_compute_is_rule_uses_chromosome_outputs_and_configured_cpus():
     assert "find" in rule and "-newer" in rule
 
 
+def test_merge_is_passes_configured_source_resolution_to_converter():
+    rule = (REPO / "rules" / "compute_IS.smk").read_text()
+    params_start = rule.index("rule merge_IS:")
+    shell_start = rule.index("    shell:", params_start)
+    assert "expected_bin_size=CWORLD_IS.source_resolution_bp" in rule[params_start:shell_start]
+    assert '--expected-bin-size "{params.expected_bin_size}"' in rule[shell_start:]
+
+
 def test_meltron_schedules_per_sample_is_merges_without_compute_is_checkpoint():
     rule = MELTRON_RULE.read_text()
 

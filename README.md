@@ -56,7 +56,12 @@ smoothing:
   sigma: 3
 ```
 
-For the CWorld/Meltron insulation workflow, the source cooler resolution is fixed at 4,000 bp. Other pipeline parameters can be configured independently where supported.
+For the CWorld/Meltron insulation workflow, CWorld IS is calculated from the balanced `.cool` resolution configured at
+`meltron.cworld_is.source_resolution_bp`. Set this value to the source cooler
+resolution (for example `4000` or `10000`). The converter writes each
+bedGraph bin start as Meltron `viewpoint` and verifies that every complete
+bedGraph bin has exactly that width, so Meltron infers the configured
+resolution rather than a midpoint-derived half-resolution.
 
 Edit `data/manifest.tsv` with your sample paths.
 
@@ -77,17 +82,19 @@ See [docs/dsub_hpc_standard.md](docs/dsub_hpc_standard.md) for HPC setup details
 
 ## CWorld insulation scores for Meltron
 
-CWorld IS is produced only for Meltron from 4000 bp balanced `.cool` inputs,
-never from 20 kb or 100 kb levels. The configured windows are 32,000, 60,000,
+CWorld IS is produced only for Meltron from the configured balanced `.cool`
+inputs. The configured windows are 32,000, 60,000,
 92,000, 120,000, 152,000, 180,000, 212,000, 240,000, 272,000, and 300,000 bp;
 each uses `--ids = --is / 2`. A CWorld filename may show `is32001`, but the
 manifest and final table retain requested distance `32000`.
 
-Each sample has 26 four-CPU `compute_IS_chrom` tasks, each processing all ten
-windows sequentially, followed by one four-CPU `merge_IS` task. Donau memory
-is CPU-driven; adjust `meltron.cworld_is.chrom_job_threads`, not a memory
-field. Matrices are retained in `tmp/cworld_matrix/<sample>/`; bedGraphs and
-manifests in `results/cworld_insulation/<sample>/`; final Meltron input is
+Each sample has one `compute_IS_chrom` task per available chromosome, each
+processing all ten windows sequentially, followed by one `merge_IS` task.
+The tasks use `meltron.cworld_is.chrom_job_threads` and
+`meltron.cworld_is.merge_job_threads`, respectively. Donau memory is
+CPU-driven; adjust `meltron.cworld_is.chrom_job_threads`, not a memory field.
+Matrices are retained in `tmp/cworld_matrix/<sample>/`; bedGraphs and manifests
+in `results/cworld_insulation/<sample>/`; final Meltron input is
 `results/IS/<sample>/<sample>_IS.tsv` with `chrom`, `viewpoint`, `IS_distance`,
 and `IS`. One failed chromosome blocks only that sample merge and comparison.
 

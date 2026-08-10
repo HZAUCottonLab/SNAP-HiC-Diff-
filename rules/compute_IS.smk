@@ -102,6 +102,7 @@ rule merge_IS:
         outdir=OUTDIR,
         chroms=" ".join(CHROMS),
         distances_csv=CWORLD_IS_DISTANCES_CSV,
+        expected_bin_size=CWORLD_IS.source_resolution_bp,
         script_merge=SCRIPT_DIR + "/scripts/convert_cworld_IS_to_meltron_IS.py",
     conda:
         "../env/cworld.yaml"
@@ -119,6 +120,7 @@ rule merge_IS:
             --manifests {input.manifests} \
             --outdir "$OUTDIR" \
             --is-distances "{params.distances_csv}" \
+            --expected-bin-size "{params.expected_bin_size}" \
             --log "{log}" \
             >> "{log}" 2>&1
 

@@ -31,6 +31,7 @@ from pathlib import Path
 import cooler
 import numpy as np
 import pandas as pd
+import yaml
 
 
 def log(msg):
@@ -137,10 +138,26 @@ def run():
     parser.add_argument("--cworld-dir", required=True, help="Path to cworld-dekker directory")
     parser.add_argument("--outdir", required=True, help="Output directory for validation")
     parser.add_argument(
+        "--configfile",
+        default="config/config.yaml",
+        help="Snakemake configuration containing meltron.cworld_is.source_resolution_bp",
+    )
+    parser.add_argument(
         "--cooltools-is",
         help="Existing cooltools IS TSV for comparison (optional)"
     )
     args = parser.parse_args()
+
+    try:
+        with open(args.configfile) as config_handle:
+            source_resolution_bp = yaml.safe_load(config_handle)["meltron"]["cworld_is"][
+                "source_resolution_bp"
+            ]
+    except (OSError, KeyError, TypeError) as error:
+        parser.error(
+            "could not read meltron.cworld_is.source_resolution_bp "
+            f"from {args.configfile}: {error}"
+        )
 
     os.makedirs(args.outdir, exist_ok=True)
     cworld_sample_dir = os.path.join(args.outdir, "cworld_insulation", args.sample)
@@ -244,6 +261,7 @@ def run():
         "--manifests", str(manifest_path),
         "--outdir", cworld_dir_for_convert,
         "--is-distances", str(args.is_distance),
+        "--expected-bin-size", str(source_resolution_bp),
         "--log", os.path.join(args.outdir, "convert_IS.log"),
     ]
     log(f"CMD: {' '.join(cmd_convert_is)}")
