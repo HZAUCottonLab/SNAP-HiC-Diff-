@@ -58,6 +58,17 @@ def test_parses_non_4000_positive_source_resolution(resolution):
     assert settings.ids_distances_bp == tuple(distance // 2 for distance in distances)
 
 
+def test_rejects_odd_distances_for_odd_source_resolution():
+    config = valid_config()
+    config["meltron"]["cworld_is"].update(
+        source_resolution_bp=7,
+        is_distances_bp=[7, 14, 21, 28, 42, 56, 70, 84, 98, 112],
+    )
+
+    with pytest.raises(ConfigError, match="ids_divisor"):
+        parse_cworld_is_settings(config)
+
+
 @pytest.mark.parametrize(
     ("mutate", "message"),
     [

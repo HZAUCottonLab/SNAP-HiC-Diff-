@@ -60,8 +60,12 @@ def parse_cworld_is_settings(config: Mapping[str, Any]) -> CworldISSettings:
         raise ConfigError("is_distances_bp must contain exactly 10 values")
     if len(set(distances)) != len(distances):
         raise ConfigError("is_distances_bp values must be unique")
-    if any(value <= 0 or value % resolution for value in distances):
-        raise ConfigError("every IS distance must be positive and divisible by source_resolution_bp")
+    if any(
+        value <= 0 or value % resolution or value % divisor for value in distances
+    ):
+        raise ConfigError(
+            "every IS distance must be positive and divisible by source_resolution_bp and ids_divisor"
+        )
     return CworldISSettings(
         resolution, tuple(distances), divisor, chrom_threads, merge_threads
     )
