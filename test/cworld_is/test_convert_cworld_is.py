@@ -71,7 +71,7 @@ def test_converter_rejects_width_that_disagrees_with_config(tmp_path):
         "S1",
         "HC04_A01",
         32000,
-        [(0, 10000, 0.25), (10000, 20000, 0.75)],
+        [(0, 4000, 0.25), (4000, 12000, 0.75)],
     )
     manifest = write_manifest(tmp_path, "S1", "HC04_A01", [(32000, bedgraph.name)])
 
@@ -114,6 +114,22 @@ def test_converter_ignores_only_terminal_incomplete_bin(tmp_path):
     assert result.returncode == 0, result.stderr
     frame = pd.read_csv(tmp_path / "IS" / "S1" / "S1_IS.tsv", sep="\t")
     assert frame["viewpoint"].tolist() == [0, 4000]
+
+
+def test_converter_rejects_nonterminal_incomplete_bin(tmp_path):
+    bedgraph = write_bedgraph(
+        tmp_path,
+        "S1",
+        "HC04_A01",
+        32000,
+        [(0, 4000, 0.25), (4000, 5000, "NA"), (8000, 12000, 0.75)],
+    )
+    manifest = write_manifest(tmp_path, "S1", "HC04_A01", [(32000, bedgraph.name)])
+
+    result = run_converter(tmp_path, ["HC04_A01"], [manifest], 4000)
+
+    assert result.returncode != 0
+    assert not (tmp_path / "IS" / "S1" / "S1_IS.tsv").exists()
 
 
 def test_converter_rejects_duplicate_output_key(tmp_path):
@@ -228,6 +244,7 @@ def test_converter_never_falls_back_to_legacy_bedgraph_glob(tmp_path):
             "--chroms", "HC04_A01",
             "--outdir", str(tmp_path),
             "--is-distances", "32000",
+            "--expected-bin-size", "4000",
             "--log", str(tmp_path / "converter.log"),
         ],
         text=True,
@@ -236,6 +253,7 @@ def test_converter_never_falls_back_to_legacy_bedgraph_glob(tmp_path):
     )
 
     assert result.returncode != 0
+    assert "--manifests" in result.stderr
     assert not (tmp_path / "IS" / "S1" / "S1_IS.tsv").exists()
 
 
