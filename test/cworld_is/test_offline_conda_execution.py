@@ -161,3 +161,22 @@ def test_conda_helper_checks_meltron_r_package_metadata_without_loading_packages
     assert 'library(argparser)' not in script
     assert 'library(data.table)' not in script
     assert 'library(DescTools)' not in script
+
+
+def test_meltron_gitlink_declares_its_official_source_mapping():
+    gitmodules = REPO / ".gitmodules"
+
+    assert gitmodules.is_file(), "Meltron gitlink requires a tracked .gitmodules mapping"
+    contents = gitmodules.read_text()
+    assert '[submodule "env/Meltron"]' in contents
+    assert "\tpath = env/Meltron" in contents
+    assert "\turl = https://github.com/pombo-lab/Meltron" in contents
+
+
+def test_launcher_preflights_meltron_source_before_calling_snakemake():
+    script = RUN_SNAKEMAKE.read_text()
+    source_file = "${WORKDIR}/env/Meltron/command_line_apps/Meltron.R"
+
+    assert source_file in script
+    assert "git submodule update --init --recursive" in script
+    assert script.index(source_file) < script.index("snakemake " + "\\")

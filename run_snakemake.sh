@@ -14,6 +14,13 @@ set -euo pipefail
 WORKDIR="$(cd "$(dirname "$0")" && pwd)"
 cd "${WORKDIR}"
 
+MELTRON_CLI="${WORKDIR}/env/Meltron/command_line_apps/Meltron.R"
+if [[ ! -f "${MELTRON_CLI}" ]]; then
+    echo "ERROR: Meltron source is missing: ${MELTRON_CLI}" >&2
+    echo "Initialize it with: git submodule update --init --recursive" >&2
+    exit 1
+fi
+
 SNAKEFILE="${SNAKEFILE:-Snakefile}"
 CONFIG="${CONFIG:-config/config.yaml}"
 DSUB_SUBMIT_CMD="${DSUB_SUBMIT_CMD:-config/dsub_submit.sh}"
