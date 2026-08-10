@@ -101,6 +101,16 @@ def run():
     df = pd.read_csv(args.enriched, sep="\t")
     log(f"[INFO] knn_enriched rows: {len(df)}", args.log_file)
 
+    canonical_coordinates = {"start", "end"}
+    window_coordinates = {"window_start", "window_end"}
+    if not canonical_coordinates.issubset(df.columns) and not window_coordinates.issubset(df.columns):
+        parser.error(
+            "input coordinate schema requires either start/end or window_start/window_end"
+        )
+    if not canonical_coordinates.issubset(df.columns):
+        df["start"] = df["window_start"]
+        df["end"] = df["window_end"]
+
     # Identify p-value columns (empirical p-values from KNN comparison)
     pval_cols = [c for c in df.columns if "_empirical_pvalue" in c]
     if not pval_cols:
