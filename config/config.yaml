@@ -138,7 +138,7 @@ window_compare:
 # ============================================================================
 meltron:
   cworld_is:
-    source_resolution_bp: 4000
+    source_resolution_bp: 4000  # integer >= 1000; must match the balanced .cool bin size
     is_distances_bp: [32000, 60000, 92000, 120000, 152000,
                       180000, 212000, 240000, 272000, 300000]
     ids_divisor: 2

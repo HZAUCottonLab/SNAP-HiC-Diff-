@@ -2,7 +2,7 @@
 
 ## Goal
 
-Make the CWorld insulation-score export compatible with Meltron at any configured source resolution.  A 4 kb CWorld bedGraph must export Meltron viewpoints on 4 kb starts, a 10 kb bedGraph on 10 kb starts, and no code path may assume a particular resolution.
+Make the CWorld insulation-score export compatible with Meltron at any configured source resolution supported by Meltron (an integer of at least 1,000 bp). A 4 kb CWorld bedGraph must export Meltron viewpoints on 4 kb starts, a 10 kb bedGraph on 10 kb starts, and no code path may assume a particular resolution above that lower bound.
 
 The repair also regenerates the derived IS and Meltron outputs for `H1398_vs_L134` so its final significant-window count is statistically interpretable.
 
@@ -23,7 +23,7 @@ The converter currently writes each bedGraph bin midpoint as `viewpoint`.  For a
 - `(chrom, viewpoint, IS_distance)` must be unique in the produced TSV.
 - Existing atomic output semantics remain: failures do not leave a partial `results/IS/<sample>/<sample>_IS.tsv`.
 
-Using starts gives Meltron `GCD(viewpoint) == W` for all positive integer source resolutions, including 4 kb, 10 kb, and non-round test values.
+Using starts gives Meltron `GCD(viewpoint) == W` for all supported integer source resolutions (at least 1,000 bp), including 4 kb, 10 kb, and non-round test values.
 
 ## Workflow integration
 
@@ -50,6 +50,7 @@ The post-run report treats an all-`NA` Meltron score set as an invalid/uncallabl
 Automated tests cover:
 
 - 4 kb, 10 kb, and a non-predeclared resolution fixture; each exports bin starts and has the correct inferred Meltron resolution.
+- A source resolution below 1,000 bp fails during configuration preflight with Meltron's lower-bound error.
 - A width/configuration mismatch and an off-grid start, both of which fail.
 - Preservation of the incomplete-terminal-bin behavior.
 - Rejection of duplicate Meltron coordinates and existing manifest integrity failures.

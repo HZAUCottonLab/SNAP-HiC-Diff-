@@ -3,6 +3,7 @@ from typing import Any, Mapping
 
 
 EXPECTED_SCALE_COUNT = 10
+MELTRON_MIN_RESOLUTION_BP = 1000
 
 
 class ConfigError(ValueError):
@@ -48,6 +49,10 @@ def parse_cworld_is_settings(config: Mapping[str, Any]) -> CworldISSettings:
         raise ConfigError("resolution, ids_divisor, and thread counts must be integers")
     if resolution <= 0:
         raise ConfigError("source_resolution_bp must be positive")
+    if resolution < MELTRON_MIN_RESOLUTION_BP:
+        raise ConfigError(
+            "source_resolution_bp must be at least 1000 bp for Meltron"
+        )
     if divisor != 2:
         raise ConfigError("ids_divisor must be 2 so --ids equals --is / 2")
     if chrom_threads <= 0 or merge_threads <= 0:

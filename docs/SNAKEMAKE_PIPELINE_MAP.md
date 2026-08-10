@@ -61,7 +61,8 @@ rule all (final target)
     │                       └─► [sliding_window_h5] × 74 samples (rule)
     │
     ├─► [compute_IS_chrom] × N samples × 26 chromosomes (four CPUs/job)
-    │       │ fixed 4 kb `iced.cool`; ten scales run sequentially:
+    │       │ configured-resolution `iced.cool` (integer ≥ 1 kb; default 4 kb);
+    │       │ ten scales run sequentially:
     │       │ 32000, 60000, 92000, 120000, 152000, 180000, 212000,
     │       │ 240000, 272000, 300000 bp
     │       │ → ten bedGraphs + one manifest/chromosome
@@ -86,7 +87,7 @@ rule all (final target)
 - `compute_oe_matrix`：每个 sample 一个 job × 74
 - `compute_gap_qc`：每个 sample 一个 job × 74（checkpoint）
 - `sliding_window`：每个 sample 一个 job × 74（checkpoint）
-- `compute_IS_chrom`：每个 sample × 26 条 chromosome = 26 个 four-CPU job/sample；每个 job 固定使用 4 kb `iced.cool` 并顺序计算十个 scale（32000, 60000, 92000, 120000, 152000, 180000, 212000, 240000, 272000, 300000 bp）
+- `compute_IS_chrom`：每个 sample × 26 条 chromosome = 26 个 four-CPU job/sample；每个 job 使用 `meltron.cworld_is.source_resolution_bp` 配置的 `iced.cool`（整数且不低于 1 kb；默认 4 kb）并顺序计算十个 scale（32000, 60000, 92000, 120000, 152000, 180000, 212000, 240000, 272000, 300000 bp）
 - `merge_IS`：每个 sample 一个 four-CPU job，在该 sample 的 26 个 chromosome manifest 都完成后汇总为最终 IS TSV
 - `window_compare`：每个 comparison 一个 job × 36（3 个并行的 sub-rule）
 
@@ -132,9 +133,9 @@ rule all (final target)
 ### rule compute_IS_chrom
 - **文件**：`rules/compute_IS.smk`
 - **Wildcard**：`{sample}`, `{chrom}`（每个 sample 26 个 four-CPU job）
-- **Input**：`extract_and_balance_sample` checkpoint 的一个固定 4 kb balanced `iced.cool`
+- **Input**：`extract_and_balance_sample` checkpoint 的一个由 `meltron.cworld_is.source_resolution_bp` 配置的 balanced `iced.cool`（整数且不低于 1 kb；默认 4 kb）
 - **Output**：`{OUTDIR}/cworld_insulation/{sample}/{sample}__{chrom}.is_manifest.tsv`
-- **功能**：一个 chromosome job 先将 `.cool` 转为 `tmp/cworld_matrix/{sample}/` 的 CWorld matrix，再顺序计算固定十个 scale：32000, 60000, 92000, 120000, 152000, 180000, 212000, 240000, 272000, 300000 bp。每个 scale 产生一个 native CWorld `.insulation.bedGraph`；manifest 精确列出这十个 bedGraph。
+- **功能**：一个 chromosome job 先将 `.cool` 转为 `tmp/cworld_matrix/{sample}/` 的 CWorld matrix，再顺序计算配置的十个 scale（默认：32000, 60000, 92000, 120000, 152000, 180000, 212000, 240000, 272000, 300000 bp）。每个 scale 产生一个 native CWorld `.insulation.bedGraph`；manifest 精确列出这十个 bedGraph。
 
 ### rule merge_IS
 - **文件**：`rules/compute_IS.smk`

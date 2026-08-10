@@ -58,7 +58,8 @@ smoothing:
 
 For the CWorld/Meltron insulation workflow, CWorld IS is calculated from the balanced `.cool` resolution configured at
 `meltron.cworld_is.source_resolution_bp`. Set this value to the source cooler
-resolution (for example `4000` or `10000`). The converter writes each
+resolution: an integer of at least 1,000 bp (for example `4000` or `10000`).
+Meltron rejects lower resolutions. The converter writes each
 bedGraph bin start as Meltron `viewpoint` and verifies that every complete
 bedGraph bin has exactly that width, so Meltron infers the configured
 resolution rather than a midpoint-derived half-resolution.
@@ -83,7 +84,8 @@ See [docs/dsub_hpc_standard.md](docs/dsub_hpc_standard.md) for HPC setup details
 ## CWorld insulation scores for Meltron
 
 CWorld IS is produced only for Meltron from the configured balanced `.cool`
-inputs. The configured windows are 32,000, 60,000,
+inputs. Its configured source resolution must be an integer of at least 1,000
+bp and must match the input cooler. The configured windows are 32,000, 60,000,
 92,000, 120,000, 152,000, 180,000, 212,000, 240,000, 272,000, and 300,000 bp;
 each uses `--ids = --is / 2`. A CWorld filename may show `is32001`, but the
 manifest and final table retain requested distance `32000`.

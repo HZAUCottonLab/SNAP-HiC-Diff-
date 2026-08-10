@@ -59,7 +59,7 @@ extract_chrom.smk (checkpoint × 74 samples)
                     ├─ compare_iced_windows_tw → {cmp}_tw.tsv
                     └─ merge_window_pair_metrics → {cmp}_window_pair_metrics.tsv
 
-extract_chrom.smk (4 kb balanced `iced.cool` per sample × chromosome)
+extract_chrom.smk (configured-resolution balanced `iced.cool` per sample × chromosome; default 4 kb)
     │
     ▼
 compute_IS.smk: `compute_IS_chrom` (26 four-CPU jobs per sample)
@@ -78,7 +78,7 @@ results/IS/{sample}/{sample}_IS.tsv
 meltron.smk (per comparison; reads the unchanged TSV contract for both samples)
 ```
 
-`compute_IS.smk` 由两个普通 rule 组成，而非旧的 per-sample `compute_IS` checkpoint：`compute_IS_chrom` 按 sample × chromosome 运行，固定使用 4 kb 输入并在一个 job 中顺序计算十个 scale；`merge_IS` 仅在该 sample 的 26 个 manifest 均存在时生成最终 TSV。任一 chromosome 失败只阻塞所属 sample 的 merge 及其下游比较。
+`compute_IS.smk` 由两个普通 rule 组成，而非旧的 per-sample `compute_IS` checkpoint：`compute_IS_chrom` 按 sample × chromosome 运行，使用 `meltron.cworld_is.source_resolution_bp` 配置的输入分辨率（整数且不低于 1 kb；默认 4 kb）并在一个 job 中顺序计算十个 scale；`merge_IS` 仅在该 sample 的 26 个 manifest 均存在时生成最终 TSV。任一 chromosome 失败只阻塞所属 sample 的 merge 及其下游比较。
 
 ## 4. 关键文件说明
 
@@ -91,7 +91,7 @@ meltron.smk (per comparison; reads the unchanged TSV contract for both samples)
 | `rules/extract_expected.smk` | 2 个 rule：`extract_expected_tsv`（cooltools）和 `extract_expected_npz`（子脚本）|
 | `rules/compute_gap_qc.smk` | **checkpoint** `compute_gap_qc`；调用 `compute_gap_qc.py` |
 | `rules/sliding_window.smk` | **checkpoint** `sliding_window` + `rule sliding_window_h5`（声明 H5 输出）|
-| `rules/compute_IS.smk` | 两个 rule：`compute_IS_chrom` 为每个 sample × chromosome 使用固定 4 kb `iced.cool`，顺序生成十个 scale（32000, 60000, 92000, 120000, 152000, 180000, 212000, 240000, 272000, 300000 bp）的 bedGraph 和 manifest；`merge_IS` 汇总 26 个 manifest，写出 `results/IS/{sample}/{sample}_IS.tsv` |
+| `rules/compute_IS.smk` | 两个 rule：`compute_IS_chrom` 为每个 sample × chromosome 使用 `meltron.cworld_is.source_resolution_bp` 配置的 `iced.cool`（整数且不低于 1 kb；默认 4 kb），顺序生成十个 scale（32000, 60000, 92000, 120000, 152000, 180000, 212000, 240000, 272000, 300000 bp）的 bedGraph 和 manifest；`merge_IS` 汇总 26 个 manifest，写出 `results/IS/{sample}/{sample}_IS.tsv` |
 | `rules/meltron.smk` | `meltron_per_comparison`；读取双方不变的四列 IS TSV 契约和 KNN-enriched windows |
 
 ### Python 脚本
@@ -114,6 +114,7 @@ meltron.smk (per comparison; reads the unchanged TSV contract for both samples)
 | 参数路径 | 默认值 | 作用 |
 |---------|--------|------|
 | `resolution` | `4000` | Hi-C bin 大小（bp）|
+| `meltron.cworld_is.source_resolution_bp` | `4000` | CWorld/Meltron 输入 bin 大小（bp；整数且不低于 1000，必须与 `.cool` 一致）|
 | `window_size` | `300000` | 滑动窗口宽度（bp）|
 | `step_size` | `32000` | 滑动步长（bp）|
 | `smoothing.sigma` | `1.0` | 高斯平滑 sigma |

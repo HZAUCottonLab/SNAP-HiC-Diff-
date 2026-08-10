@@ -42,7 +42,7 @@ def test_parses_exact_scale_series_and_ids():
     assert settings.chrom_job_threads == settings.merge_job_threads == 4
 
 
-@pytest.mark.parametrize("resolution", [10000, 7])
+@pytest.mark.parametrize("resolution", [1000, 7000, 10000])
 def test_parses_non_4000_positive_source_resolution(resolution):
     distances = tuple(resolution * value for value in range(2, 22, 2))
     config = valid_config()
@@ -58,11 +58,19 @@ def test_parses_non_4000_positive_source_resolution(resolution):
     assert settings.ids_distances_bp == tuple(distance // 2 for distance in distances)
 
 
+def test_rejects_source_resolution_below_meltron_lower_bound():
+    config = valid_config()
+    config["meltron"]["cworld_is"]["source_resolution_bp"] = 999
+
+    with pytest.raises(ConfigError, match="at least 1000 bp for Meltron"):
+        parse_cworld_is_settings(config)
+
+
 def test_rejects_odd_distances_for_odd_source_resolution():
     config = valid_config()
     config["meltron"]["cworld_is"].update(
-        source_resolution_bp=7,
-        is_distances_bp=[7, 14, 21, 28, 42, 56, 70, 84, 98, 112],
+        source_resolution_bp=1001,
+        is_distances_bp=[1001, 2002, 3003, 4004, 5005, 6006, 7007, 8008, 9009, 10010],
     )
 
     with pytest.raises(ConfigError, match="ids_divisor"):
