@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 
-EXPECTED_RESOLUTION_BP = 4000
 EXPECTED_SCALE_COUNT = 10
 
 
@@ -47,8 +46,8 @@ def parse_cworld_is_settings(config: Mapping[str, Any]) -> CworldISSettings:
     scalar_values = (resolution, divisor, chrom_threads, merge_threads)
     if any(isinstance(value, bool) or not isinstance(value, int) for value in scalar_values):
         raise ConfigError("resolution, ids_divisor, and thread counts must be integers")
-    if resolution != EXPECTED_RESOLUTION_BP:
-        raise ConfigError("source_resolution_bp must be 4000")
+    if resolution <= 0:
+        raise ConfigError("source_resolution_bp must be positive")
     if divisor != 2:
         raise ConfigError("ids_divisor must be 2 so --ids equals --is / 2")
     if chrom_threads <= 0 or merge_threads <= 0:
@@ -62,7 +61,7 @@ def parse_cworld_is_settings(config: Mapping[str, Any]) -> CworldISSettings:
     if len(set(distances)) != len(distances):
         raise ConfigError("is_distances_bp values must be unique")
     if any(value <= 0 or value % resolution for value in distances):
-        raise ConfigError("every IS distance must be positive and divisible by 4000")
+        raise ConfigError("every IS distance must be positive and divisible by source_resolution_bp")
     return CworldISSettings(
         resolution, tuple(distances), divisor, chrom_threads, merge_threads
     )

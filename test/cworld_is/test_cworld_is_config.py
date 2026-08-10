@@ -42,10 +42,29 @@ def test_parses_exact_scale_series_and_ids():
     assert settings.chrom_job_threads == settings.merge_job_threads == 4
 
 
+@pytest.mark.parametrize("resolution", [10000, 7])
+def test_parses_non_4000_positive_source_resolution(resolution):
+    distances = tuple(resolution * value for value in range(2, 22, 2))
+    config = valid_config()
+    config["meltron"]["cworld_is"].update(
+        source_resolution_bp=resolution,
+        is_distances_bp=list(distances),
+    )
+
+    settings = parse_cworld_is_settings(config)
+
+    assert settings.source_resolution_bp == resolution
+    assert settings.is_distances_bp == distances
+    assert settings.ids_distances_bp == tuple(distance // 2 for distance in distances)
+
+
 @pytest.mark.parametrize(
     ("mutate", "message"),
     [
-        (lambda c: c["meltron"]["cworld_is"].update(source_resolution_bp=20000), "4000"),
+        (lambda c: c["meltron"]["cworld_is"].update(source_resolution_bp=0), "positive"),
+        (lambda c: c["meltron"]["cworld_is"].update(source_resolution_bp=-1), "positive"),
+        (lambda c: c["meltron"]["cworld_is"].update(source_resolution_bp="4000"), "integers"),
+        (lambda c: c["meltron"]["cworld_is"].update(source_resolution_bp=True), "integers"),
         (lambda c: c["meltron"]["cworld_is"].update(is_distances_bp=list(DISTANCES[:-1])), "exactly 10"),
         (lambda c: c["meltron"]["cworld_is"].update(is_distances_bp=[*DISTANCES[:-1], 30001]), "divisible"),
         (lambda c: c["meltron"]["cworld_is"].update(is_distances_bp=[*DISTANCES[:-1], 272000]), "unique"),
