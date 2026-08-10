@@ -43,6 +43,16 @@ def normalize_directional_score(frame, source_column, normalized_column, directi
     return normalized
 
 
+def normalize_directional_na_columns(frame, direction):
+    return frame.rename(
+        columns={
+            prefix: f"{prefix}_{direction}"
+            for prefix in ("perc_na_or_missing_ref", "perc_na_or_missing_inp")
+            if prefix in frame.columns
+        }
+    )
+
+
 def run():
     parser = argparse.ArgumentParser(
         description="Merge Meltron decondensation and condensation results."
@@ -102,14 +112,14 @@ def run():
 
     if decond.empty:
         log("[WARN] Decondensation result is empty — condensation only", args.log_file)
-        merged = condens.copy()
+        merged = normalize_directional_na_columns(condens.copy(), "condensation")
         merged["meltron_melting_score"] = np.nan
         merged["meltron_compaction_score"] = merged["_meltron_condens_score"]
         merged["meltron_best_score"] = merged["meltron_compaction_score"]
         merged["meltron_best_direction"] = "condensation"
     elif condens.empty:
         log("[WARN] Condensation result is empty — decondensation only", args.log_file)
-        merged = decond.copy()
+        merged = normalize_directional_na_columns(decond.copy(), "decondensation")
         merged["meltron_compaction_score"] = np.nan
         merged["meltron_melting_score"] = merged["_meltron_decond_score"]
         merged["meltron_best_score"] = merged["meltron_melting_score"]
@@ -123,11 +133,16 @@ def run():
         merged["meltron_melting_score"] = merged["_meltron_decond_score"]
         merged["meltron_compaction_score"] = merged["_meltron_condens_score"]
 
+        melting_score = merged["meltron_melting_score"]
+        compaction_score = merged["meltron_compaction_score"]
         merged["meltron_best_score"] = merged[["meltron_melting_score", "meltron_compaction_score"]].max(axis=1)
-        merged["meltron_best_direction"] = np.where(
-            merged["meltron_melting_score"] >= merged["meltron_compaction_score"],
-            "decondensation", "condensation"
-        )
+        has_scores = melting_score.notna() & compaction_score.notna()
+        best_direction = pd.Series(pd.NA, index=merged.index, dtype="object")
+        best_direction.loc[melting_score.notna() & compaction_score.isna()] = "decondensation"
+        best_direction.loc[melting_score.isna() & compaction_score.notna()] = "condensation"
+        best_direction.loc[has_scores & (melting_score >= compaction_score)] = "decondensation"
+        best_direction.loc[has_scores & (melting_score < compaction_score)] = "condensation"
+        merged["meltron_best_direction"] = best_direction
 
     # Advisory significance flag
     merged["meltron_is_significant"] = (merged["meltron_best_score"] >= args.score_threshold).astype(int)

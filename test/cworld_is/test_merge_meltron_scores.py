@@ -117,6 +117,8 @@ def test_merge_uses_compaction_score_when_only_condensation_is_available(tmp_pat
                 "end": 8000,
                 "ID": "HC04_A01_17",
                 "compaction_score": 4.0,
+                "perc_na_or_missing_ref": 0.3,
+                "perc_na_or_missing_inp": 0.4,
             }
         ],
     )
@@ -131,6 +133,8 @@ def test_merge_uses_compaction_score_when_only_condensation_is_available(tmp_pat
     assert row["meltron_best_score"] == 4.0
     assert row["meltron_best_direction"] == "condensation"
     assert row["meltron_is_significant"] == 0
+    assert row["perc_na_or_missing_ref_condensation"] == 0.3
+    assert row["perc_na_or_missing_inp_condensation"] == 0.4
 
 
 def test_merge_reports_missing_directional_score_schema(tmp_path):
@@ -149,3 +153,104 @@ def test_merge_reports_missing_directional_score_schema(tmp_path):
 
     assert result.returncode != 0
     assert "decondensation result requires melting_score" in result.stderr
+
+
+def test_merge_assigns_outer_join_rows_to_the_direction_with_a_score(tmp_path):
+    decondensation = tmp_path / "decondensation.tsv"
+    condensation = tmp_path / "condensation.tsv"
+    interval_map = tmp_path / "interval_map.tsv"
+    output = tmp_path / "merged.tsv"
+    write_tsv(
+        decondensation,
+        [
+            {
+                "chrom": "HC04_A01",
+                "start": 0,
+                "end": 4000,
+                "ID": "HC04_A01_A",
+                "melting_score": 8.0,
+            },
+            {
+                "chrom": "HC04_A01",
+                "start": 8000,
+                "end": 12000,
+                "ID": "HC04_A01_C",
+                "melting_score": 6.0,
+            },
+        ],
+    )
+    write_tsv(
+        condensation,
+        [
+            {
+                "chrom": "HC04_A01",
+                "start": 4000,
+                "end": 8000,
+                "ID": "HC04_A01_B",
+                "compaction_score": 5.0,
+            },
+            {
+                "chrom": "HC04_A01",
+                "start": 8000,
+                "end": 12000,
+                "ID": "HC04_A01_C",
+                "compaction_score": 9.0,
+            },
+        ],
+    )
+    write_tsv(
+        interval_map,
+        [
+            {"ID": "HC04_A01_A", "window_id": 1, "n_significant_metrics": 1},
+            {"ID": "HC04_A01_B", "window_id": 2, "n_significant_metrics": 1},
+            {"ID": "HC04_A01_C", "window_id": 3, "n_significant_metrics": 1},
+        ],
+    )
+
+    result = run_merge(decondensation, condensation, interval_map, output)
+
+    assert result.returncode == 0, result.stderr
+    rows = pd.read_csv(output, sep="\t").set_index("ID")
+    assert rows.loc["HC04_A01_A", "meltron_melting_score"] == 8.0
+    assert pd.isna(rows.loc["HC04_A01_A", "meltron_compaction_score"])
+    assert rows.loc["HC04_A01_A", "meltron_best_score"] == 8.0
+    assert rows.loc["HC04_A01_A", "meltron_best_direction"] == "decondensation"
+    assert pd.isna(rows.loc["HC04_A01_B", "meltron_melting_score"])
+    assert rows.loc["HC04_A01_B", "meltron_compaction_score"] == 5.0
+    assert rows.loc["HC04_A01_B", "meltron_best_score"] == 5.0
+    assert rows.loc["HC04_A01_B", "meltron_best_direction"] == "condensation"
+    assert rows.loc["HC04_A01_C", "meltron_best_score"] == 9.0
+    assert rows.loc["HC04_A01_C", "meltron_best_direction"] == "condensation"
+
+
+def test_merge_retains_na_metrics_when_only_decondensation_is_available(tmp_path):
+    decondensation = tmp_path / "decondensation.tsv"
+    condensation = tmp_path / "condensation.tsv"
+    interval_map = tmp_path / "interval_map.tsv"
+    output = tmp_path / "merged.tsv"
+    write_tsv(
+        decondensation,
+        [
+            {
+                "chrom": "HC04_A01",
+                "start": 4000,
+                "end": 8000,
+                "ID": "HC04_A01_17",
+                "melting_score": 4.0,
+                "perc_na_or_missing_ref": 0.1,
+                "perc_na_or_missing_inp": 0.2,
+            }
+        ],
+    )
+    write_tsv(condensation, [], columns=[*KEY_COLUMNS, "compaction_score"])
+    write_interval_map(interval_map)
+
+    result = run_merge(decondensation, condensation, interval_map, output)
+
+    assert result.returncode == 0, result.stderr
+    row = pd.read_csv(output, sep="\t").iloc[0]
+    assert row["meltron_melting_score"] == 4.0
+    assert pd.isna(row["meltron_compaction_score"])
+    assert row["meltron_best_score"] == 4.0
+    assert row["meltron_best_direction"] == "decondensation"
+    assert row["perc_na_or_missing_ref_decondensation"] == 0.1
