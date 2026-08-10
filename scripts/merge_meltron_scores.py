@@ -33,6 +33,16 @@ def log(msg, log_file):
             f.write(f"{msg}\n")
 
 
+def normalize_directional_score(frame, source_column, normalized_column, direction, parser):
+    if frame.empty:
+        return frame
+    if source_column not in frame.columns:
+        parser.error(f"{direction} result requires {source_column}")
+    normalized = frame.copy()
+    normalized[normalized_column] = normalized[source_column]
+    return normalized
+
+
 def run():
     parser = argparse.ArgumentParser(
         description="Merge Meltron decondensation and condensation results."
@@ -83,28 +93,35 @@ def run():
         ]).to_csv(args.out, sep="\t", index=False)
         sys.exit(0)
 
+    decond = normalize_directional_score(
+        decond, "melting_score", "_meltron_decond_score", "decondensation", parser
+    )
+    condens = normalize_directional_score(
+        condens, "compaction_score", "_meltron_condens_score", "condensation", parser
+    )
+
     if decond.empty:
         log("[WARN] Decondensation result is empty — condensation only", args.log_file)
         merged = condens.copy()
         merged["meltron_melting_score"] = np.nan
-        merged["meltron_compaction_score"] = merged["melting_score"]
+        merged["meltron_compaction_score"] = merged["_meltron_condens_score"]
         merged["meltron_best_score"] = merged["meltron_compaction_score"]
         merged["meltron_best_direction"] = "condensation"
     elif condens.empty:
         log("[WARN] Condensation result is empty — decondensation only", args.log_file)
         merged = decond.copy()
         merged["meltron_compaction_score"] = np.nan
-        merged["meltron_melting_score"] = merged["melting_score"]
+        merged["meltron_melting_score"] = merged["_meltron_decond_score"]
         merged["meltron_best_score"] = merged["meltron_melting_score"]
         merged["meltron_best_direction"] = "decondensation"
     else:
-        # Both results available. After outer merge on (chrom, start, end, ID):
-        # decond melting_score -> melting_score_x, condens melting_score -> melting_score_y
+        # Directional scores use unique internal columns before this outer merge.
+        # The directional NA metrics still receive merge suffixes below.
         key_cols = ["chrom", "start", "end", "ID"]
         merged = decond.merge(condens, on=key_cols, how="outer", suffixes=("_decond", "_condens"))
 
-        merged["meltron_melting_score"] = merged["melting_score_decond"]   # decondensation melting score
-        merged["meltron_compaction_score"] = merged["melting_score_condens"]  # condensation melting score
+        merged["meltron_melting_score"] = merged["_meltron_decond_score"]
+        merged["meltron_compaction_score"] = merged["_meltron_condens_score"]
 
         merged["meltron_best_score"] = merged[["meltron_melting_score", "meltron_compaction_score"]].max(axis=1)
         merged["meltron_best_direction"] = np.where(
