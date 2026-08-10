@@ -3,6 +3,7 @@ import subprocess
 import sys
 
 import pandas as pd
+import pytest
 
 
 REPO = Path(__file__).resolve().parents[2]
@@ -254,3 +255,80 @@ def test_merge_retains_na_metrics_when_only_decondensation_is_available(tmp_path
     assert row["meltron_best_score"] == 4.0
     assert row["meltron_best_direction"] == "decondensation"
     assert row["perc_na_or_missing_ref_decondensation"] == 0.1
+
+
+@pytest.mark.parametrize(
+    "metric_column", ["n_significant", "n_significant_metrics"]
+)
+def test_merge_preserves_preparer_significant_metric_count(tmp_path, metric_column):
+    decondensation = tmp_path / "decondensation.tsv"
+    condensation = tmp_path / "condensation.tsv"
+    interval_map = tmp_path / "interval_map.tsv"
+    output = tmp_path / "merged.tsv"
+    write_tsv(decondensation, [], columns=[*KEY_COLUMNS, "melting_score"])
+    write_tsv(
+        condensation,
+        [
+            {
+                "chrom": "HC04_A01",
+                "start": 4000,
+                "end": 8000,
+                "ID": "HC04_A01_17",
+                "compaction_score": 8.0,
+            }
+        ],
+    )
+    write_tsv(
+        interval_map,
+        [
+            {
+                "chrom": "HC04_A01",
+                "interval_start": 4000,
+                "interval_end": 8000,
+                "window_start": 4000,
+                "window_end": 8000,
+                "window_id": 17,
+                "ID": "HC04_A01_17",
+                metric_column: 3,
+            }
+        ],
+    )
+
+    result = run_merge(decondensation, condensation, interval_map, output)
+
+    assert result.returncode == 0, result.stderr
+    row = pd.read_csv(output, sep="\t").iloc[0]
+    assert row["window_id"] == 17
+    assert row["n_significant_metrics"] == 3
+
+
+def test_merge_reports_missing_interval_metric_count_schema(tmp_path):
+    decondensation = tmp_path / "decondensation.tsv"
+    condensation = tmp_path / "condensation.tsv"
+    interval_map = tmp_path / "interval_map.tsv"
+    output = tmp_path / "merged.tsv"
+    write_tsv(decondensation, [], columns=[*KEY_COLUMNS, "melting_score"])
+    write_tsv(
+        condensation,
+        [
+            {
+                "chrom": "HC04_A01",
+                "start": 4000,
+                "end": 8000,
+                "ID": "HC04_A01_17",
+                "compaction_score": 8.0,
+            }
+        ],
+    )
+    write_tsv(
+        interval_map,
+        [{"ID": "HC04_A01_17", "window_id": 17}],
+    )
+
+    result = run_merge(decondensation, condensation, interval_map, output)
+
+    assert result.returncode != 0
+    assert (
+        "interval map requires n_significant or n_significant_metrics"
+        in result.stderr
+    )

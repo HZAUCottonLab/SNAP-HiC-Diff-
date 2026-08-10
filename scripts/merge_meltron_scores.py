@@ -150,8 +150,25 @@ def run():
     # Join with interval_map to bring back window_id and n_significant_metrics
     if args.interval_map and os.path.exists(args.interval_map):
         interval_map = pd.read_csv(args.interval_map, sep="\t")
+        metric_count_column = next(
+            (
+                column
+                for column in ("n_significant", "n_significant_metrics")
+                if column in interval_map.columns
+            ),
+            None,
+        )
+        if metric_count_column is None:
+            parser.error(
+                "interval map requires n_significant or n_significant_metrics"
+            )
+        interval_map = interval_map[
+            ["ID", "window_id", metric_count_column]
+        ].rename(
+            columns={metric_count_column: "n_significant_metrics"}
+        )
         merged = merged.merge(
-            interval_map[["ID", "window_id", "n_significant_metrics"]],
+            interval_map,
             on="ID",
             how="left"
         )
