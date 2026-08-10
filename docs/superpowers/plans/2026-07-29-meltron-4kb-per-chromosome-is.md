@@ -1,5 +1,12 @@
 # Meltron 4 kb Per-Chromosome CWorld IS Implementation Plan
 
+> **Historical implementation plan (superseded for resolution portability).**
+> This plan records the original 4 kb workflow and its H1398/L134 execution
+> context. The current source-resolution contract is the
+> [resolution-portable design](../specs/2026-08-10-meltron-resolution-portability-design.md):
+> any integer resolution of at least 1,000 bp is supported when the configured
+> scale and IDS constraints are satisfied.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (- [ ]) syntax for tracking.
 
 **Goal:** Produce Meltron-ready insulation-score tables exclusively from 4 kb CWorld matrices, with one 4-CPU dsub/Snakemake task per sample × chromosome and one validated merge task per sample.
@@ -777,7 +784,9 @@ git commit -m "feat: add safe cworld IS cleanup"
 
 Add a CWorld insulation scores for Meltron section after Run on HPC. It states all of the following verbatim facts:
 
-- CWorld IS is solely a Meltron input and always uses a 4000 bp balanced cool file.
+- CWorld IS is solely a Meltron input and, in this historical H1398/L134
+  execution plan, uses a 4000 bp balanced cool file. The current portable
+  contract is the linked resolution-portable design above.
 - The ten windows are 32000, 60000, 92000, 120000, 152000, 180000, 212000, 240000, 272000, and 300000 bp.
 - --ids equals --is / 2; an output suffix such as is32001 does not change recorded distance 32000.
 - A sample has 26 four-CPU compute_IS_chrom jobs; each computes ten scales sequentially; one four-CPU merge_IS job emits the final table.
@@ -796,7 +805,7 @@ dsub -s run_snakemake.sh
 
 - [ ] **Step 2: Update architecture maps**
 
-In docs/CODEBASE_OVERVIEW.md, describe rules/compute_IS.smk as two rules: compute_IS_chrom creates ten bedGraphs and one manifest for one chromosome; merge_IS creates the per-sample table. In docs/SNAKEMAKE_PIPELINE_MAP.md, replace the old worker loop over all chromosomes with 26 chromosome jobs followed by one merge. Both entries state fixed 4 kb resolution and the ten-scale series.
+In docs/CODEBASE_OVERVIEW.md, describe rules/compute_IS.smk as two rules: compute_IS_chrom creates ten bedGraphs and one manifest for one chromosome; merge_IS creates the per-sample table. In docs/SNAKEMAKE_PIPELINE_MAP.md, replace the old worker loop over all chromosomes with 26 chromosome jobs followed by one merge. Both entries retain the historical 4 kb execution context and ten-scale series while directing current portability requirements to the linked resolution-portable design above.
 
 - [ ] **Step 3: Run complete local validation**
 

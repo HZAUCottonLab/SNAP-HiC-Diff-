@@ -1,17 +1,25 @@
 # Meltron 4 kb per-chromosome CWorld insulation design
 
+> **Historical design (superseded for resolution portability).** This document
+> records the original 4 kb implementation design and its H1398/L134 4 kb
+> execution context. The current CWorld-to-Meltron resolution contract is the
+> [resolution-portable design](2026-08-10-meltron-resolution-portability-design.md):
+> any integer source resolution of at least 1,000 bp is supported when the
+> configured scale and IDS constraints are satisfied.
+
 ## Purpose
 
-Generate the insulation-score (IS) input required by Meltron using CWorld at a
-single source resolution of **4,000 bp**, while making the expensive work
-parallel at the `sample × chromosome` level.  One scheduler task computes all
-ten requested IS scales for one chromosome of one sample; a lightweight task
-then merges every chromosome's results into the existing per-sample Meltron
-input table.
+This historical design generated the insulation-score (IS) input required by
+Meltron using CWorld at a single source resolution of **4,000 bp**, while
+making the expensive work parallel at the `sample × chromosome` level. One
+scheduler task computed all ten requested IS scales for one chromosome of one
+sample; a lightweight task then merged every chromosome's results into the
+existing per-sample Meltron input table.
 
-This preserves Meltron's expected input interface (`chrom`, `viewpoint`,
-`IS_distance`, `IS`) and prevents accidental CWorld runs at the other available
-mcool resolutions (20 kb and 100 kb).
+That historical implementation preserved Meltron's expected input interface
+(`chrom`, `viewpoint`, `IS_distance`, `IS`) and intentionally prevented CWorld
+runs at the other then-available mcool resolutions (20 kb and 100 kb). It does
+not limit the current portable contract linked above.
 
 ## Scope and non-goals
 
@@ -167,11 +175,16 @@ or Conda environments.  After an executed cleanup, the user can resubmit the
 full workflow with `dsub -s run_snakemake.sh`; no existing controller job is
 cancelled by the helper.
 
-## Validation and acceptance criteria
+## Historical validation and acceptance criteria
 
-Implementation is acceptable only when all of the following are demonstrated:
+These criteria governed the original fixed-4 kb implementation and are
+preserved as an execution record. The current requirements are in the
+[resolution-portable design](2026-08-10-meltron-resolution-portability-design.md).
 
-1. Configuration validation rejects a non-4 kb source resolution, a scale not
+That historical implementation was acceptable only when all of the following
+were demonstrated:
+
+1. Configuration validation rejected a non-4 kb source resolution, a scale not
    divisible by 4 kb, a wrong scale count, duplicate scales, or an inconsistent
    `ids_divisor`.
 2. Automated tests assert the exact ten values and their expected `--ids`
@@ -194,13 +207,13 @@ Implementation is acceptable only when all of the following are demonstrated:
 8. Existing Meltron rules continue to consume
    `results/IS/<sample>/<sample>_IS.tsv` without an interface change.
 
-## README requirements
+## Historical README requirements
 
-README documentation must be updated together with the implementation, in a
-user-facing section covering:
+The original README update described the fixed-4 kb execution configuration,
+not the current portable contract. It covered:
 
 - the scientific purpose: CWorld IS is produced solely as Meltron input;
-- the fixed 4 kb source-resolution constraint and the exact ten historical
+- the fixed 4 kb source-resolution configuration and the exact ten historical
   scales;
 - the `--ids = --is / 2` rule and the fact that CWorld output names may show a
   `+1` artifact;

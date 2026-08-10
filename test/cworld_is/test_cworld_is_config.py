@@ -42,7 +42,7 @@ def test_parses_exact_scale_series_and_ids():
     assert settings.chrom_job_threads == settings.merge_job_threads == 4
 
 
-@pytest.mark.parametrize("resolution", [1000, 7000, 10000])
+@pytest.mark.parametrize("resolution", [1000, 1001, 7000, 10000])
 def test_parses_non_4000_positive_source_resolution(resolution):
     distances = tuple(resolution * value for value in range(2, 22, 2))
     config = valid_config()
