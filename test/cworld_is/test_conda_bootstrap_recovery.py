@@ -83,14 +83,14 @@ spec = Path(args[args.index("--file") + 1]).name
 for tool in {
     "SNAP-HiC-Diff.yaml": ("python", "hictk"),
     "cworld.yaml": ("python", "perl", "bedtools"),
-    "meltron.yaml": ("Rscript",),
+    "meltron.yaml": ("Rscript", "python"),
 }[spec]:
     executable = bin_dir / tool
     executable.write_text("#!/usr/bin/env bash")
     executable.chmod(0o755)
 Path(os.environ["MAMBA_LOG"]).write_text("\\n".join(args))
 if spec == "meltron.yaml":
-    for package in ("argparse", "data.table", "DescTools"):
+    for package in ("argparser", "data.table", "DescTools"):
         description = prefix / "lib" / "R" / "library" / package / "DESCRIPTION"
         description.parent.mkdir(parents=True, exist_ok=True)
         description.write_text(f"Package: {package}\\n")
