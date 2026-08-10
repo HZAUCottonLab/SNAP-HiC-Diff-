@@ -8,7 +8,7 @@ cworld bedGraph format:
 
 Meltron IS format:
     chrom\tviewpoint\tIS_distance\tIS
-    chrom\t(start+end)//2\tdistance\tvalue
+    chrom\tstart\tdistance\tvalue
 
 One output TSV per sample (all chromosomes and IS distances merged).
 
@@ -19,10 +19,12 @@ Usage:
         --manifests results/cworld_insulation/HC04_rep1/HC04_rep1__HC04_A01.is_manifest.tsv results/cworld_insulation/HC04_rep1/HC04_rep1__HC04_A02.is_manifest.tsv \
         --outdir results \
         --is-distances 100000,200000,500000,1000000 \
+        --expected-bin-size 4000 \
         --log /tmp/convert_IS.log
 """
 
 import argparse
+from collections import Counter
 import os
 import re
 from pathlib import Path
@@ -39,6 +41,16 @@ def log(msg, log_file):
 
 def natural_sort_key(s):
     return [int(t) if t.isdigit() else t.lower() for t in re.split(r'(\d+)', s)]
+
+
+def positive_int(value):
+    try:
+        parsed = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("must be an integer") from error
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be positive")
+    return parsed
 
 
 def manifest_bedgraph(manifest_path, distance):
@@ -64,16 +76,16 @@ def manifest_bedgraph(manifest_path, distance):
     return bedgraph
 
 
-def convert_manifest(manifest_path, distances, log_file):
+def convert_manifest(manifest_path, distances, expected_bin_size, log_file):
     frames = []
     for distance in distances:
         bedgraph = manifest_bedgraph(manifest_path, distance)
         log(f"[INFO] Converting {bedgraph} (requested dist={distance})", log_file)
-        frames.append(convert_bedgraph_to_meltron(bedgraph, distance, log_file))
+        frames.append(convert_bedgraph_to_meltron(bedgraph, distance, expected_bin_size, log_file))
     return frames
 
 
-def convert_bedgraph_to_meltron(bedgraph_path, is_distance, log_file=None):
+def convert_bedgraph_to_meltron(bedgraph_path, is_distance, expected_bin_size, log_file=None):
     """
     Convert a single cworld insulation bedGraph to Meltron long format.
 
@@ -83,43 +95,79 @@ def convert_bedgraph_to_meltron(bedgraph_path, is_distance, log_file=None):
         Path to cworld .insulation.bedGraph file
     is_distance : int
         Actual IS window size used by cworld (bp)
+    expected_bin_size : int
+        Configured source resolution in bp
     log_file : str, optional
         Log file path
 
     Returns
     -------
     pd.DataFrame
-        Meltron format: chrom, viewpoint, IS_distance, IS
+        Meltron format: chrom, bin-start viewpoint, IS_distance, IS
     """
-    rows = []
-    with open(bedgraph_path, "r") as f:
-        for line in f:
-            line = line.rstrip("\n")
+    raw_rows = []
+    with open(bedgraph_path, "r") as handle:
+        for line in handle:
             if line.startswith("track type="):
                 continue
-            parts = line.split("\t")
+            parts = line.rstrip("\n").split("\t")
             if len(parts) < 4:
                 continue
-            chrom, start, end, is_val = parts[0], parts[1], parts[2], parts[3]
+            chrom, start_text, end_text, value = parts[:4]
             try:
-                viewpoint = (int(start) + int(end)) // 2
-            except ValueError:
-                continue
-            if is_val == "NA":
-                is_numeric = pd.NA
-            else:
-                try:
-                    is_numeric = float(is_val)
-                except ValueError:
-                    is_numeric = pd.NA
-            rows.append({
-                "chrom": chrom,
-                "viewpoint": viewpoint,
-                "IS_distance": is_distance,
-                "IS": is_numeric
-            })
+                start, end = int(start_text), int(end_text)
+            except ValueError as error:
+                raise ValueError(f"{bedgraph_path}: non-integer interval coordinates") from error
+            if end <= start:
+                raise ValueError(f"{bedgraph_path}: non-positive bin width at {chrom}:{start}-{end}")
+            raw_rows.append((chrom, start, end, value))
 
-    return pd.DataFrame(rows)
+    if not raw_rows:
+        return pd.DataFrame(columns=["chrom", "viewpoint", "IS_distance", "IS"])
+
+    widths = Counter(end - start for _, start, end, _ in raw_rows)
+    modal_count = max(widths.values())
+    modal_widths = [width for width, count in widths.items() if count == modal_count]
+    if len(modal_widths) != 1:
+        raise ValueError(f"{bedgraph_path}: ambiguous modal bin widths {sorted(modal_widths)}")
+    observed_bin_size = modal_widths[0]
+    if observed_bin_size != expected_bin_size:
+        raise ValueError(
+            f"{bedgraph_path}: observed complete bin size {observed_bin_size} "
+            f"does not match expected bin size {expected_bin_size}"
+        )
+
+    terminal_end = {}
+    for chrom, _, end, _ in raw_rows:
+        terminal_end[chrom] = max(terminal_end.get(chrom, end), end)
+
+    output_rows = []
+    for chrom, start, end, value in raw_rows:
+        width = end - start
+        if width != observed_bin_size:
+            if 0 < width < observed_bin_size and end == terminal_end[chrom]:
+                log(f"[INFO] Skipped terminal incomplete bin {chrom}:{start}-{end}", log_file)
+                continue
+            raise ValueError(
+                f"{bedgraph_path}: non-terminal or oversized bin {chrom}:{start}-{end} "
+                f"has width {width}; expected {observed_bin_size}"
+            )
+        if start % observed_bin_size != 0:
+            raise ValueError(
+                f"{bedgraph_path}: {chrom}:{start}-{end} is not aligned to bin size {observed_bin_size}"
+            )
+        try:
+            is_numeric = pd.NA if value == "NA" else float(value)
+        except ValueError:
+            is_numeric = pd.NA
+        output_rows.append({
+            "chrom": chrom,
+            "viewpoint": start,
+            "IS_distance": is_distance,
+            "IS": is_numeric,
+        })
+
+    return pd.DataFrame(output_rows, columns=["chrom", "viewpoint", "IS_distance", "IS"])
 
 
 def run():
@@ -133,6 +181,12 @@ def run():
     parser.add_argument(
         "--is-distances", required=True,
         help="Comma-separated IS distances in bp"
+    )
+    parser.add_argument(
+        "--expected-bin-size",
+        required=True,
+        type=positive_int,
+        help="Configured source resolution in bp; must match complete bedGraph bins",
     )
     parser.add_argument("--log", help="Log file path")
     args = parser.parse_args()
@@ -158,7 +212,9 @@ def run():
     try:
         for chrom, manifest_path in zip(chrom_list, manifest_paths, strict=True):
             log(f"[INFO] Converting chromosome {chrom} from {manifest_path}", args.log)
-            manifest_frames = convert_manifest(manifest_path, distances, args.log)
+            manifest_frames = convert_manifest(
+                manifest_path, distances, args.expected_bin_size, args.log
+            )
             if any(frame.empty for frame in manifest_frames):
                 raise ValueError(f"{manifest_path}: empty frame")
             frames.extend(manifest_frames)
@@ -169,6 +225,12 @@ def run():
         parser.error("No insulation bedGraph files selected from manifests")
 
     merged = pd.concat(frames, ignore_index=True)
+    key_columns = ["chrom", "viewpoint", "IS_distance"]
+    duplicate_rows = merged.duplicated(key_columns, keep=False)
+    if duplicate_rows.any():
+        duplicate_keys = merged.loc[duplicate_rows, key_columns].head(5).to_dict("records")
+        parser.error(f"duplicate Meltron coordinates: {duplicate_keys}")
+
     merged = merged.sort_values(
         by="chrom",
         key=lambda col: col.map(natural_sort_key)

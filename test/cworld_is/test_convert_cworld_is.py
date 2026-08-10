@@ -32,18 +32,20 @@ def write_manifest(root, sample, chrom, entries):
 
 
 def run_converter(root, chroms, manifests, expected_bin_size, distances="32000"):
+    command = [
+        sys.executable,
+        str(SCRIPT),
+        "--sample", "S1",
+        "--chroms", *chroms,
+        "--manifests", *(str(path) for path in manifests),
+        "--outdir", str(root),
+        "--is-distances", distances,
+    ]
+    if expected_bin_size is not None:
+        command.extend(["--expected-bin-size", str(expected_bin_size)])
+    command.extend(["--log", str(root / "converter.log")])
     return subprocess.run(
-        [
-            sys.executable,
-            str(SCRIPT),
-            "--sample", "S1",
-            "--chroms", *chroms,
-            "--manifests", *(str(path) for path in manifests),
-            "--outdir", str(root),
-            "--is-distances", distances,
-            "--expected-bin-size", str(expected_bin_size),
-            "--log", str(root / "converter.log"),
-        ],
+        command,
         text=True,
         capture_output=True,
         check=False,
@@ -71,15 +73,53 @@ def test_converter_rejects_width_that_disagrees_with_config(tmp_path):
         "S1",
         "HC04_A01",
         32000,
-        [(0, 4000, 0.25), (4000, 12000, 0.75)],
+        [(0, 4000, 0.25), (4000, 8000, 0.75)],
     )
     manifest = write_manifest(tmp_path, "S1", "HC04_A01", [(32000, bedgraph.name)])
 
-    result = run_converter(tmp_path, ["HC04_A01"], [manifest], 4000)
+    result = run_converter(tmp_path, ["HC04_A01"], [manifest], 10000)
 
     assert result.returncode != 0
-    assert "expected bin size 4000" in result.stderr
+    assert "expected bin size 10000" in result.stderr
     assert not (tmp_path / "IS" / "S1" / "S1_IS.tsv").exists()
+
+
+def test_converter_requires_expected_bin_size(tmp_path):
+    bedgraph = write_bedgraph(
+        tmp_path,
+        "S1",
+        "HC04_A01",
+        32000,
+        [(0, 4000, 0.25), (4000, 8000, 0.75)],
+    )
+    manifest = write_manifest(tmp_path, "S1", "HC04_A01", [(32000, bedgraph.name)])
+
+    result = run_converter(tmp_path, ["HC04_A01"], [manifest], None)
+
+    assert result.returncode != 0
+    assert "--expected-bin-size" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("expected_bin_size", "message"),
+    [("0", "must be positive"), ("-4000", "must be positive"), ("four_kb", "must be an integer")],
+)
+def test_converter_rejects_nonpositive_or_noninteger_expected_bin_size(
+    tmp_path, expected_bin_size, message
+):
+    bedgraph = write_bedgraph(
+        tmp_path,
+        "S1",
+        "HC04_A01",
+        32000,
+        [(0, 4000, 0.25), (4000, 8000, 0.75)],
+    )
+    manifest = write_manifest(tmp_path, "S1", "HC04_A01", [(32000, bedgraph.name)])
+
+    result = run_converter(tmp_path, ["HC04_A01"], [manifest], expected_bin_size)
+
+    assert result.returncode != 0
+    assert message in result.stderr
 
 
 def test_converter_rejects_off_grid_full_bin(tmp_path):
@@ -114,6 +154,24 @@ def test_converter_ignores_only_terminal_incomplete_bin(tmp_path):
     assert result.returncode == 0, result.stderr
     frame = pd.read_csv(tmp_path / "IS" / "S1" / "S1_IS.tsv", sep="\t")
     assert frame["viewpoint"].tolist() == [0, 4000]
+
+
+def test_converter_converts_non_numeric_is_to_missing(tmp_path):
+    bedgraph = write_bedgraph(
+        tmp_path,
+        "S1",
+        "HC04_A01",
+        32000,
+        [(0, 4000, "not-a-number"), (4000, 8000, 0.75)],
+    )
+    manifest = write_manifest(tmp_path, "S1", "HC04_A01", [(32000, bedgraph.name)])
+
+    result = run_converter(tmp_path, ["HC04_A01"], [manifest], 4000)
+
+    assert result.returncode == 0, result.stderr
+    frame = pd.read_csv(tmp_path / "IS" / "S1" / "S1_IS.tsv", sep="\t")
+    assert pd.isna(frame.loc[0, "IS"])
+    assert frame.loc[1, "IS"] == 0.75
 
 
 def test_converter_rejects_nonterminal_incomplete_bin(tmp_path):
@@ -156,6 +214,25 @@ def test_converter_rejects_duplicate_output_key(tmp_path):
     assert result.returncode != 0
     assert "duplicate Meltron coordinates" in result.stderr
     assert not (tmp_path / "IS" / "S1" / "S1_IS.tsv").exists()
+
+
+def test_converter_preserves_existing_output_when_validation_fails(tmp_path):
+    bedgraph = write_bedgraph(
+        tmp_path,
+        "S1",
+        "HC04_A01",
+        32000,
+        [(2000, 6000, 0.25), (6000, 10000, 0.75)],
+    )
+    manifest = write_manifest(tmp_path, "S1", "HC04_A01", [(32000, bedgraph.name)])
+    output = tmp_path / "IS" / "S1" / "S1_IS.tsv"
+    output.parent.mkdir(parents=True)
+    output.write_text("previously validated output\n")
+
+    result = run_converter(tmp_path, ["HC04_A01"], [manifest], 4000)
+
+    assert result.returncode != 0
+    assert output.read_text() == "previously validated output\n"
 
 
 def test_converter_preserves_manifest_distance_despite_cworld_suffix(tmp_path):
