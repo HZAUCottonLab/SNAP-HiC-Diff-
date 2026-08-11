@@ -41,7 +41,7 @@ snakemake \
     --executor cluster-generic \
     --use-conda \
     --conda-prefix "${CONDA_PREFIX_DIR}" \
-    -j 500 \
+    -j 1000 \
     -s "${SNAKEFILE}" \
     --configfile "${CONFIG}" \
     --rerun-incomplete \
@@ -49,4 +49,5 @@ snakemake \
     --latency-wait 180 \
     --cluster-generic-submit-cmd "bash ${DSUB_SUBMIT_CMD} {threads} {rulename}" \
     --cluster-generic-cancel-cmd dkill \
-    --cluster-generic-cancel-nargs 1 
+    --cluster-generic-cancel-nargs 1 \
+    all

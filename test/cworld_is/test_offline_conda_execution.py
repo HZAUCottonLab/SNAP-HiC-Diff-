@@ -180,3 +180,10 @@ def test_launcher_preflights_meltron_source_before_calling_snakemake():
     assert source_file in script
     assert "git submodule update --init --recursive" in script
     assert script.index(source_file) < script.index("snakemake " + "\\")
+
+
+def test_launcher_uses_requested_scheduler_limit_and_all_target():
+    script = RUN_SNAKEMAKE.read_text()
+
+    assert "    -j 1000" in script
+    assert script.rstrip().endswith("    all")
