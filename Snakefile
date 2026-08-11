@@ -12,6 +12,12 @@ configfile: "config/chroms.yaml"
 
 # Snakefile directory (resolved at parse time)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(workflow.snakefile))
+import sys
+
+sys.path.insert(0, os.path.join(SCRIPT_DIR, "scripts"))
+from cworld_is_config import parse_cworld_is_settings
+CWORLD_IS = parse_cworld_is_settings(config)
+
 
 # Derived paths
 OUTDIR = config["outdir"]
@@ -172,8 +178,7 @@ rule all:
             comparison=get_window_compare_pairs(),
             chrom=get_chroms(),
         ),
-        # 11. Compute IS per sample (checkpoint + IS TSV)
-        expand(OUTDIR + "/logs/compute_IS/{sample}.done", sample=SAMPLES),
+        # 11. Compute IS per sample (checkpoint → per-chrom jobs → merge)
         expand(OUTDIR + "/IS/{sample}/{sample}_IS.tsv", sample=SAMPLES),
         # 12. Meltron per comparison (both directions, merged)
         expand(

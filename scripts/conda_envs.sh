@@ -103,7 +103,10 @@ validate_prefix() {
             local meltron_prefix="$prefix"
             [[ -x "$meltron_prefix/bin/Rscript" ]] || die "Missing Rscript in $meltron_prefix"
             "$meltron_prefix/bin/Rscript" --version
-            [[ -f "$meltron_prefix/lib/R/library/argparse/DESCRIPTION" ]] || die "Missing R package argparse in $meltron_prefix"
+            [[ -x "$meltron_prefix/bin/python" ]] || die "Missing Python in $meltron_prefix"
+            validate_python_package "$meltron_prefix/bin/python" numpy
+            validate_python_package "$meltron_prefix/bin/python" pandas
+            [[ -f "$meltron_prefix/lib/R/library/argparser/DESCRIPTION" ]] || die "Missing R package argparser in $meltron_prefix"
             [[ -f "$meltron_prefix/lib/R/library/data.table/DESCRIPTION" ]] || die "Missing R package data.table in $meltron_prefix"
             [[ -f "$meltron_prefix/lib/R/library/DescTools/DESCRIPTION" ]] || die "Missing R package DescTools in $meltron_prefix"
             ;;

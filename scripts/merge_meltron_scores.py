@@ -33,6 +33,26 @@ def log(msg, log_file):
             f.write(f"{msg}\n")
 
 
+def normalize_directional_score(frame, source_column, normalized_column, direction, parser):
+    if frame.empty:
+        return frame
+    if source_column not in frame.columns:
+        parser.error(f"{direction} result requires {source_column}")
+    normalized = frame.copy()
+    normalized[normalized_column] = normalized[source_column]
+    return normalized
+
+
+def normalize_directional_na_columns(frame, direction):
+    return frame.rename(
+        columns={
+            prefix: f"{prefix}_{direction}"
+            for prefix in ("perc_na_or_missing_ref", "perc_na_or_missing_inp")
+            if prefix in frame.columns
+        }
+    )
+
+
 def run():
     parser = argparse.ArgumentParser(
         description="Merge Meltron decondensation and condensation results."
@@ -83,34 +103,46 @@ def run():
         ]).to_csv(args.out, sep="\t", index=False)
         sys.exit(0)
 
+    decond = normalize_directional_score(
+        decond, "melting_score", "_meltron_decond_score", "decondensation", parser
+    )
+    condens = normalize_directional_score(
+        condens, "compaction_score", "_meltron_condens_score", "condensation", parser
+    )
+
     if decond.empty:
         log("[WARN] Decondensation result is empty — condensation only", args.log_file)
-        merged = condens.copy()
+        merged = normalize_directional_na_columns(condens.copy(), "condensation")
         merged["meltron_melting_score"] = np.nan
-        merged["meltron_compaction_score"] = merged["melting_score"]
+        merged["meltron_compaction_score"] = merged["_meltron_condens_score"]
         merged["meltron_best_score"] = merged["meltron_compaction_score"]
         merged["meltron_best_direction"] = "condensation"
     elif condens.empty:
         log("[WARN] Condensation result is empty — decondensation only", args.log_file)
-        merged = decond.copy()
+        merged = normalize_directional_na_columns(decond.copy(), "decondensation")
         merged["meltron_compaction_score"] = np.nan
-        merged["meltron_melting_score"] = merged["melting_score"]
+        merged["meltron_melting_score"] = merged["_meltron_decond_score"]
         merged["meltron_best_score"] = merged["meltron_melting_score"]
         merged["meltron_best_direction"] = "decondensation"
     else:
-        # Both results available. After outer merge on (chrom, start, end, ID):
-        # decond melting_score -> melting_score_x, condens melting_score -> melting_score_y
+        # Directional scores use unique internal columns before this outer merge.
+        # The directional NA metrics still receive merge suffixes below.
         key_cols = ["chrom", "start", "end", "ID"]
         merged = decond.merge(condens, on=key_cols, how="outer", suffixes=("_decond", "_condens"))
 
-        merged["meltron_melting_score"] = merged["melting_score_decond"]   # decondensation melting score
-        merged["meltron_compaction_score"] = merged["melting_score_condens"]  # condensation melting score
+        merged["meltron_melting_score"] = merged["_meltron_decond_score"]
+        merged["meltron_compaction_score"] = merged["_meltron_condens_score"]
 
+        melting_score = merged["meltron_melting_score"]
+        compaction_score = merged["meltron_compaction_score"]
         merged["meltron_best_score"] = merged[["meltron_melting_score", "meltron_compaction_score"]].max(axis=1)
-        merged["meltron_best_direction"] = np.where(
-            merged["meltron_melting_score"] >= merged["meltron_compaction_score"],
-            "decondensation", "condensation"
-        )
+        has_scores = melting_score.notna() & compaction_score.notna()
+        best_direction = pd.Series(pd.NA, index=merged.index, dtype="object")
+        best_direction.loc[melting_score.notna() & compaction_score.isna()] = "decondensation"
+        best_direction.loc[melting_score.isna() & compaction_score.notna()] = "condensation"
+        best_direction.loc[has_scores & (melting_score >= compaction_score)] = "decondensation"
+        best_direction.loc[has_scores & (melting_score < compaction_score)] = "condensation"
+        merged["meltron_best_direction"] = best_direction
 
     # Advisory significance flag
     merged["meltron_is_significant"] = (merged["meltron_best_score"] >= args.score_threshold).astype(int)
@@ -118,8 +150,25 @@ def run():
     # Join with interval_map to bring back window_id and n_significant_metrics
     if args.interval_map and os.path.exists(args.interval_map):
         interval_map = pd.read_csv(args.interval_map, sep="\t")
+        metric_count_column = next(
+            (
+                column
+                for column in ("n_significant", "n_significant_metrics")
+                if column in interval_map.columns
+            ),
+            None,
+        )
+        if metric_count_column is None:
+            parser.error(
+                "interval map requires n_significant or n_significant_metrics"
+            )
+        interval_map = interval_map[
+            ["ID", "window_id", metric_count_column]
+        ].rename(
+            columns={metric_count_column: "n_significant_metrics"}
+        )
         merged = merged.merge(
-            interval_map[["ID", "window_id", "n_significant_metrics"]],
+            interval_map,
             on="ID",
             how="left"
         )

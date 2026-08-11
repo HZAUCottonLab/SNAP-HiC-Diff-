@@ -3,6 +3,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 CWORLD_ENV = REPO / "env" / "cworld.yaml"
+MELTRON_ENV = REPO / "env" / "meltron.yaml"
 CONDA_HELPER = REPO / "scripts" / "conda_envs.sh"
 RUN_SNAKEMAKE = REPO / "run_snakemake.sh"
 DSUB_SUBMIT = REPO / "config" / "dsub_submit.sh"
@@ -43,6 +44,22 @@ def test_cworld_environment_uses_only_the_required_arm_runtime():
         or dependency.startswith("perl-file-copy-recursive")
         or dependency.startswith("perl-text-csv")
     }
+
+
+def test_meltron_environment_declares_python_dataframe_runtime_and_validates_it():
+    dependencies = dependency_lines(MELTRON_ENV)
+    script = CONDA_HELPER.read_text()
+    meltron_case_start = script.index("        env/meltron.yaml)")
+    meltron_case = script[
+        meltron_case_start : script.index("            ;;", meltron_case_start)
+    ]
+
+    assert {"python>=3.10", "numpy", "pandas"} <= dependencies
+    for package in ("numpy", "pandas"):
+        assert (
+            f'validate_python_package "$meltron_prefix/bin/python" {package}'
+            in meltron_case
+        )
 
 
 def test_conda_helper_declares_all_specs_marker_and_runtime_checks():
@@ -138,9 +155,28 @@ def test_cworld_rscript_checks_follow_cworld_prefix_declaration():
 def test_conda_helper_checks_meltron_r_package_metadata_without_loading_packages():
     script = CONDA_HELPER.read_text()
 
-    for package in ("argparse", "data.table", "DescTools"):
+    for package in ("argparser", "data.table", "DescTools"):
         assert f'"$meltron_prefix/lib/R/library/{package}/DESCRIPTION"' in script
 
-    assert 'library(argparse)' not in script
+    assert 'library(argparser)' not in script
     assert 'library(data.table)' not in script
     assert 'library(DescTools)' not in script
+
+
+def test_meltron_gitlink_declares_its_official_source_mapping():
+    gitmodules = REPO / ".gitmodules"
+
+    assert gitmodules.is_file(), "Meltron gitlink requires a tracked .gitmodules mapping"
+    contents = gitmodules.read_text()
+    assert '[submodule "env/Meltron"]' in contents
+    assert "\tpath = env/Meltron" in contents
+    assert "\turl = https://github.com/pombo-lab/Meltron" in contents
+
+
+def test_launcher_preflights_meltron_source_before_calling_snakemake():
+    script = RUN_SNAKEMAKE.read_text()
+    source_file = "${WORKDIR}/env/Meltron/command_line_apps/Meltron.R"
+
+    assert source_file in script
+    assert "git submodule update --init --recursive" in script
+    assert script.index(source_file) < script.index("snakemake " + "\\")

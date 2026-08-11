@@ -66,8 +66,6 @@ smoothing:
 parallel:
   threads_per_job: 80          # Threads per compute job (passed to joblib)
 
-compute_is:
-  threads: 4  # CPUs requested by one per-sample CWorld dsub worker
 
 # ============================================================================
 # Tracy-Widom Parameters
@@ -139,8 +137,13 @@ window_compare:
 # Meltron Parameters
 # ============================================================================
 meltron:
-  # Insulation score calculation
-  is_distances: [100000, 200000, 500000, 1000000]  # bp, passed as positional args to cooltools
+  cworld_is:
+    source_resolution_bp: 4000  # integer >= 1000; must match the balanced .cool bin size
+    is_distances_bp: [32000, 60000, 92000, 120000, 152000,
+                      180000, 212000, 240000, 272000, 300000]
+    ids_divisor: 2
+    chrom_job_threads: 4
+    merge_job_threads: 4
   # Meltron run parameters
   comparison_directions: [decondensation, condensation]  # run both per comparison
   cutoff_na: 0.5          # acceptable fraction of missing IS values per interval

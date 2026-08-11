@@ -45,7 +45,7 @@ Edit `config/config.yaml` to set paths and parameters:
 manifest: data/manifest.tsv
 
 # Resolution (bp)
-resolution: 10000
+resolution: 4000
 
 # Window size & step (bp)
 window_size: 300000
@@ -55,6 +55,14 @@ step_size: 30000
 smoothing:
   sigma: 3
 ```
+
+For the CWorld/Meltron insulation workflow, CWorld IS is calculated from the balanced `.cool` resolution configured at
+`meltron.cworld_is.source_resolution_bp`. Set this value to the source cooler
+resolution: an integer of at least 1,000 bp (for example `4000` or `10000`).
+Meltron rejects lower resolutions. The converter writes each
+bedGraph bin start as Meltron `viewpoint` and verifies that every complete
+bedGraph bin has exactly that width, so Meltron infers the configured
+resolution rather than a midpoint-derived half-resolution.
 
 Edit `data/manifest.tsv` with your sample paths.
 
@@ -72,6 +80,33 @@ dsub -s run_snakemake.sh
 ```
 
 See [docs/dsub_hpc_standard.md](docs/dsub_hpc_standard.md) for HPC setup details.
+
+## CWorld insulation scores for Meltron
+
+CWorld IS is produced only for Meltron from the configured balanced `.cool`
+inputs. Its configured source resolution must be an integer of at least 1,000
+bp and must match the input cooler. The configured windows are 32,000, 60,000,
+92,000, 120,000, 152,000, 180,000, 212,000, 240,000, 272,000, and 300,000 bp;
+each uses `--ids = --is / 2`. A CWorld filename may show `is32001`, but the
+manifest and final table retain requested distance `32000`.
+
+Each sample has one `compute_IS_chrom` task per available chromosome, each
+processing all ten windows sequentially, followed by one `merge_IS` task.
+The tasks use `meltron.cworld_is.chrom_job_threads` and
+`meltron.cworld_is.merge_job_threads`, respectively. Donau memory is
+CPU-driven; adjust `meltron.cworld_is.chrom_job_threads`, not a memory field.
+Matrices are retained in `tmp/cworld_matrix/<sample>/`; bedGraphs and manifests
+in `results/cworld_insulation/<sample>/`; final Meltron input is
+`results/IS/<sample>/<sample>_IS.tsv` with `chrom`, `viewpoint`, `IS_distance`,
+and `IS`. One failed chromosome blocks only that sample merge and comparison.
+
+Preview selected-sample cleanup first; add `--execute` only after reviewing its output, then submit the workflow:
+
+```bash
+python scripts/cleanup_cworld_is.py --outdir results --samples H1394 H1395 H1396 H1397 H1398 H1406 H1409 H1410 H1436 L021
+python scripts/cleanup_cworld_is.py --outdir results --samples H1394 H1395 H1396 H1397 H1398 H1406 H1409 H1410 H1436 L021 --execute
+dsub -s run_snakemake.sh
+```
 
 ---
 
