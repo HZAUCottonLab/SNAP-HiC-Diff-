@@ -104,12 +104,20 @@ def test_meltron_schedules_per_sample_is_merges_without_compute_is_checkpoint():
     assert "results/IS/L134/L134_IS.tsv" in plan
 
 
-def test_meltron_cores_are_params_and_precede_logging():
+def test_meltron_cpu_request_and_cli_cores_share_one_config_value():
     rule = MELTRON_RULE.read_text()
+    config_text = (REPO / "config" / "config.yaml").read_text()
 
+    threads_start = rule.index("    threads:\n")
     params_start = rule.index("    params:\n")
     conda_start = rule.index("    conda:\n")
-    core_param = rule.index("        meltron_cores = 20,\n")
+    core_expression = 'config["meltron"]["cores"]'
+    assert rule.index(core_expression, threads_start, params_start) > threads_start
+    assert f"        meltron_cores = {core_expression},\n" in rule
+    assert "    chrom_job_threads: 2" in config_text
+    assert "    merge_job_threads: 2" in config_text
+
+    core_param = rule.index(f"        meltron_cores = {core_expression},\n")
     assert params_start < core_param < conda_start
 
     for direction in ("decondensation", "condensation"):
