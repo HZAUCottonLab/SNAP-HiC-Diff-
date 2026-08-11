@@ -37,13 +37,13 @@ rule meltron_per_comparison:
     benchmark:
         "{}/benchmark/meltron/{{comparison}}.tsv".format(OUTDIR)
     threads:
-        config["parallel"]["threads_per_job"]
+        config["meltron"]["cores"]
     params:
         outdir = OUTDIR,
         cutoff_na = config["meltron"]["cutoff_na"],
         score_threshold = config["meltron"]["score_threshold"],
         min_significant = config["meltron"]["min_significant"],
-        meltron_cores = 20,
+        meltron_cores = config["meltron"]["cores"],
         script_prepare = SCRIPT_DIR + "/scripts/prepare_meltron_intervals.py",
         script_run = SCRIPT_DIR + "/scripts/run_meltron.py",
         script_merge = SCRIPT_DIR + "/scripts/merge_meltron_scores.py",
