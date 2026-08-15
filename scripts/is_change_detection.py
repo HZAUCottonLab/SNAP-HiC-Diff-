@@ -156,23 +156,9 @@ def score_scale(
         right_z = z[center + 1:center + flank_width + 1][right_valid]
         joint_flanks = np.concatenate((left_z, right_z))
         transition[center] = abs(np.median(right_z) - np.median(left_z))
-        pulse[center] = abs(z[center] - np.median(joint_flanks))
+        pulse[center] = z[center] - np.median(joint_flanks)
         transition_evaluable[center] = True
         pulse_evaluable[center] = True
-
-        direction = np.sign(z[center])
-        if direction:
-            neighbors = (
-                neighbor
-                for neighbor in (center - 1, center + 1)
-                if 0 <= neighbor < n_bins
-            )
-            pulse_direction_supported[center] = any(
-                valid[neighbor]
-                and z[neighbor] != 0
-                and np.sign(z[neighbor]) == direction
-                for neighbor in neighbors
-            )
 
     frame = pd.DataFrame(
         {
@@ -250,10 +236,6 @@ def classify_scale_events(score_track, settings=None):
     events = []
     for index, row in track.iterrows():
         event_type = label_event(row, settings)
-        if event_type in {"focal_pulse", "mixed"} and not row.get(
-            "pulse_direction_supported", True
-        ):
-            event_type = None
         point_labels[index] = event_type
         if event_type:
             events.append(_event_row(row, event_type))
@@ -448,7 +430,7 @@ def cluster_multiscale_events(events, settings):
         group = []
         current_end = None
         for index, row in ordered.iterrows():
-            if current_end is not None and row["event_start"] > current_end:
+            if current_end is not None and row["event_start"] >= current_end:
                 clusters.append(_cluster_broad_rows(ordered.loc[group], settings))
                 group = []
                 current_end = None

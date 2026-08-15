@@ -116,6 +116,28 @@ def test_pulse_is_not_a_transition(settings):
     assert set(events["event_type"]) == {"focal_pulse"}
 
 
+def test_negative_pulse_is_not_promoted_but_positive_pulse_is_focal(settings):
+    settings.local_radius_bins = 0
+    settings.high_percentile = 0.90
+    settings.broad_percentile = 1.10
+    delta = np.array([-1., 1., -1., -1., 1., 10., -1., 1., -1., 1., -10., -1., 1., -1., 1.])
+    track = score_scale(
+        "chr1",
+        np.arange(len(delta)) * settings.resolution_bp,
+        np.zeros(len(delta)),
+        delta,
+        np.ones(len(delta), dtype=bool),
+        np.ones(len(delta), dtype=bool),
+        32000,
+        settings,
+    )
+
+    assert track.loc[5, "pulse"] > 0
+    assert track.loc[10, "pulse"] < 0
+    events = classify_scale_events(track)
+    assert events.loc[events["event_type"] == "focal_pulse", "summit"].tolist() == [20000]
+
+
 def test_singleton_spike_is_not_a_pulse(settings):
     z = np.array([0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0])
 
@@ -249,6 +271,22 @@ def test_distant_point_events_remain_separate_loci(settings):
     clustered = cluster_multiscale_events(events, settings)
 
     assert clustered["summit"].tolist() == [100000, 116000]
+
+
+def test_adjacent_broad_intervals_remain_separate(settings):
+    events = pd.DataFrame(
+        [
+            {"chrom": "chr1", "scale_bp": 32000, "event_type": "broad_shift", "summit": np.nan, "event_start": 0, "event_end": 16000},
+            {"chrom": "chr1", "scale_bp": 120000, "event_type": "broad_shift", "summit": np.nan, "event_start": 16000, "event_end": 32000},
+        ]
+    )
+
+    clustered = cluster_multiscale_events(events, settings)
+
+    assert clustered[["event_start", "event_end"]].to_dict("records") == [
+        {"event_start": 0, "event_end": 16000},
+        {"event_start": 16000, "event_end": 32000},
+    ]
 
 
 def test_compatible_transition_and_pulse_cluster_as_mixed(settings):
