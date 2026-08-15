@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import yaml
 import pytest
+import cooler
 
 
 REPO = Path(__file__).resolve().parents[2]
@@ -50,6 +51,11 @@ def write_tracks(root):
     columns = ["chrom", "viewpoint", "IS_distance", "IS"]
     for name, rows in (("is_a.tsv", rows_a), ("is_b.tsv", rows_b)):
         pd.DataFrame(rows, columns=columns).to_csv(root / name, sep="\t", index=False)
+    bins = pd.DataFrame({"chrom": "chr1", "start": starts, "end": starts + 4000, "weight": 1.0})
+    pixels = pd.DataFrame({"bin1_id": np.arange(len(bins)), "bin2_id": np.arange(len(bins)), "count": 1})
+    for name in ("a.cool", "b.cool"):
+        cooler.create_cooler(str(root / name), bins, pixels, ordered=True)
+
 
 
 def test_plot_manifest_contains_existing_pngs(tmp_path):
@@ -74,6 +80,7 @@ def test_plot_manifest_contains_existing_pngs(tmp_path):
             sys.executable, str(SCRIPT), "--primary", str(tmp_path / "primary.tsv"),
             "--candidate-regions", str(tmp_path / "candidate_regions.tsv"),
             "--is-a", str(tmp_path / "is_a.tsv"), "--is-b", str(tmp_path / "is_b.tsv"),
+            "--cool-a", str(tmp_path / "a.cool"), "--cool-b", str(tmp_path / "b.cool"),
             "--config", str(config), "--outdir", str(tmp_path / "plots"),
             "--manifest", str(tmp_path / "plots" / "manifest.tsv"),
         ], text=True, capture_output=True, check=False,
@@ -118,6 +125,7 @@ def test_plotter_prefers_three_band_primary_event_across_regions(tmp_path):
             sys.executable, str(SCRIPT), "--primary", str(tmp_path / "primary.tsv"),
             "--candidate-regions", str(tmp_path / "candidate_regions.tsv"),
             "--is-a", str(tmp_path / "is_a.tsv"), "--is-b", str(tmp_path / "is_b.tsv"),
+            "--cool-a", str(tmp_path / "a.cool"), "--cool-b", str(tmp_path / "b.cool"),
             "--config", str(config), "--outdir", str(tmp_path / "plots"),
             "--manifest", str(tmp_path / "plots" / "manifest.tsv"),
         ], text=True, capture_output=True, check=False,
@@ -148,6 +156,7 @@ def test_plotter_rejects_preliminary_rows(tmp_path):
             sys.executable, str(SCRIPT), "--primary", str(tmp_path / "primary.tsv"),
             "--candidate-regions", str(tmp_path / "candidate_regions.tsv"),
             "--is-a", str(tmp_path / "is_a.tsv"), "--is-b", str(tmp_path / "is_b.tsv"),
+            "--cool-a", str(tmp_path / "a.cool"), "--cool-b", str(tmp_path / "b.cool"),
             "--config", str(config), "--outdir", str(tmp_path / "plots"),
             "--manifest", str(tmp_path / "plots" / "manifest.tsv"),
         ], text=True, capture_output=True, check=False,
@@ -182,6 +191,7 @@ def test_plotter_rejects_off_grid_track_coordinates(tmp_path):
             sys.executable, str(SCRIPT), "--primary", str(tmp_path / "primary.tsv"),
             "--candidate-regions", str(tmp_path / "candidate_regions.tsv"),
             "--is-a", str(tmp_path / "is_a.tsv"), "--is-b", str(tmp_path / "is_b.tsv"),
+            "--cool-a", str(tmp_path / "a.cool"), "--cool-b", str(tmp_path / "b.cool"),
             "--config", str(config), "--outdir", str(tmp_path / "plots"),
             "--manifest", str(tmp_path / "plots" / "manifest.tsv"),
         ], text=True, capture_output=True, check=False,
@@ -233,6 +243,39 @@ def test_plotter_removes_partial_png_after_render_failure(tmp_path, monkeypatch)
     output = tmp_path / "plot.png"
 
     with pytest.raises(OSError, match="render failed"):
-        plotter.plot_region(region, pd.DataFrame(), tracks, tracks, settings, output)
+        plotter.plot_region(region, pd.DataFrame(), tracks, tracks, pd.DataFrame({"chrom": ["chr1", "chr1"], "start": [0, 4000], "available": [True, True]}), pd.DataFrame({"chrom": ["chr1", "chr1"], "start": [0, 4000], "available": [True, True]}), settings, output)
     assert not output.exists()
     assert not list(tmp_path.glob(".*.tmp"))
+
+def test_plot_cli_requires_cooler_lists(monkeypatch):
+    sys.path.insert(0, str(REPO / "scripts"))
+    import plot_is_change_loci as plotter
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "plot_is_change_loci.py", "--primary", "primary.tsv",
+            "--candidate-regions", "regions.tsv", "--is-a", "a.tsv", "--is-b", "b.tsv",
+            "--config", "config.yaml", "--outdir", "plots", "--manifest", "manifest.tsv",
+        ],
+    )
+
+    with pytest.raises(SystemExit):
+        plotter.parse_args()
+
+
+def test_plot_data_grays_invalid_cooler_weight_but_not_zero_is():
+    sys.path.insert(0, str(REPO / "scripts"))
+    import plot_is_change_loci as plotter
+    from types import SimpleNamespace
+
+    tracks = pd.DataFrame(
+        {"chrom": ["chr1", "chr1"], "start": [0, 4000], "IS_distance": [32000, 32000], "IS": [0.0, 1.0]}
+    )
+    region = SimpleNamespace(chrom="chr1", region_start=0, region_end=4000)
+    settings = SimpleNamespace(scales_bp=(32000,), resolution_bp=4000, context_bp=4000)
+    bins_a = pd.DataFrame({"chrom": ["chr1", "chr1"], "start": [0, 4000], "available": [True, False]})
+    bins_b = pd.DataFrame({"chrom": ["chr1", "chr1"], "start": [0, 4000], "available": [True, True]})
+
+    frame = plotter.scale_plot_frame(region, tracks, tracks, bins_a, bins_b, 32000, settings)

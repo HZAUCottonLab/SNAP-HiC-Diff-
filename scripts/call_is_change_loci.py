@@ -97,9 +97,9 @@ def read_is_track(path, settings):
 
 
 def read_balanced_bins(paths, resolution_bp):
-    combined = None
+    combined = []
     for path in paths:
-        bins = cooler.Cooler(path).bins()[:]
+        bins = cooler.Cooler(str(path)).bins()[:]
         required = {"chrom", "start", "end", "weight"}
         missing = required.difference(bins.columns)
         if missing:
@@ -111,15 +111,13 @@ def read_balanced_bins(paths, resolution_bp):
             raise ValueError(f"cooler {path} bins must align to bin size {resolution_bp}")
         if bins.duplicated(["chrom", "start"]).any():
             raise ValueError(f"cooler {path} has duplicate bins")
-        current = bins[["chrom", "start"]].assign(available=np.isfinite(bins["weight"]))
-        if combined is None:
-            combined = current
-        else:
-            combined = combined.merge(current, on=["chrom", "start"], how="outer", suffixes=("_left", "_right"))
-            combined["available"] = combined.pop("available_left").fillna(False).astype(bool) & combined.pop("available_right").fillna(False).astype(bool)
-    if combined is None:
+        combined.append(bins[["chrom", "start"]].assign(available=np.isfinite(bins["weight"])))
+    if not combined:
         raise ValueError("at least one cooler is required")
-    return combined
+    combined = pd.concat(combined, ignore_index=True)
+    if combined.duplicated(["chrom", "start"]).any():
+        raise ValueError("cooler inputs have duplicate chrom/start bins")
+    return combined.sort_values(["chrom", "start"], kind="stable").reset_index(drop=True)
 
 
 def context_frame(chrom, core_start, core_end, settings, track_a, track_b, bins_a, bins_b):

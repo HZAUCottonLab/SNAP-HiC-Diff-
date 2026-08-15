@@ -35,6 +35,9 @@ def test_is_change_rules_wire_existing_handoffs_to_final_targets():
     assert "_is_change_loci.tsv" in rules
     assert "plot_is_change_loci.py" in rules
     assert "manifest.tsv" in rules
+    assert rules.count('cool_a=lambda w: expand') == 2
+    assert rules.count("--cool-a {input.cool_a}") == 2
+    assert rules.count("--cool-b {input.cool_b}") == 2
 
     assert rules.count('conda:\n        "../env/SNAP-HiC-Diff.yaml"') == 3
     assert rules.count("--config config/config.yaml") == 3

@@ -11,6 +11,9 @@ import yaml
 
 REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "scripts" / "call_is_change_loci.py"
+sys.path.insert(0, str(REPO / "scripts"))
+from call_is_change_loci import read_balanced_bins
+
 SCALES = (32000, 60000, 92000, 120000, 152000, 180000, 212000, 240000, 272000, 300000)
 PRIMARY_COLUMNS = [
     "comparison", "region_id", "chrom", "event_start", "event_end", "summit",
@@ -58,6 +61,30 @@ def make_balanced_coolers(root, weights_a, weights_b):
         cooler.create_cooler(str(path), table, pixels, ordered=True)
         paths.append(path)
     return paths
+
+def make_chromosome_cooler(root, name, chrom, weights):
+    starts = np.arange(len(weights)) * 4000
+    bins = pd.DataFrame({"chrom": chrom, "start": starts, "end": starts + 4000, "weight": weights})
+    pixels = pd.DataFrame({"bin1_id": np.arange(len(bins)), "bin2_id": np.arange(len(bins)), "count": 1})
+    path = root / name
+    cooler.create_cooler(str(path), bins, pixels, ordered=True)
+    return path
+
+def test_read_balanced_bins_concatenates_chromosome_shards_and_rejects_duplicates(tmp_path):
+    chr1 = make_chromosome_cooler(tmp_path, "chr1.cool", "chr1", [1.0, np.nan])
+    chr2 = make_chromosome_cooler(tmp_path, "chr2.cool", "chr2", [1.0, 1.0])
+
+    bins = read_balanced_bins([chr1, chr2], 4000)
+
+    assert bins.to_dict("records") == [
+        {"chrom": "chr1", "start": 0, "available": True},
+        {"chrom": "chr1", "start": 4000, "available": False},
+        {"chrom": "chr2", "start": 0, "available": True},
+        {"chrom": "chr2", "start": 4000, "available": True},
+    ]
+    duplicate = make_chromosome_cooler(tmp_path, "chr1_duplicate.cool", "chr1", [1.0, 1.0])
+    with pytest.raises(ValueError, match="duplicate chrom/start"):
+        read_balanced_bins([chr1, duplicate], 4000)
 
 
 def write_all_scale_is_tracks(root, n_bins=160):

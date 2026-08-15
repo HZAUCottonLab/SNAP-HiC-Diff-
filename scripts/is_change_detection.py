@@ -155,9 +155,13 @@ def score_scale(
         right_z = z[center + 1:center + flank_width + 1][right_valid]
         joint_flanks = np.concatenate((left_z, right_z))
         transition[center] = abs(np.median(right_z) - np.median(left_z))
-        pulse[center] = z[center] - np.median(joint_flanks)
         transition_evaluable[center] = True
-        pulse_evaluable[center] = True
+        if any(
+            0 <= neighbor < n_bins and valid[neighbor] and z[center] * z[neighbor] > 0
+            for neighbor in (center - 1, center + 1)
+        ):
+            pulse[center] = abs(z[center] - np.median(joint_flanks))
+            pulse_evaluable[center] = True
 
     frame = pd.DataFrame(
         {
@@ -198,13 +202,13 @@ def label_event(row, settings):
     return None
 
 
-def _event_row(row, event_type):
+def _event_row(row, event_type, settings):
     return {
         "chrom": row["chrom"],
         "scale_bp": row["scale_bp"],
         "event_type": event_type,
         "event_start": row["coordinate"],
-        "event_end": row["coordinate"],
+        "event_end": row["coordinate"] + settings.resolution_bp,
         "summit": row["coordinate"],
         "amplitude_percentile": row["amplitude_percentile"],
         "transition_percentile": row["transition_percentile"],
@@ -236,7 +240,7 @@ def classify_scale_events(score_track, settings=None):
         event_type = label_event(row, settings)
         point_labels[index] = event_type
         if event_type:
-            events.append(_event_row(row, event_type))
+            events.append(_event_row(row, event_type, settings))
 
     broad_mask = (
         track["amplitude_percentile"].ge(settings.broad_percentile).to_numpy()

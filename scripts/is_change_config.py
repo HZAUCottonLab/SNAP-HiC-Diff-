@@ -91,6 +91,8 @@ def validate_is_change_config(
         value = raw[key]
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise ConfigError(f"{key} must be a positive integer")
+    if raw["min_primary_scale_bands"] != 2:
+        raise ConfigError("min_primary_scale_bands must equal exactly two")
     if raw["context_bp"] < max(cworld_settings.is_distances_bp):
         raise ConfigError("context_bp must cover the largest scale")
     if raw["high_percentile"] <= raw["broad_percentile"]:

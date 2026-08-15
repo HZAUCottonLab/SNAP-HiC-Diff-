@@ -14,6 +14,7 @@ import pandas as pd
 import yaml
 
 from cworld_is_config import parse_cworld_is_settings
+from call_is_change_loci import read_balanced_bins
 from is_change_config import parse_is_change_settings
 
 
@@ -24,6 +25,8 @@ def parse_args():
     parser.add_argument("--is-a", required=True)
     parser.add_argument("--is-b", required=True)
     parser.add_argument("--config", required=True)
+    parser.add_argument("--cool-a", required=True, nargs="+")
+    parser.add_argument("--cool-b", required=True, nargs="+")
     parser.add_argument("--outdir", required=True)
     parser.add_argument("--manifest", required=True)
     return parser.parse_args()
@@ -59,7 +62,31 @@ def read_track(path, settings):
     return track[["chrom", "start", "IS_distance", "IS"]]
 
 
-def plot_region(region, events, track_a, track_b, settings, output):
+def scale_plot_frame(region, track_a, track_b, bins_a, bins_b, scale, settings):
+    start = max(0, ((int(region.region_start) - settings.context_bp) // settings.resolution_bp) * settings.resolution_bp)
+    end = ((int(region.region_end) + settings.context_bp + settings.resolution_bp - 1) // settings.resolution_bp) * settings.resolution_bp
+    a = track_a[(track_a.chrom == region.chrom) & (track_a.IS_distance == scale) & track_a.start.between(start, end - settings.resolution_bp)]
+    b = track_b[(track_b.chrom == region.chrom) & (track_b.IS_distance == scale) & track_b.start.between(start, end - settings.resolution_bp)]
+    frame = pd.DataFrame({"chrom": region.chrom, "start": np.arange(start, end, settings.resolution_bp)})
+    frame = frame.merge(a[["start", "IS"]].rename(columns={"IS": "a"}), on="start", how="left")
+    frame = frame.merge(b[["start", "IS"]].rename(columns={"IS": "b"}), on="start", how="left")
+    frame = frame.merge(
+        bins_a.rename(columns={"available": "balanced_a"}), on=["chrom", "start"], how="left"
+    )
+    frame = frame.merge(
+        bins_b.rename(columns={"available": "balanced_b"}), on=["chrom", "start"], how="left"
+    )
+    frame[["balanced_a", "balanced_b"]] = frame[["balanced_a", "balanced_b"]].fillna(False).astype(bool)
+    frame["unavailable"] = ~(
+        np.isfinite(frame["a"])
+        & np.isfinite(frame["b"])
+        & frame["balanced_a"]
+        & frame["balanced_b"]
+    )
+    return frame
+
+
+def plot_region(region, events, track_a, track_b, bins_a, bins_b, settings, output):
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(
@@ -75,13 +102,8 @@ def plot_region(region, events, track_a, track_b, settings, output):
         )
         axes = np.atleast_1d(axes)
         for axis, scale in zip(axes, settings.scales_bp):
-            a = track_a[(track_a.chrom == region.chrom) & (track_a.IS_distance == scale) & track_a.start.between(start, end - settings.resolution_bp)]
-            b = track_b[(track_b.chrom == region.chrom) & (track_b.IS_distance == scale) & track_b.start.between(start, end - settings.resolution_bp)]
-            frame = pd.DataFrame({"start": np.arange(start, end, settings.resolution_bp)})
-            frame = frame.merge(a[["start", "IS"]].rename(columns={"IS": "a"}), on="start", how="left")
-            frame = frame.merge(b[["start", "IS"]].rename(columns={"IS": "b"}), on="start", how="left")
-            unavailable = ~(np.isfinite(frame.a) & np.isfinite(frame.b))
-            for point in frame.loc[unavailable, "start"]:
+            frame = scale_plot_frame(region, track_a, track_b, bins_a, bins_b, scale, settings)
+            for point in frame.loc[frame["unavailable"], "start"]:
                 axis.axvspan(point, point + settings.resolution_bp, color="0.85", zorder=0)
             axis.axvspan(region.region_start, region.region_end, color="#dbeafe", zorder=0)
             axis.plot(frame.start, frame.a, color="#2563eb", lw=0.8, label="A")
@@ -141,6 +163,8 @@ def main():
     if required_regions.difference(regions.columns):
         raise ValueError("candidate regions missing required coordinate columns")
     track_a, track_b = read_track(args.is_a, settings), read_track(args.is_b, settings)
+    bins_a = read_balanced_bins(args.cool_a, settings.resolution_bp)
+    bins_b = read_balanced_bins(args.cool_b, settings.resolution_bp)
     top = primary.assign(
         _support_band_count=primary["support_scale_bands"].fillna("").map(
             lambda bands: len({band.strip() for band in str(bands).split(",") if band.strip()})
@@ -166,7 +190,7 @@ def main():
         events = primary[primary.region_id == region_id]
         comparison = str(events.iloc[0].get("comparison", "comparison"))
         output = output_dir / f"{comparison}_region_{region_id}.png"
-        plot_region(region, events, track_a, track_b, settings, output)
+        plot_region(region, events, track_a, track_b, bins_a, bins_b, settings, output)
         manifest.append({"region_id": region_id, "chrom": region.chrom, "plot_path": str(output.resolve())})
     atomic_manifest(pd.DataFrame(manifest, columns=["region_id", "chrom", "plot_path"]), args.manifest)
 

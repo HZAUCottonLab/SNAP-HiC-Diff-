@@ -163,7 +163,7 @@ is_change:
   merge_gap_bp: 0
   context_bp: 300000
   local_radius_bins: 1
-  min_local_valid_fraction: 0.6666666667
+  min_local_valid_fraction: 0.6666666666666666
   flank_fraction_of_scale: 0.25
   min_flank_bins: 2
   min_flank_valid_fraction: 0.80

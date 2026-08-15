@@ -2,6 +2,7 @@ from pathlib import Path
 import sys
 
 import pytest
+import yaml
 
 
 REPO = Path(__file__).resolve().parents[2]
@@ -31,7 +32,7 @@ def valid_config():
             "merge_gap_bp": 0,
             "context_bp": 300000,
             "local_radius_bins": 1,
-            "min_local_valid_fraction": 0.6666666667,
+            "min_local_valid_fraction": 2 / 3,
             "flank_fraction_of_scale": 0.25,
             "min_flank_bins": 2,
             "min_flank_valid_fraction": 0.80,
@@ -59,6 +60,13 @@ def test_parses_scales_and_bands(valid_config):
     assert settings.scale_bands["small"] == (32000, 60000, 92000)
 
 
+def test_repository_config_uses_exact_two_of_three_local_fraction():
+    with (REPO / "config" / "config.yaml").open() as handle:
+        config = yaml.safe_load(handle)
+
+    assert config["is_change"]["min_local_valid_fraction"] == 2 / 3
+
+
 @pytest.mark.parametrize(
     ("mutate", "message"),
     [
@@ -69,6 +77,8 @@ def test_parses_scales_and_bands(valid_config):
             "min_flank_valid_fraction",
         ),
         (lambda c: c["is_change"].update(scale_bands={"small": [32000]}), "partition"),
+        (lambda c: c["is_change"].update(min_primary_scale_bands=1), "exactly two"),
+        (lambda c: c["is_change"].update(min_primary_scale_bands=3), "exactly two"),
     ],
 )
 def test_rejects_invalid_values(valid_config, mutate, message):

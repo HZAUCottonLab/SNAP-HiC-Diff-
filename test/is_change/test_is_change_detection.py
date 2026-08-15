@@ -80,7 +80,7 @@ def event(chrom="chr1", scale_bp=32000, summit=100000, event_type="transition"):
         "scale_bp": scale_bp,
         "summit": summit,
         "event_start": summit,
-        "event_end": summit,
+        "event_end": summit + 4000,
         "event_type": event_type,
         "amplitude_percentile": 0.96,
         "transition_percentile": 0.99 if event_type == "transition" else 0.10,
@@ -113,11 +113,11 @@ def test_pulse_is_not_a_transition(settings):
     assert set(events["event_type"]) == {"focal_pulse"}
 
 
-def test_negative_pulse_is_not_promoted_but_positive_pulse_is_focal(settings):
+def test_score_scale_calls_same_direction_peak_and_trough_pulses(settings):
     settings.local_radius_bins = 0
-    settings.high_percentile = 0.90
+    settings.high_percentile = 0.80
     settings.broad_percentile = 1.10
-    delta = np.array([-1., 1., -1., -1., 1., 10., -1., 1., -1., 1., -10., -1., 1., -1., 1.])
+    delta = np.array([-1., 1., -1., -1., 1., 10., 10., -1., 1., -1., -10., -10., 1., -1., 1.])
     track = score_scale(
         "chr1",
         np.arange(len(delta)) * settings.resolution_bp,
@@ -129,19 +129,49 @@ def test_negative_pulse_is_not_promoted_but_positive_pulse_is_focal(settings):
         settings,
     )
 
-    assert track.loc[5, "pulse"] > 0
-    assert track.loc[10, "pulse"] < 0
     events = classify_scale_events(track)
-    assert events.loc[events["event_type"] == "focal_pulse", "summit"].tolist() == [20000]
+    pulses = events.loc[events["event_type"] == "focal_pulse"]
+    assert {20000, 40000}.issubset(set(pulses["summit"]))
+    assert (pulses["event_end"] - pulses["event_start"] == settings.resolution_bp).all()
 
 
 def test_singleton_spike_is_not_a_pulse(settings):
-    z = np.array([0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0])
+    settings.local_radius_bins = 0
+    settings.high_percentile = 0.80
+    settings.broad_percentile = 1.10
+    delta = np.array([-1., 1., -1., -1., 1., 10., -1., 1., -1., 1., -1., 1., -1., 1., -1.])
+    track = score_scale(
+        "chr1",
+        np.arange(len(delta)) * settings.resolution_bp,
+        np.zeros(len(delta)),
+        delta,
+        np.ones(len(delta), dtype=bool),
+        np.ones(len(delta), dtype=bool),
+        32000,
+        settings,
+    )
 
-    events = classify_scale_events(score_track_from_z(z, 4000, 32000, settings))
+    events = classify_scale_events(track)
 
     assert events.empty
+    assert not track.loc[5, "pulse_evaluable"]
 
+
+def test_two_valid_bins_in_a_three_bin_local_window_are_evaluable(settings):
+    balanced = np.ones(16, dtype=bool)
+    balanced[6] = False
+    track = score_scale(
+        "chr1",
+        np.arange(16) * settings.resolution_bp,
+        np.zeros(16),
+        np.arange(16, dtype=float),
+        balanced,
+        np.ones(16, dtype=bool),
+        80000,
+        settings,
+    )
+
+    assert track.loc[7, "amplitude_evaluable"]
 
 def test_broad_amplitude_run_is_reported_as_an_interval(settings):
     track = pd.DataFrame(
@@ -273,6 +303,8 @@ def test_two_distinct_bands_make_a_primary_call_within_twelve_kb(settings):
 
     assert len(clustered) == 1
     assert clustered.loc[0, "support_scale_bands"] == "small,medium"
+    assert clustered.loc[0, "event_start"] == 100000
+    assert clustered.loc[0, "event_end"] == 116000
     assert clustered.loc[0, "confidence_tier"] == "primary"
 
 

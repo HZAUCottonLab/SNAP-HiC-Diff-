@@ -78,6 +78,16 @@ rule plot_is_change_loci:
         regions=OUTDIR + "/is_change/{comparison}/{comparison}_candidate_regions.tsv",
         is_a=lambda w: get_comparison_is_file(w.comparison, 0),
         is_b=lambda w: get_comparison_is_file(w.comparison, 1),
+        cool_a=lambda w: expand(
+            OUTDIR + "/balanced/{sample}/{sample}__{chrom}_iced.cool",
+            sample=get_pair_samples(w.comparison)[0],
+            chrom=CHROMS,
+        ),
+        cool_b=lambda w: expand(
+            OUTDIR + "/balanced/{sample}/{sample}__{chrom}_iced.cool",
+            sample=get_pair_samples(w.comparison)[1],
+            chrom=CHROMS,
+        ),
     output:
         manifest=OUTDIR + "/figures/is_change/{comparison}/manifest.tsv",
     log:
@@ -98,6 +108,8 @@ rule plot_is_change_loci:
             --is-b "{input.is_b}" \
             --config config/config.yaml \
             --outdir "{params.outdir}/figures/is_change/{wildcards.comparison}" \
+            --cool-a {input.cool_a} \
+            --cool-b {input.cool_b} \
             --manifest "{output.manifest}" \
             >> "{log}" 2>&1
         """
