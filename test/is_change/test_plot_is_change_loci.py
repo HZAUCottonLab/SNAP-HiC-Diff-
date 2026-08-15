@@ -84,6 +84,49 @@ def test_plot_manifest_contains_existing_pngs(tmp_path):
     assert all(Path(path).is_file() for path in paths)
 
 
+
+def test_plotter_prefers_three_band_primary_event_across_regions(tmp_path):
+    config = write_config(tmp_path)
+    write_tracks(tmp_path)
+    pd.DataFrame([
+        {
+            "comparison": "A__vs__B", "region_id": 1, "chrom": "chr1",
+            "event_start": 320000, "event_end": 324000, "summit": 320000,
+            "is_change_type": "transition", "confidence_tier": "primary",
+            "support_scale_bands": "small,medium", "support_scales": "32000,120000",
+            "max_amplitude_percentile": 0.99, "max_transition_percentile": 0.99,
+            "max_pulse_percentile": 0.99, "broad_shift_length_bp": 0,
+            "mask_status": "clean", "coverage_state_summary": "clean", "rank_within_region": 1,
+        },
+        {
+            "comparison": "A__vs__B", "region_id": 2, "chrom": "chr1",
+            "event_start": 400000, "event_end": 404000, "summit": 400000,
+            "is_change_type": "transition", "confidence_tier": "primary",
+            "support_scale_bands": "small,medium,large", "support_scales": "32000,120000,212000",
+            "max_amplitude_percentile": 0.90, "max_transition_percentile": 0.90,
+            "max_pulse_percentile": 0.90, "broad_shift_length_bp": 0,
+            "mask_status": "clean", "coverage_state_summary": "clean", "rank_within_region": 1,
+        },
+    ]).to_csv(tmp_path / "primary.tsv", sep="\t", index=False)
+    pd.DataFrame([
+        {"region_id": 1, "chrom": "chr1", "region_start": 320000, "region_end": 324000},
+        {"region_id": 2, "chrom": "chr1", "region_start": 400000, "region_end": 404000},
+    ]).to_csv(tmp_path / "candidate_regions.tsv", sep="\t", index=False)
+
+    result = subprocess.run(
+        [
+            sys.executable, str(SCRIPT), "--primary", str(tmp_path / "primary.tsv"),
+            "--candidate-regions", str(tmp_path / "candidate_regions.tsv"),
+            "--is-a", str(tmp_path / "is_a.tsv"), "--is-b", str(tmp_path / "is_b.tsv"),
+            "--config", str(config), "--outdir", str(tmp_path / "plots"),
+            "--manifest", str(tmp_path / "plots" / "manifest.tsv"),
+        ], text=True, capture_output=True, check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    manifest = pd.read_csv(tmp_path / "plots" / "manifest.tsv", sep="\t")
+    assert manifest["region_id"].tolist() == [2]
+
 def test_plotter_rejects_preliminary_rows(tmp_path):
     config = write_config(tmp_path)
     write_tracks(tmp_path)

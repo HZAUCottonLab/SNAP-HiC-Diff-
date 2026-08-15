@@ -141,12 +141,17 @@ def main():
     if required_regions.difference(regions.columns):
         raise ValueError("candidate regions missing required coordinate columns")
     track_a, track_b = read_track(args.is_a, settings), read_track(args.is_b, settings)
-    top = primary.sort_values(
+    top = primary.assign(
+        _support_band_count=primary["support_scale_bands"].fillna("").map(
+            lambda bands: len({band.strip() for band in str(bands).split(",") if band.strip()})
+        )
+    ).sort_values(
         [
-            "rank_within_region", "max_transition_percentile", "max_pulse_percentile",
-            "max_amplitude_percentile", "chrom", "event_start", "event_end",
+            "_support_band_count", "max_transition_percentile", "max_pulse_percentile",
+            "max_amplitude_percentile", "region_id", "chrom", "event_start", "event_end",
+            "is_change_type",
         ],
-        ascending=[True, False, False, False, True, True, True],
+        ascending=[False, False, False, False, True, True, True, True, True],
         kind="stable",
         na_position="last",
     ).head(settings.diagnostic_plot_top_n)
