@@ -5,6 +5,7 @@ import sys
 import numpy as np
 import pandas as pd
 import yaml
+import pytest
 
 
 REPO = Path(__file__).resolve().parents[2]
@@ -81,3 +82,114 @@ def test_plot_manifest_contains_existing_pngs(tmp_path):
     assert result.returncode == 0, result.stderr
     paths = pd.read_csv(tmp_path / "plots" / "manifest.tsv", sep="\t")["plot_path"]
     assert all(Path(path).is_file() for path in paths)
+
+
+def test_plotter_rejects_preliminary_rows(tmp_path):
+    config = write_config(tmp_path)
+    write_tracks(tmp_path)
+    pd.DataFrame([{
+        "region_id": 1, "chrom": "chr1", "event_start": 320000,
+        "event_end": 324000, "summit": 320000, "is_change_type": "transition",
+        "confidence_tier": "single_band_preliminary",
+        "comparison": "A__vs__B", "support_scale_bands": "small", "support_scales": "32000",
+        "max_amplitude_percentile": 0.99, "max_transition_percentile": 0.99,
+        "max_pulse_percentile": 0.1, "broad_shift_length_bp": 0,
+        "mask_status": "clean", "coverage_state_summary": "clean", "rank_within_region": 1,
+    }]).to_csv(tmp_path / "primary.tsv", sep="\t", index=False)
+    pd.DataFrame([{"region_id": 1, "chrom": "chr1", "region_start": 320000, "region_end": 324000}]).to_csv(
+        tmp_path / "candidate_regions.tsv", sep="\t", index=False
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable, str(SCRIPT), "--primary", str(tmp_path / "primary.tsv"),
+            "--candidate-regions", str(tmp_path / "candidate_regions.tsv"),
+            "--is-a", str(tmp_path / "is_a.tsv"), "--is-b", str(tmp_path / "is_b.tsv"),
+            "--config", str(config), "--outdir", str(tmp_path / "plots"),
+            "--manifest", str(tmp_path / "plots" / "manifest.tsv"),
+        ], text=True, capture_output=True, check=False,
+    )
+
+    assert result.returncode != 0
+    assert "preliminary" in result.stderr
+
+
+def test_plotter_rejects_off_grid_track_coordinates(tmp_path):
+    config = write_config(tmp_path)
+    write_tracks(tmp_path)
+    track = pd.read_csv(tmp_path / "is_a.tsv", sep="\t")
+    track["viewpoint"] = track["viewpoint"].astype(float)
+    track.loc[0, "viewpoint"] = 0.5
+    track.to_csv(tmp_path / "is_a.tsv", sep="\t", index=False)
+    pd.DataFrame([{
+        "comparison": "A__vs__B", "region_id": 1, "chrom": "chr1",
+        "event_start": 320000, "event_end": 324000, "summit": 320000,
+        "is_change_type": "transition", "confidence_tier": "primary",
+        "support_scale_bands": "small,medium", "support_scales": "32000,120000",
+        "max_amplitude_percentile": 0.99, "max_transition_percentile": 0.99,
+        "max_pulse_percentile": 0.1, "broad_shift_length_bp": 0,
+        "mask_status": "clean", "coverage_state_summary": "clean", "rank_within_region": 1,
+    }]).to_csv(tmp_path / "primary.tsv", sep="\t", index=False)
+    pd.DataFrame([{"region_id": 1, "chrom": "chr1", "region_start": 320000, "region_end": 324000}]).to_csv(
+        tmp_path / "candidate_regions.tsv", sep="\t", index=False
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable, str(SCRIPT), "--primary", str(tmp_path / "primary.tsv"),
+            "--candidate-regions", str(tmp_path / "candidate_regions.tsv"),
+            "--is-a", str(tmp_path / "is_a.tsv"), "--is-b", str(tmp_path / "is_b.tsv"),
+            "--config", str(config), "--outdir", str(tmp_path / "plots"),
+            "--manifest", str(tmp_path / "plots" / "manifest.tsv"),
+        ], text=True, capture_output=True, check=False,
+    )
+
+    assert result.returncode != 0
+    assert "integers" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("column", "value", "message"),
+    [
+        ("viewpoint", np.inf, "finite integers"),
+        ("viewpoint", -4000, "non-negative"),
+        ("IS_distance", 32000.5, "finite integers"),
+        ("IS_distance", 40000, "unconfigured scales"),
+    ],
+)
+def test_plotter_strictly_validates_track_coordinates_and_scales(tmp_path, column, value, message):
+    sys.path.insert(0, str(REPO / "scripts"))
+    import plot_is_change_loci as plotter
+    from types import SimpleNamespace
+
+    write_tracks(tmp_path)
+    path = tmp_path / "is_a.tsv"
+    track = pd.read_csv(path, sep="\t")
+    track[column] = track[column].astype(float)
+    track.loc[0, column] = value
+    track.to_csv(path, sep="\t", index=False)
+
+    settings = SimpleNamespace(resolution_bp=4000, scales_bp=SCALES)
+    with pytest.raises(ValueError, match=message):
+        plotter.read_track(path, settings)
+
+
+def test_plotter_removes_partial_png_after_render_failure(tmp_path, monkeypatch):
+    sys.path.insert(0, str(REPO / "scripts"))
+    import plot_is_change_loci as plotter
+    from types import SimpleNamespace
+
+    def fail_savefig(self, path, *args, **kwargs):
+        Path(path).write_bytes(b"partial")
+        raise OSError("render failed")
+
+    monkeypatch.setattr(plotter.plt.Figure, "savefig", fail_savefig)
+    region = SimpleNamespace(chrom="chr1", region_start=4000, region_end=8000)
+    tracks = pd.DataFrame({"chrom": ["chr1", "chr1"], "start": [0, 4000], "IS_distance": [32000, 32000], "IS": [0.0, 1.0]})
+    settings = SimpleNamespace(scales_bp=(32000,), resolution_bp=4000, context_bp=4000)
+    output = tmp_path / "plot.png"
+
+    with pytest.raises(OSError, match="render failed"):
+        plotter.plot_region(region, pd.DataFrame(), tracks, tracks, settings, output)
+    assert not output.exists()
+    assert not list(tmp_path.glob(".*.tmp"))

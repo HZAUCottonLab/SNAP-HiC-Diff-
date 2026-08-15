@@ -138,3 +138,61 @@ def test_caller_writes_empty_schemas_and_not_evaluable_masks(tmp_path):
     assert pd.read_csv(tmp_path / "preliminary.tsv", sep="\t").columns.tolist() == PRIMARY_COLUMNS
     reasons = set(pd.read_csv(tmp_path / "masked.bed", sep="\t", header=None)[3])
     assert "BOTH_EMPTY" in reasons
+
+
+def test_caller_aligns_non_grid_context_to_track_coordinates(tmp_path):
+    config = write_config(tmp_path)
+    raw = yaml.safe_load(config.read_text())
+    raw["is_change"]["context_bp"] = 300001
+    config.write_text(yaml.safe_dump(raw))
+    cool_a, cool_b = make_balanced_coolers(tmp_path, [1.0] * 160, [1.0] * 160)
+    write_all_scale_is_tracks(tmp_path)
+    regions = write_candidate_regions(tmp_path, [(1, "chr1", 320000, 324000)])
+
+    result = run_caller(tmp_path, config, cool_a, cool_b, regions)
+
+    assert result.returncode == 0, result.stderr
+    assert not pd.read_csv(tmp_path / "primary.tsv", sep="\t").empty
+
+
+def test_caller_removes_temp_file_after_serialization_failure(tmp_path, monkeypatch):
+    sys.path.insert(0, str(REPO / "scripts"))
+    from call_is_change_loci import atomic_write
+
+    def fail(*args, **kwargs):
+        raise OSError("write failed")
+
+    monkeypatch.setattr(pd.DataFrame, "to_csv", fail)
+    with pytest.raises(OSError, match="write failed"):
+        atomic_write(pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), (
+            tmp_path / "primary.tsv", tmp_path / "preliminary.tsv", tmp_path / "masked.bed",
+        ))
+    assert not list(tmp_path.glob(".*.tmp"))
+
+
+def test_caller_ranks_region_events_by_evidence_before_coordinates(monkeypatch):
+    sys.path.insert(0, str(REPO / "scripts"))
+    import call_is_change_loci as caller
+
+    clusters = pd.DataFrame([
+        {
+            "chrom": "chr1", "event_start": 4000, "event_end": 8000, "summit": 4000,
+            "event_type": "transition", "confidence_tier": "primary",
+            "support_scale_bands": "small", "support_scales": "32000",
+            "max_amplitude_percentile": 0.99, "max_transition_percentile": 0.99,
+            "max_pulse_percentile": 0.99,
+        },
+        {
+            "chrom": "chr1", "event_start": 8000, "event_end": 12000, "summit": 8000,
+            "event_type": "transition", "confidence_tier": "primary",
+            "support_scale_bands": "small,medium", "support_scales": "32000,120000",
+            "max_amplitude_percentile": 0.50, "max_transition_percentile": 0.50,
+            "max_pulse_percentile": 0.50,
+        },
+    ])
+    monkeypatch.setattr(caller, "_event_rows_for_region", lambda *args: (clusters, []))
+    regions = pd.DataFrame([{"region_id": 1, "chrom": "chr1", "region_start": 0, "region_end": 12000}])
+
+    primary, _, _ = caller.output_rows(regions, None, None, None, None, None, "A__vs__B")
+
+    assert primary.loc[primary["event_start"] == 8000, "rank_within_region"].item() == 1

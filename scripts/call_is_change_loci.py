@@ -123,8 +123,8 @@ def read_balanced_bins(paths, resolution_bp):
 
 
 def context_frame(chrom, core_start, core_end, settings, track_a, track_b, bins_a, bins_b):
-    start = max(0, core_start - settings.context_bp)
-    end = core_end + settings.context_bp
+    start = max(0, ((core_start - settings.context_bp) // settings.resolution_bp) * settings.resolution_bp)
+    end = ((core_end + settings.context_bp + settings.resolution_bp - 1) // settings.resolution_bp) * settings.resolution_bp
     grid = pd.DataFrame({"chrom": chrom, "start": np.arange(start, end, settings.resolution_bp)})
     base = grid.merge(bins_a.rename(columns={"available": "balanced_a"}), on=["chrom", "start"], how="left")
     base = base.merge(bins_b.rename(columns={"available": "balanced_b"}), on=["chrom", "start"], how="left")
@@ -201,12 +201,23 @@ def output_rows(regions, settings, track_a, track_b, bins_a, bins_b, comparison)
             }
             (primary if row["confidence_tier"] == "primary" else preliminary).append(row)
     def finish(rows):
-        frame = pd.DataFrame(rows, columns=PRIMARY_COLUMNS).sort_values(
-            ["chrom", "event_start", "event_end", "is_change_type"], kind="stable"
+        frame = pd.DataFrame(rows, columns=PRIMARY_COLUMNS)
+        frame["_support_band_count"] = frame["support_scale_bands"].fillna("").map(
+            lambda bands: len(set(filter(None, str(bands).split(","))))
+        )
+        frame = frame.sort_values(
+            [
+                "region_id", "_support_band_count", "max_transition_percentile",
+                "max_pulse_percentile", "max_amplitude_percentile", "chrom",
+                "event_start", "event_end", "is_change_type",
+            ],
+            ascending=[True, False, False, False, False, True, True, True, True],
+            kind="stable",
+            na_position="last",
         ).reset_index(drop=True)
         if not frame.empty:
             frame["rank_within_region"] = frame.groupby("region_id", sort=False).cumcount() + 1
-        return frame
+        return frame.drop(columns="_support_band_count")
     masked = pd.DataFrame(sorted(set(masks)), columns=MASK_COLUMNS)
     return finish(primary), finish(preliminary), masked
 
@@ -220,8 +231,8 @@ def atomic_write(primary, preliminary, masked, paths):
             target.parent.mkdir(parents=True, exist_ok=True)
             descriptor, name = tempfile.mkstemp(dir=target.parent, prefix=f".{target.name}.", suffix=".tmp")
             os.close(descriptor)
-            table.to_csv(name, sep="\t", index=False, header=header)
             temporary.append((name, target))
+            table.to_csv(name, sep="\t", index=False, header=header)
         for name, target in temporary:
             os.replace(name, target)
     except BaseException:
