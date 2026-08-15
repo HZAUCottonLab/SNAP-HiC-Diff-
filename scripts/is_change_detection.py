@@ -128,7 +128,6 @@ def score_scale(
     amplitude_evaluable = np.zeros(n_bins, dtype=bool)
     transition_evaluable = np.zeros(n_bins, dtype=bool)
     pulse_evaluable = np.zeros(n_bins, dtype=bool)
-    pulse_direction_supported = np.zeros(n_bins, dtype=bool)
     radius = settings.local_radius_bins
     flank_width = flank_bins(scale_bp, settings)
 
@@ -174,7 +173,6 @@ def score_scale(
             "amplitude_evaluable": amplitude_evaluable,
             "transition_evaluable": transition_evaluable,
             "pulse_evaluable": pulse_evaluable,
-            "pulse_direction_supported": pulse_direction_supported,
         }
     )
     frame["amplitude_percentile"] = _percentiles(amplitude, amplitude_evaluable)
@@ -249,7 +247,8 @@ def classify_scale_events(score_track, settings=None):
         3, ceil(track["scale_bp"].iloc[0] / (2 * settings.resolution_bp))
     )
     broad_indices = np.flatnonzero(broad_mask)
-    for run_start in range(len(broad_indices)):
+    run_start = 0
+    while run_start < len(broad_indices):
         run_end = run_start
         while (
             run_end + 1 < len(broad_indices)
@@ -259,10 +258,9 @@ def classify_scale_events(score_track, settings=None):
             == settings.resolution_bp
         ):
             run_end += 1
-        if run_start and broad_indices[run_start] == broad_indices[run_start - 1] + 1:
-            continue
         run = broad_indices[run_start:run_end + 1]
         if len(run) < min_broad_bins:
+            run_start = run_end + 1
             continue
         rows = track.iloc[run]
         events.append(
@@ -278,6 +276,7 @@ def classify_scale_events(score_track, settings=None):
                 "pulse_percentile": rows["pulse_percentile"].max(),
             }
         )
+        run_start = run_end + 1
     return pd.DataFrame(events, columns=_EVENT_COLUMNS).sort_values(
         ["event_start", "event_type"], kind="stable"
     ).reset_index(drop=True)

@@ -48,7 +48,6 @@ def score_track_from_z(z, resolution_bp, scale_bp, settings):
     amplitude_percentile = np.where(nonzero, 0.95, 0.10)
     transition_percentile = np.full(len(z), 0.10)
     pulse_percentile = np.full(len(z), 0.10)
-    pulse_supported = np.zeros(len(z), dtype=bool)
 
     changes = np.flatnonzero(np.diff(z) != 0) + 1
     if len(changes) == 1 and z[changes[0] - 1] * z[changes[0]] < 0:
@@ -59,7 +58,6 @@ def score_track_from_z(z, resolution_bp, scale_bp, settings):
     for start, end in zip(starts, ends):
         if end - start + 1 >= 2 and np.all(np.sign(z[start : end + 1]) == np.sign(z[start])):
             pulse_percentile[start : end + 1] = 0.99
-            pulse_supported[start : end + 1] = True
 
     track = pd.DataFrame(
         {
@@ -70,7 +68,6 @@ def score_track_from_z(z, resolution_bp, scale_bp, settings):
             "amplitude_percentile": amplitude_percentile,
             "transition_percentile": transition_percentile,
             "pulse_percentile": pulse_percentile,
-            "pulse_direction_supported": pulse_supported,
         }
     )
     track.attrs["settings"] = settings
@@ -155,7 +152,6 @@ def test_broad_amplitude_run_is_reported_as_an_interval(settings):
             "amplitude_percentile": [0.10, 0.10, 0.92, 0.92, 0.92, 0.92, 0.10, 0.10],
             "transition_percentile": 0.10,
             "pulse_percentile": 0.10,
-            "pulse_direction_supported": False,
         }
     )
     track.attrs["settings"] = settings
@@ -178,7 +174,6 @@ def test_discontinuous_broad_runs_are_not_compacted(settings):
             ],
             "transition_percentile": 0.10,
             "pulse_percentile": 0.10,
-            "pulse_direction_supported": False,
         }
     )
     track.attrs["settings"] = settings
@@ -189,6 +184,27 @@ def test_discontinuous_broad_runs_are_not_compacted(settings):
         {"event_start": 0, "event_end": 16000},
         {"event_start": 24000, "event_end": 40000},
     ]
+
+def test_long_broad_run_produces_one_interval(settings):
+    n_bins = 1000
+    track = pd.DataFrame(
+        {
+            "chrom": "chr1",
+            "coordinate": np.arange(n_bins) * settings.resolution_bp,
+            "scale_bp": 32000,
+            "amplitude_percentile": np.full(n_bins, 0.92),
+            "transition_percentile": 0.10,
+            "pulse_percentile": 0.10,
+        }
+    )
+    track.attrs["settings"] = settings
+
+    events = classify_scale_events(track)
+
+    assert events[["event_type", "event_start", "event_end"]].to_dict("records") == [
+        {"event_type": "broad_shift", "event_start": 0, "event_end": n_bins * settings.resolution_bp}
+    ]
+
 
 def test_eighty_percent_valid_flank_remains_evaluable(settings):
     n_bins = 16
