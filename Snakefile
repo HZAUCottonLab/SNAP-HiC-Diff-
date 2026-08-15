@@ -100,6 +100,11 @@ def get_pair_samples(comparison):
     return None, None
 
 
+def get_comparison_is_file(comparison, member_index):
+    sample = get_pair_samples(comparison)[member_index]
+    return OUTDIR + "/IS/{0}/{0}_IS.tsv".format(sample)
+
+
 def knn_heatmap_chrom_done_by_comp(wildcards):
     """Return per-chrom done markers for a comparison.
 
@@ -132,6 +137,7 @@ include: "rules/knn_empirical_pvalue.smk"
 include: "rules/knn_significant_heatmap.smk"
 include: "rules/compute_IS.smk"
 include: "rules/meltron.smk"
+include: "rules/is_change.smk"
 
 # ==============================================================================
 # Default Rules
@@ -183,6 +189,15 @@ rule all:
         # 12. Meltron per comparison (both directions, merged)
         expand(
             OUTDIR + "/meltron/{comparison}/{comparison}_meltron_merged.tsv",
+            comparison=get_window_compare_pairs()
+        ),
+        # 13. IS-change loci and diagnostic plot manifests
+        expand(
+            OUTDIR + "/is_change/{comparison}/{comparison}_is_change_loci.tsv",
+            comparison=get_window_compare_pairs()
+        ),
+        expand(
+            OUTDIR + "/figures/is_change/{comparison}/manifest.tsv",
             comparison=get_window_compare_pairs()
         ),
 
