@@ -87,6 +87,25 @@ def test_read_balanced_bins_concatenates_chromosome_shards_and_rejects_duplicate
         read_balanced_bins([chr1, duplicate], 4000)
 
 
+def test_read_balanced_bins_accepts_terminal_partial_bin(tmp_path):
+    bins = pd.DataFrame({
+        "chrom": ["chr1", "chr1"],
+        "start": [0, 4000],
+        "end": [4000, 6500],
+        "weight": [1.0, np.nan],
+    })
+    pixels = pd.DataFrame({"bin1_id": [0, 1], "bin2_id": [0, 1], "count": [1, 1]})
+    path = tmp_path / "chr1_terminal_partial.cool"
+    cooler.create_cooler(str(path), bins, pixels, ordered=True)
+
+    observed = read_balanced_bins([path], 4000)
+
+    assert observed.to_dict("records") == [
+        {"chrom": "chr1", "start": 0, "available": True},
+        {"chrom": "chr1", "start": 4000, "available": False},
+    ]
+
+
 def write_all_scale_is_tracks(root, n_bins=160):
     starts = np.arange(n_bins) * 4000
     rows_a, rows_b = [], []

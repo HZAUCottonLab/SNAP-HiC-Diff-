@@ -107,8 +107,12 @@ def read_balanced_bins(paths, resolution_bp):
         bins = bins[["chrom", "start", "end", "weight"]].copy()
         bins["start"] = _integer_column(bins, "start", f"cooler {path}")
         bins["end"] = _integer_column(bins, "end", f"cooler {path}")
-        if ((bins["end"] - bins["start"]) != resolution_bp).any() or (bins["start"] % resolution_bp != 0).any():
-            raise ValueError(f"cooler {path} bins must align to bin size {resolution_bp}")
+        widths = bins["end"] - bins["start"]
+        terminal_ends = bins.groupby("chrom", observed=True)["end"].transform("max")
+        terminal_partial = (widths > 0) & (widths < resolution_bp) & (bins["end"] == terminal_ends)
+        valid_widths = (widths == resolution_bp) | terminal_partial
+        if not valid_widths.all() or (bins["start"] % resolution_bp != 0).any():
+            raise ValueError(f"cooler {path} bins must be {resolution_bp} bp or terminal partial bins")
         if bins.duplicated(["chrom", "start"]).any():
             raise ValueError(f"cooler {path} has duplicate bins")
         combined.append(bins[["chrom", "start"]].assign(available=np.isfinite(bins["weight"])))
