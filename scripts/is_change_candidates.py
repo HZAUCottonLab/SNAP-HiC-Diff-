@@ -3,11 +3,32 @@
 import pandas as pd
 
 
+IDENTITY_KEYS = ["chrom", "window_id"]
 KNN_COORDS = ["chrom", "window_start", "window_end"]
 
 
-def select_final_windows(knn, meltron, settings):
-    """Return coordinate-matched windows passing raw KNN and Meltron thresholds."""
+def _require_columns(frame, required, label):
+    missing = set(required).difference(frame.columns)
+    if missing:
+        raise ValueError(f"{label} missing columns: {', '.join(sorted(missing))}")
+
+
+def _require_unique_identity(frame, label):
+    if frame.duplicated(IDENTITY_KEYS).any():
+        raise ValueError(f"{label} has duplicate chrom/window_id keys")
+
+
+def select_final_windows(knn, meltron, settings, return_audit=False):
+    """Return threshold-passing windows, optionally with matching audit data."""
+    _require_columns(knn, IDENTITY_KEYS + ["window_start", "window_end"], "KNN")
+    _require_columns(
+        meltron,
+        IDENTITY_KEYS + ["start", "end", "ID", "meltron_best_score"],
+        "Meltron",
+    )
+    _require_unique_identity(knn, "KNN")
+    _require_unique_identity(meltron, "Meltron")
+
     p_columns = sorted(c for c in knn.columns if c.endswith("_empirical_pvalue"))
     if len(p_columns) != 5:
         raise ValueError("KNN input must contain exactly five empirical P-value columns")
@@ -15,12 +36,47 @@ def select_final_windows(knn, meltron, settings):
     knn["knn_any_raw_pvalue_pass"] = (
         knn[p_columns] < settings.raw_knn_pvalue_threshold
     ).any(axis=1)
-    meltron = meltron.rename(columns={"start": "window_start", "end": "window_end"})
-    merged = knn.merge(meltron, on=KNN_COORDS, how="inner", validate="one_to_one")
-    return merged.loc[
+
+    missing_keys = meltron[IDENTITY_KEYS].merge(
+        knn[IDENTITY_KEYS],
+        on=IDENTITY_KEYS,
+        how="left",
+        indicator=True,
+        validate="one_to_one",
+    )
+    if missing_keys["_merge"].eq("left_only").any():
+        raise ValueError("Meltron windows missing KNN chrom/window_id keys")
+
+    merged = knn.merge(
+        meltron,
+        on=IDENTITY_KEYS,
+        how="inner",
+        validate="one_to_one",
+        suffixes=("", "_meltron"),
+    )
+    if not merged["window_start"].eq(merged["start"]).all():
+        raise ValueError("KNN and Meltron start coordinates disagree for matched windows")
+
+    audit = {
+        "matched_windows": len(merged),
+        "meltron_end_delta_bp": {
+            int(delta): int(count)
+            for delta, count in (
+                merged["end"].sub(merged["window_end"])
+                .value_counts()
+                .sort_index()
+                .items()
+            )
+        },
+    }
+    selected = merged.loc[
         merged["knn_any_raw_pvalue_pass"]
         & (merged["meltron_best_score"] >= settings.meltron_score_threshold)
     ].sort_values(KNN_COORDS, kind="stable").reset_index(drop=True)
+    audit["selected_windows"] = len(selected)
+    if return_audit:
+        return selected, audit
+    return selected
 
 
 def merge_candidate_windows(selected, settings):

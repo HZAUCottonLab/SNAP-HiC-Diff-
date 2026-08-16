@@ -45,6 +45,7 @@ def knn_row(window_id, start, end, chrom="chr1", **values):
 def meltron_row(window_id, start, end, score, chrom="chr1"):
     return {
         "chrom": chrom,
+        "window_id": window_id,
         "start": start,
         "end": end,
         "ID": f"{chrom}_{window_id}",
@@ -52,7 +53,7 @@ def meltron_row(window_id, start, end, score, chrom="chr1"):
     }
 
 
-def test_selects_raw_knn_and_meltron_intersection(settings):
+def test_selects_window_identity_despite_meltron_endpoint_offset(settings):
     knn = pd.DataFrame(
         [
             knn_row(1, 0, 300000, MSE_empirical_pvalue=0.01),
@@ -63,16 +64,22 @@ def test_selects_raw_knn_and_meltron_intersection(settings):
     knn["MSE_empirical_FDR"] = 1.0
     meltron = pd.DataFrame(
         [
-            meltron_row(1, 0, 300000, 5.0),
-            meltron_row(2, 300000, 600000, 6.0),
-            meltron_row(3, 600000, 900000, 6.0),
+            meltron_row(1, 0, 304000, 5.0),
+            meltron_row(2, 300000, 604000, 6.0),
+            meltron_row(3, 600000, 904000, 6.0),
         ]
     )
 
-    selected = select_final_windows(knn, meltron, settings)
+    selected, audit = select_final_windows(knn, meltron, settings, return_audit=True)
 
-    assert selected["window_id"].tolist() == [1]
-    assert selected["knn_any_raw_pvalue_pass"].tolist() == [True]
+    assert selected[["window_id", "window_start", "window_end"]].to_dict("records") == [
+        {"window_id": 1, "window_start": 0, "window_end": 300000}
+    ]
+    assert audit == {
+        "matched_windows": 3,
+        "selected_windows": 1,
+        "meltron_end_delta_bp": {4000: 3},
+    }
 
 
 @pytest.mark.parametrize("n_pvalues", [4, 6])
@@ -97,14 +104,53 @@ def test_rejects_non_five_empirical_pvalue_schema(settings, n_pvalues):
         select_final_windows(knn, meltron, settings)
 
 
-def test_rejects_duplicate_coordinate_join_keys(settings):
+def test_selects_exact_coordinate_identity_match(settings):
+    knn = pd.DataFrame([knn_row(1, 0, 300000, MSE_empirical_pvalue=0.01)])
+    meltron = pd.DataFrame([meltron_row(1, 0, 300000, 6.0)])
+
+    selected, audit = select_final_windows(knn, meltron, settings, return_audit=True)
+
+    assert selected["window_id"].tolist() == [1]
+    assert audit["meltron_end_delta_bp"] == {0: 1}
+
+
+def test_rejects_duplicate_knn_identity(settings):
     knn = pd.DataFrame(
         [knn_row(1, 0, 300000, MSE_empirical_pvalue=0.01)] * 2
     )
-    meltron = pd.DataFrame([meltron_row(1, 0, 300000, 6.0)])
+    meltron = pd.DataFrame([meltron_row(1, 0, 304000, 6.0)])
 
-    with pytest.raises(pd.errors.MergeError):
-        select_final_windows(knn, meltron, settings)
+    with pytest.raises(ValueError, match="KNN has duplicate chrom/window_id keys"):
+        select_final_windows(knn, meltron, settings, return_audit=True)
+
+
+def test_rejects_duplicate_meltron_identity(settings):
+    knn = pd.DataFrame([knn_row(1, 0, 300000)])
+    meltron = pd.DataFrame(
+        [
+            meltron_row(1, 0, 304000, 6.0),
+            meltron_row(1, 0, 304000, 6.0),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="Meltron has duplicate chrom/window_id keys"):
+        select_final_windows(knn, meltron, settings, return_audit=True)
+
+
+def test_rejects_meltron_identity_absent_from_knn(settings):
+    knn = pd.DataFrame([knn_row(1, 0, 300000)])
+    meltron = pd.DataFrame([meltron_row(2, 0, 304000, 6.0)])
+
+    with pytest.raises(ValueError, match="Meltron windows missing KNN"):
+        select_final_windows(knn, meltron, settings, return_audit=True)
+
+
+def test_rejects_shifted_meltron_start(settings):
+    knn = pd.DataFrame([knn_row(1, 0, 300000)])
+    meltron = pd.DataFrame([meltron_row(1, 4000, 304000, 6.0)])
+
+    with pytest.raises(ValueError, match="start coordinates disagree"):
+        select_final_windows(knn, meltron, settings, return_audit=True)
 
 
 def test_merges_touching_but_not_positive_gap(settings):
@@ -131,7 +177,7 @@ def test_merges_overlaps_without_crossing_chromosome_boundaries(settings):
     selected = pd.DataFrame(
         [
             {**knn_row(1, 0, 400000), **meltron_row(1, 0, 400000, 6.0)},
-            {**knn_row(2, 300000, 600000), **meltron_row(2, 300000, 600000, 6.0)},
+            {**knn_row(2, 300000, 600000), **meltron_row(2, 300000, 604000, 6.0)},
             {**knn_row(1, 0, 300000, chrom="chr2"), **meltron_row(1, 0, 300000, 6.0, chrom="chr2")},
             {**knn_row(2, 300000, 600000, chrom="chr2"), **meltron_row(2, 300000, 600000, 6.0, chrom="chr2")},
         ]
