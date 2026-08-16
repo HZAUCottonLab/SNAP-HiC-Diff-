@@ -38,7 +38,11 @@
 
 - [ ] **Step 1: Write the failing endpoint-offset test**
 
-  Replace `test_selects_raw_knn_and_meltron_intersection` with a test whose first Meltron row uses the same ID and start as KNN but has a 4 kb larger end:
+  Add `"window_id": window_id` to the dictionary returned by the
+  `meltron_row` test helper. Then replace
+  `test_selects_raw_knn_and_meltron_intersection` with
+  `test_selects_window_identity_despite_meltron_endpoint_offset`, whose first
+  Meltron row uses the same ID and start as KNN but has a 4 kb larger end:
 
   ```python
   meltron = pd.DataFrame([
@@ -139,7 +143,7 @@
 
 - [ ] **Step 6: Add failure tests for unsafe identity mappings**
 
-  Add an exact-coordinate compatibility test and three failure tests:
+  Add an exact-coordinate compatibility test and four failure tests:
 
   ```python
   def test_selects_exact_coordinate_identity_match(settings):
@@ -153,6 +157,15 @@
       knn = pd.DataFrame([knn_row(1, 0, 300000), knn_row(1, 0, 300000)])
       meltron = pd.DataFrame([meltron_row(1, 0, 304000, 6.0)])
       with pytest.raises(ValueError, match="KNN has duplicate chrom/window_id keys"):
+          select_final_windows(knn, meltron, settings)
+
+  def test_rejects_duplicate_meltron_identity(settings):
+      knn = pd.DataFrame([knn_row(1, 0, 300000)])
+      meltron = pd.DataFrame([
+          meltron_row(1, 0, 304000, 6.0),
+          meltron_row(1, 0, 304000, 6.0),
+      ])
+      with pytest.raises(ValueError, match="Meltron has duplicate chrom/window_id keys"):
           select_final_windows(knn, meltron, settings)
 
   def test_rejects_meltron_identity_absent_from_knn(settings):
