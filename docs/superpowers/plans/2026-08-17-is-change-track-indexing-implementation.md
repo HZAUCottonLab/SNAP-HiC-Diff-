@@ -58,7 +58,7 @@ export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-PYTHON="$ROOT/.snakemake/conda/59271960b794774df1c934b1e7affef8_/bin/python"
+PYTHON=/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/bin/python
 cd "$ROOT"
 "$PYTHON" -m pytest -q test/is_change
 ```
