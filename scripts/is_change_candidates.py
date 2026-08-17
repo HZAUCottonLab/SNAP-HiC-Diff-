@@ -14,6 +14,8 @@ def _require_columns(frame, required, label):
 
 
 def _require_unique_identity(frame, label):
+    if frame[IDENTITY_KEYS].isna().any().any():
+        raise ValueError(f"{label} has missing chrom/window_id keys")
     if frame.duplicated(IDENTITY_KEYS).any():
         raise ValueError(f"{label} has duplicate chrom/window_id keys")
 

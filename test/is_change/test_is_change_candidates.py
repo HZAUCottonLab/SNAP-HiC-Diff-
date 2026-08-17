@@ -137,6 +137,24 @@ def test_rejects_duplicate_meltron_identity(settings):
         select_final_windows(knn, meltron, settings, return_audit=True)
 
 
+@pytest.mark.parametrize(
+    ("source", "column", "label"),
+    [
+        ("knn", "chrom", "KNN"),
+        ("knn", "window_id", "KNN"),
+        ("meltron", "chrom", "Meltron"),
+        ("meltron", "window_id", "Meltron"),
+    ],
+)
+def test_rejects_missing_identity_values(settings, source, column, label):
+    knn = pd.DataFrame([knn_row(1, 0, 300000)])
+    meltron = pd.DataFrame([meltron_row(1, 0, 304000, 6.0)])
+    (knn if source == "knn" else meltron).loc[0, column] = None
+
+    with pytest.raises(ValueError, match=f"{label} has missing chrom/window_id keys"):
+        select_final_windows(knn, meltron, settings, return_audit=True)
+
+
 def test_rejects_meltron_identity_absent_from_knn(settings):
     knn = pd.DataFrame([knn_row(1, 0, 300000)])
     meltron = pd.DataFrame([meltron_row(2, 0, 304000, 6.0)])
