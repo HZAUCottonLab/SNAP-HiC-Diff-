@@ -37,10 +37,23 @@ def main():
     with open(args.config) as handle:
         config = yaml.safe_load(handle)
     settings = parse_is_change_settings(config, parse_cworld_is_settings(config))
-    selected = select_final_windows(
+    selected, audit = select_final_windows(
         pd.read_csv(args.knn_enriched, sep="\t"),
         pd.read_csv(args.meltron_merged, sep="\t"),
         settings,
+        return_audit=True,
+    )
+    log(
+        f"Matched {audit['matched_windows']} KNN/Meltron windows by chrom/window_id",
+        args.log,
+    )
+    log(
+        f"Selected {audit['selected_windows']} windows after KNN and Meltron thresholds",
+        args.log,
+    )
+    log(
+        f"Meltron minus KNN end delta(s) in bp: {audit['meltron_end_delta_bp']}",
+        args.log,
     )
     regions = merge_candidate_windows(selected, settings)
 

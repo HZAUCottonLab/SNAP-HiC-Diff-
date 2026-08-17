@@ -221,9 +221,9 @@ def test_cli_writes_sorted_region_schema(tmp_path):
     )
     meltron = pd.DataFrame(
         [
-            meltron_row(2, 300000, 600000, 6.0, chrom="chr1"),
-            meltron_row(1, 0, 300000, 6.0, chrom="chr1"),
-            meltron_row(1, 0, 300000, 6.0, chrom="chr2"),
+            meltron_row(2, 300000, 604000, 6.0, chrom="chr1"),
+            meltron_row(1, 0, 304000, 6.0, chrom="chr1"),
+            meltron_row(1, 0, 304000, 6.0, chrom="chr2"),
         ]
     )
     knn_path = tmp_path / "knn.tsv"
@@ -259,7 +259,11 @@ def test_cli_writes_sorted_region_schema(tmp_path):
         {"chrom": "chr1", "region_start": 0, "region_end": 600000},
         {"chrom": "chr2", "region_start": 0, "region_end": 300000},
     ]
-    assert "Wrote 2 candidate regions" in log.read_text()
+    log_text = log.read_text()
+    assert "Matched 3 KNN/Meltron windows by chrom/window_id" in log_text
+    assert "Selected 3 windows after KNN and Meltron thresholds" in log_text
+    assert "Meltron minus KNN end delta(s) in bp: {4000: 3}" in log_text
+    assert "Wrote 2 candidate regions" in log_text
 
 
 def test_cli_does_not_replace_previous_output_after_invalid_input(tmp_path):
