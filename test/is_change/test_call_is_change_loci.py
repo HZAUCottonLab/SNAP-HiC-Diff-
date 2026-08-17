@@ -12,7 +12,7 @@ import yaml
 REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "scripts" / "call_is_change_loci.py"
 sys.path.insert(0, str(REPO / "scripts"))
-from call_is_change_loci import read_balanced_bins
+from call_is_change_loci import index_is_track, read_balanced_bins, track_values
 
 SCALES = (32000, 60000, 92000, 120000, 152000, 180000, 212000, 240000, 272000, 300000)
 PRIMARY_COLUMNS = [
@@ -21,6 +21,26 @@ PRIMARY_COLUMNS = [
     "max_amplitude_percentile", "max_transition_percentile", "max_pulse_percentile",
     "broad_shift_length_bp", "mask_status", "coverage_state_summary", "rank_within_region",
 ]
+
+
+def test_index_is_track_partitions_chromosome_and_scale():
+    track = pd.DataFrame([
+        {"chrom": "chr1", "start": 0, "IS_distance": 32000, "IS": 1.0},
+        {"chrom": "chr1", "start": 4000, "IS_distance": 32000, "IS": 2.0},
+        {"chrom": "chr1", "start": 0, "IS_distance": 60000, "IS": 3.0},
+        {"chrom": "chr2", "start": 0, "IS_distance": 32000, "IS": 4.0},
+    ])
+
+    index = index_is_track(track)
+
+    assert set(index) == {("chr1", 32000), ("chr1", 60000), ("chr2", 32000)}
+    assert index[("chr1", 32000)].to_dict("records") == [
+        {"start": 0, "IS": 1.0}, {"start": 4000, "IS": 2.0},
+    ]
+    missing = track_values(index, "chr2", 60000)
+    assert missing.columns.tolist() == ["start", "IS"]
+    assert missing.empty
+
 
 
 def write_config(root):

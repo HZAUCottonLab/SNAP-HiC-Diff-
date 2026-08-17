@@ -1,0 +1,15 @@
+#!/bin/bash
+#DSUB -n is_change_tests
+#DSUB -q arm
+#DSUB -aa
+#DSUB -R 'cpu=2'
+#DSUB -o logs/cluster/is_change_tests_%J.out
+set -euo pipefail
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+PYTHON=/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff/.snakemake/conda/59271960b794774df1c934b1e7affef8_/bin/python
+cd "$ROOT"
+"$PYTHON" -m pytest -q test/is_change

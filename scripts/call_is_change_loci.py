@@ -23,6 +23,22 @@ PRIMARY_COLUMNS = [
     "broad_shift_length_bp", "mask_status", "coverage_state_summary", "rank_within_region",
 ]
 MASK_COLUMNS = ["chrom", "start", "end", "reason"]
+TRACK_VALUE_COLUMNS = ["start", "IS"]
+
+
+def index_is_track(track):
+    return {
+        (chrom, int(scale)): group[TRACK_VALUE_COLUMNS].copy().reset_index(drop=True)
+        for (chrom, scale), group in track.groupby(
+            ["chrom", "IS_distance"], sort=False, observed=True
+        )
+    }
+
+
+def track_values(track_index, chrom, scale):
+    return track_index.get(
+        (chrom, scale), pd.DataFrame(columns=TRACK_VALUE_COLUMNS)
+    )
 
 
 def parse_args():
@@ -140,9 +156,11 @@ def _event_rows_for_region(region, settings, track_a, track_b, bins_a, bins_b):
     events, masks = [], []
     for scale in settings.scales_bp:
         frame = base.copy()
-        for source, column, name in ((track_a, "is_a", "IS"), (track_b, "is_b", "IS")):
-            values = source.loc[(source["chrom"] == chrom) & (source["IS_distance"] == scale), ["start", name]]
-            frame = frame.merge(values.rename(columns={name: column}), on="start", how="left")
+        for track_index, column in ((track_a, "is_a"), (track_b, "is_b")):
+            values = track_values(track_index, chrom, scale)
+            frame = frame.merge(
+                values.rename(columns={"IS": column}), on="start", how="left"
+            )
         frame["is_a"] = frame["is_a"].astype(float)
         frame["is_b"] = frame["is_b"].astype(float)
         scored = score_scale(chrom, frame["start"], frame["is_a"], frame["is_b"], frame["balanced_a"], frame["balanced_b"], scale, settings)
@@ -249,7 +267,8 @@ def main():
         config = yaml.safe_load(handle)
     settings = parse_is_change_settings(config, parse_cworld_is_settings(config))
     regions = read_regions(args.candidate_regions, settings.resolution_bp)
-    track_a, track_b = read_is_track(args.is_a, settings), read_is_track(args.is_b, settings)
+    track_a = index_is_track(read_is_track(args.is_a, settings))
+    track_b = index_is_track(read_is_track(args.is_b, settings))
     bins_a = read_balanced_bins(args.cool_a, settings.resolution_bp)
     bins_b = read_balanced_bins(args.cool_b, settings.resolution_bp)
     comparison = f"{Path(args.is_a).stem}__vs__{Path(args.is_b).stem}"
