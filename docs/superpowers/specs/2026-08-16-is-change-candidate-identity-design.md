@@ -16,7 +16,7 @@ For `H1398_vs_L134`:
 
 - 28,981 KNN windows have at least one raw empirical P value below 0.05.
 - The Meltron merged table contains 13,370 prefiltered windows.
-- 2,622 windows have `meltron_best_score >= 5.0`.
+- 7,329 windows have `meltron_best_score >= 5.0`.
 - Every Meltron row has a unique matching KNN row by `chrom + window_id`.
 - Every paired row has the same start coordinate, but Meltron reports an end
   coordinate exactly 4 kb beyond the KNN end coordinate.
@@ -40,14 +40,14 @@ identity.
 
 The selector retains the declared final gate: at least one KNN raw empirical P
 value below the configured threshold and `meltron_best_score` at or above the
-configured threshold.  In the observed comparison, all 2,622 Meltron-score
-passing rows already satisfy the KNN condition, so all 2,622 enter IS-change.
+configured threshold.  In the observed comparison, all 7,329 Meltron-score
+passing rows already satisfy the KNN condition, so all 7,329 enter IS-change.
 
 ### Region geometry
 
 Selected KNN core intervals are merged per chromosome when they overlap or are
-BED-adjacent.  For the observed comparison, the 2,622 selected windows produce
-approximately 1,061 merged candidate regions.
+BED-adjacent.  For the observed comparison, the 7,329 selected windows produce
+1,364 merged candidate regions.
 
 The caller continues to read 300 kb of IS context on both sides of each merged
 core region.  Context supports flank calculations only; it never expands the
@@ -75,8 +75,8 @@ IS bin.  A start-coordinate mismatch is a true mapping error and must fail.
   clear error.
 - Existing overlap, adjacency, chromosome-boundary, and positive-gap merging
   tests remain unchanged.
-- The real `H1398_vs_L134` candidate build must yield 2,622 selected windows
-  and approximately 1,061 merged regions before IS-change calling.
+- The real `H1398_vs_L134` candidate build must yield 7,329 selected windows
+  and 1,364 merged regions before IS-change calling.
 
 ## Out of scope
 

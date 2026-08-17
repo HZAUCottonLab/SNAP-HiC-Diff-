@@ -1,0 +1,33 @@
+#!/bin/bash
+#DSUB -n is_change_realdata
+#DSUB -q arm
+#DSUB -aa
+#DSUB -R 'cpu=2'
+#DSUB -o logs/cluster/is_change_realdata_%J.out
+set -euo pipefail
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+MAIN_WORKTREE=/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff
+PYTHON="$MAIN_WORKTREE/.snakemake/conda/59271960b794774df1c934b1e7affef8_/bin/python"
+OUTDIR="$(mktemp -d "${TMPDIR:-/tmp}/is-change-realdata.XXXXXX")"
+cd "$ROOT"
+"$PYTHON" scripts/build_is_change_candidates.py \
+  --knn-enriched "$MAIN_WORKTREE/results/knn_empirical_pvalue/H1398_vs_L134/H1398_vs_L134_knn_enriched.tsv" \
+  --meltron-merged "$MAIN_WORKTREE/results/meltron/H1398_vs_L134/H1398_vs_L134_meltron_merged.tsv" \
+  --config config/config.yaml --out "$OUTDIR/candidate_regions.tsv" --log "$OUTDIR/candidates.log"
+wc -l "$OUTDIR/candidate_regions.tsv"
+grep -E 'Matched|Selected|end delta|Wrote' "$OUTDIR/candidates.log"
+"$PYTHON" scripts/call_is_change_loci.py \
+  --candidate-regions "$OUTDIR/candidate_regions.tsv" \
+  --is-a "$MAIN_WORKTREE/results/IS/H1398/H1398_IS.tsv" \
+  --is-b "$MAIN_WORKTREE/results/IS/L134/L134_IS.tsv" \
+  --cool-a "$MAIN_WORKTREE"/results/balanced/H1398/*_iced.cool \
+  --cool-b "$MAIN_WORKTREE"/results/balanced/L134/*_iced.cool \
+  --config config/config.yaml \
+  --out-primary "$OUTDIR/primary.tsv" --out-preliminary "$OUTDIR/preliminary.tsv" \
+  --out-masked "$OUTDIR/masked.bed" --log "$OUTDIR/caller.log"
+wc -l "$OUTDIR/primary.tsv" "$OUTDIR/preliminary.tsv" "$OUTDIR/masked.bed"
+cat "$OUTDIR/caller.log"

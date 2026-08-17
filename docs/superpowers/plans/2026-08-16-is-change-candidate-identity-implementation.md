@@ -324,7 +324,7 @@
   grep -E 'Matched|Selected|end delta|Wrote' "$candidate_verify_dir/candidates.log"
   ```
 
-  Expected: 2,622 selected windows, `{4000: 13370}` endpoint audit, and 1,061
+  Expected: 7,329 selected windows, `{4000: 13370}` endpoint audit, and 1,364
   merged candidate rows plus the TSV header.
 
 - [ ] **Step 3: Replay IS-change calling with real inputs to temporary outputs**
