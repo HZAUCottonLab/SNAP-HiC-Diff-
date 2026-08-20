@@ -125,6 +125,31 @@ def test_region_figure_places_two_aligned_contact_heatmaps_above_is_tracks(tmp_p
     plt.close(figure)
 
 
+def test_region_figure_clips_to_the_shared_chromosome_extent(tmp_path):
+    events = pd.DataFrame([{
+        "event_start": 320_000, "event_end": 324_000, "summit": 320_000,
+        "is_change_type": "transition",
+    }])
+    inputs = plot_inputs(tmp_path, events)
+    starts = np.arange(120) * 4000
+    bins = pd.DataFrame({"chrom": "chr1", "start": starts, "end": starts + 4000, "weight": 1.0})
+    pixels = pd.DataFrame({"bin1_id": np.arange(len(bins)), "bin2_id": np.arange(len(bins)), "count": 1})
+    short_cooler = tmp_path / "short_b_iced.cool"
+    cooler.create_cooler(str(short_cooler), bins, pixels, ordered=True)
+    inputs["coolers_b"] = plotter.open_coolers_by_chrom([str(short_cooler)], "L134")
+
+    figure, heatmap_axes, is_axes = plotter.build_region_figure(
+        **inputs, sample_a="H1398", sample_b="L134"
+    )
+
+    assert all(axis.get_xlim() == (20_000, 480_000) for axis in (*heatmap_axes, *is_axes))
+    assert all(
+        tuple(axis.images[0].get_extent()) == (20_000, 480_000, 480_000, 20_000)
+        for axis in heatmap_axes
+    )
+    plt.close(figure)
+
+
 def test_broad_event_has_vertical_and_horizontal_heatmap_bands(tmp_path):
     events = pd.DataFrame([{
         "event_start": 320_000, "event_end": 324_000, "summit": np.nan,
@@ -200,6 +225,24 @@ def test_shared_contact_norm_uses_pooled_finite_995_percentile():
 
     assert norm.vmin == 0.0
     assert norm.vmax == pytest.approx(np.percentile([0, 1, 2, 3, 4, 5, 6], 99.5))
+
+
+def test_shared_contact_norm_uses_unit_range_for_all_zero_contacts():
+    norm = plotter.shared_contact_norm(
+        np.ma.masked_array([[0.0, 0.0]]), np.ma.masked_array([[0.0, 0.0]])
+    )
+
+    assert (norm.vmin, norm.vmax) == (0.0, 1.0)
+
+
+def test_balanced_contact_matrix_rejects_interval_over_dense_matrix_limit():
+    chrom_size = (plotter.MAX_CONTACT_MATRIX_BINS + 1) * 4000
+    cooler_stub = type("CoolerStub", (), {"chromsizes": {"chr1": chrom_size}, "binsize": 4000})()
+
+    with pytest.raises(ValueError, match="dense plotting limit"):
+        plotter.load_log_contact_matrix(
+            {"chr1": cooler_stub}, "chr1", 0, chrom_size, "sample A"
+        )
 
 
 def test_balanced_contact_matrix_rejects_interval_beyond_chromosome(tmp_path):

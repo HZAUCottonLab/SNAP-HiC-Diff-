@@ -72,6 +72,7 @@ CONTACT_CMAP = "magma"
 HEATMAP_HEIGHT_RATIO = 2.8
 EVENT_COLOR = "red"
 EVENT_ALPHA = 0.22
+MAX_CONTACT_MATRIX_BINS = 2_000
 
 
 def plot_interval(region: pd.Series, settings: ISChangeSettings) -> tuple[int, int]:
@@ -80,6 +81,31 @@ def plot_interval(region: pd.Series, settings: ISChangeSettings) -> tuple[int, i
     context = settings.context_bp
     start = max(0, ((int(region.region_start) - context) // resolution) * resolution)
     end = ((int(region.region_end) + context + resolution - 1) // resolution) * resolution
+    return start, end
+
+
+def common_plot_interval(
+    region: pd.Series,
+    settings: ISChangeSettings,
+    coolers_a: Mapping[str, cooler.Cooler],
+    coolers_b: Mapping[str, cooler.Cooler],
+    sample_a: str,
+    sample_b: str,
+) -> tuple[int, int]:
+    """Clip one shared, resolution-aligned interval to both chromosome extents."""
+    start, end = plot_interval(region, settings)
+    chrom = region.chrom
+    chrom_ends = []
+    for coolers_by_chrom, sample_label in ((coolers_a, sample_a), (coolers_b, sample_b)):
+        if chrom not in coolers_by_chrom:
+            raise ValueError(f"{sample_label}: no iced cooler is available for {chrom}")
+        chrom_ends.append(int(coolers_by_chrom[chrom].chromsizes[chrom]))
+    common_start = 0
+    common_end = (min(chrom_ends) // settings.resolution_bp) * settings.resolution_bp
+    start = max(start, common_start)
+    end = min(end, common_end)
+    if end - start < settings.resolution_bp:
+        raise ValueError(f"{chrom}: no common full plotting bin remains after chromosome-bound clipping")
     return start, end
 
 
@@ -112,6 +138,12 @@ def load_log_contact_matrix(
     handle = coolers_by_chrom[chrom]
     if start < 0 or end <= start or end > int(handle.chromsizes[chrom]):
         raise ValueError(f"{sample_label}: invalid plotting interval {chrom}:{start}-{end}")
+    bin_count = (end - start) // int(handle.binsize)
+    if bin_count > MAX_CONTACT_MATRIX_BINS:
+        raise ValueError(
+            f"{sample_label}: plotting interval {chrom}:{start}-{end} exceeds dense plotting limit "
+            f"of {MAX_CONTACT_MATRIX_BINS} bins"
+        )
     raw = np.asarray(handle.matrix(balance=True).fetch(f"{chrom}:{start}-{end}"))
     finite = np.isfinite(raw)
     if np.any(raw[finite] < 0):
@@ -129,13 +161,13 @@ def shared_contact_norm(matrix_a: np.ma.MaskedArray, matrix_b: np.ma.MaskedArray
     if values.size == 0:
         raise ValueError("No finite balanced contacts are available for either sample")
     vmax = float(np.percentile(values, CONTACT_VMAX_PERCENTILE))
-    if not np.isfinite(vmax) or vmax <= 0.0:
-        raise ValueError("Shared Hi-C colour scale has no positive finite range")
-    return Normalize(vmin=0.0, vmax=vmax, clip=True)
+    if not np.isfinite(vmax) or vmax < 0.0:
+        raise ValueError("Shared Hi-C colour scale has no finite non-negative range")
+    return Normalize(vmin=0.0, vmax=1.0 if vmax == 0.0 else vmax, clip=True)
 
 
-def scale_plot_frame(region, track_a, track_b, bins_a, bins_b, scale, settings):
-    start, end = plot_interval(region, settings)
+def scale_plot_frame(region, track_a, track_b, bins_a, bins_b, scale, settings, interval=None):
+    start, end = plot_interval(region, settings) if interval is None else interval
     a = track_a[(track_a.chrom == region.chrom) & (track_a.IS_distance == scale) & track_a.start.between(start, end - settings.resolution_bp)]
     b = track_b[(track_b.chrom == region.chrom) & (track_b.IS_distance == scale) & track_b.start.between(start, end - settings.resolution_bp)]
     frame = pd.DataFrame({"chrom": region.chrom, "start": np.arange(start, end, settings.resolution_bp)})
@@ -203,7 +235,9 @@ def build_region_figure(
     sample_b: str,
     settings: ISChangeSettings,
 ) -> tuple[Figure, tuple[Axes, Axes], tuple[Axes, ...]]:
-    start, end = plot_interval(region, settings)
+    start, end = common_plot_interval(
+        region, settings, coolers_a, coolers_b, sample_a, sample_b
+    )
     matrix_a = load_log_contact_matrix(coolers_a, region.chrom, start, end, sample_a)
     matrix_b = load_log_contact_matrix(coolers_b, region.chrom, start, end, sample_b)
     norm = shared_contact_norm(matrix_a, matrix_b)
@@ -226,7 +260,9 @@ def build_region_figure(
     draw_contact_heatmap(heatmap_b, matrix_b, start, end, sample_b, norm, events)
     figure.colorbar(image, ax=(heatmap_a, heatmap_b), label="log1p(balanced contact)")
     for axis, scale in zip(is_axes, settings.scales_bp):
-        frame = scale_plot_frame(region, track_a, track_b, bins_a, bins_b, scale, settings)
+        frame = scale_plot_frame(
+            region, track_a, track_b, bins_a, bins_b, scale, settings, interval=(start, end)
+        )
         for point in frame.loc[frame["unavailable"], "start"]:
             axis.axvspan(point, point + settings.resolution_bp, color="0.85", zorder=0)
         axis.axvspan(region.region_start, region.region_end, color="#dbeafe", zorder=0)
