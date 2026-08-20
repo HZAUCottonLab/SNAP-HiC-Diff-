@@ -10,6 +10,7 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts"))
 
+import is_change_detection
 from is_change_detection import (
     build_valid_mask,
     classify_scale_events,
@@ -74,6 +75,29 @@ def score_track_from_z(z, resolution_bp, scale_bp, settings):
     return track
 
 
+def aligned_score_tracks(settings, z_by_scale, valid_by_scale=None, amplitude=None):
+    """Build aligned score_scale-like frames for configured IS scales."""
+    valid_by_scale = valid_by_scale or {}
+    amplitude = amplitude or {}
+    n_bins = len(next(iter(z_by_scale.values())))
+    coordinates = np.arange(n_bins) * settings.resolution_bp
+    return {
+        scale_bp: pd.DataFrame(
+            {
+                "chrom": "chr1",
+                "coordinate": coordinates,
+                "scale_bp": scale_bp,
+                "valid": valid_by_scale.get(scale_bp, np.ones(n_bins, dtype=bool)),
+                "z": z_by_scale[scale_bp],
+                "amplitude_percentile": amplitude.get(
+                    scale_bp, np.full(n_bins, settings.high_percentile)
+                ),
+            }
+        )
+        for scale_bp in settings.scales_bp
+    }
+
+
 def event(chrom="chr1", scale_bp=32000, summit=100000, event_type="transition"):
     return {
         "chrom": chrom,
@@ -95,6 +119,118 @@ def test_zero_is_is_valid_but_nan_is_is_missing():
     valid = build_valid_mask(a, b, np.ones(4, bool), np.ones(4, bool))
 
     assert valid.tolist() == [True, False, True, True]
+
+
+def test_consensus_median_uses_signed_z_and_common_valid_segments(settings):
+    # median([-3, -1, 1]) == -1; a false/NaN row creates a segment break.
+    settings.scales_bp = (32000, 120000, 212000)
+    tracks = aligned_score_tracks(
+        settings,
+        {
+            32000: [-3.0, -3.0, -3.0],
+            120000: [-1.0, np.nan, -1.0],
+            212000: [1.0, 1.0, 1.0],
+        },
+        {120000: [True, False, True]},
+    )
+
+    consensus = is_change_detection.build_consensus_track(tracks, settings)
+
+    assert consensus.columns.tolist() == [
+        "chrom",
+        "coordinate",
+        "consensus_z",
+        "valid",
+        "segment_id",
+    ]
+    assert consensus["valid"].tolist() == [True, False, True]
+    assert np.allclose(consensus["consensus_z"], [-1.0, np.nan, -1.0], equal_nan=True)
+    assert consensus["segment_id"].iloc[[0, 2]].tolist() == [0, 1]
+    assert pd.isna(consensus["segment_id"].iloc[1])
+
+
+def test_plateau_aware_extrema_emit_one_peak_and_valley_with_prominence(settings):
+    # A valley, two-bin peak plateau, and valley expose limiting-flank prominence.
+    consensus = pd.DataFrame(
+        {
+            "chrom": "chr1",
+            "coordinate": np.arange(7) * settings.resolution_bp,
+            "consensus_z": [-1.0, 3.0, -2.0, 3.0, 3.0, -1.0, 3.0],
+            "valid": True,
+            "segment_id": 0,
+        }
+    )
+
+    extrema = is_change_detection.local_consensus_extrema(consensus, settings)
+
+    peak = extrema.loc[extrema["plateau_start"] == 12000].iloc[0]
+    valley = extrema.loc[extrema["coordinate"] == 8000].iloc[0]
+    assert peak[["direction", "plateau_start", "plateau_end"]].to_dict() == {
+        "direction": "peak",
+        "plateau_start": 12000,
+        "plateau_end": 16000,
+    }
+    assert peak[["left_flank_coordinate", "right_flank_coordinate"]].to_dict() == {
+        "left_flank_coordinate": 8000,
+        "right_flank_coordinate": 20000,
+    }
+    assert peak["prominence"] == 4.0
+    assert valley["direction"] == "valley"
+    assert valley["prominence"] == 5.0
+
+
+def test_segment_edges_and_invalid_gaps_have_no_recovery_prominence(settings):
+    # Neither condition can supply both opposite-polarity flanks.
+    consensus = pd.DataFrame(
+        {
+            "chrom": "chr1",
+            "coordinate": np.arange(7) * settings.resolution_bp,
+            "consensus_z": [-1.0, 3.0, -1.0, np.nan, -1.0, 3.0, -1.0],
+            "valid": [True, True, True, False, True, True, True],
+            "segment_id": [0, 0, 0, np.nan, 1, 1, 1],
+        }
+    )
+
+    extrema = is_change_detection.local_consensus_extrema(consensus, settings)
+
+    assert 12000 not in extrema["coordinate"].tolist()
+    assert extrema["coordinate"].tolist() == [4000, 20000]
+    assert extrema["prominence"].isna().all()
+
+
+def test_directional_support_requires_distinct_bands_and_high_amplitude_when_requested(settings):
+    settings.scales_bp = (32000, 60000, 120000)
+    tracks = aligned_score_tracks(
+        settings,
+        {
+            32000: [1.0, 1.0],
+            60000: [1.0, 1.0],
+            120000: [-1.0, -1.0],
+        },
+    )
+
+    assert is_change_detection.directional_support(tracks, 0, "peak", settings) == (
+        ["small"],
+        [32000, 60000],
+    )
+    tracks[120000].loc[:, "z"] = 1.0
+    assert is_change_detection.directional_support(tracks, 0, "peak", settings) == (
+        ["small", "medium"],
+        [32000, 60000, 120000],
+    )
+    for track in tracks.values():
+        track.loc[:, "amplitude_percentile"] = 0.10
+    assert is_change_detection.directional_support(
+        tracks, 0, "peak", settings, require_high_amplitude=True
+    ) == ([], [])
+    assert is_change_detection.directional_support(tracks, 4000, "peak", settings) == (
+        ["small", "medium"],
+        [32000, 60000, 120000],
+    )
+    assert is_change_detection.directional_support(tracks, 9999, "peak", settings) == (
+        [],
+        [],
+    )
 
 
 def test_transition_is_localized_at_state_change(settings):

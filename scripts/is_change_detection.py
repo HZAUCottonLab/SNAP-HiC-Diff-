@@ -32,6 +32,220 @@ _CLUSTER_COLUMNS = [
     "max_pulse_percentile",
 ]
 
+CONSENSUS_COLUMNS = ["chrom", "coordinate", "consensus_z", "valid", "segment_id"]
+EXTREMUM_COLUMNS = [
+    "chrom",
+    "coordinate",
+    "plateau_start",
+    "plateau_end",
+    "direction",
+    "segment_id",
+    "prominence",
+    "left_flank_coordinate",
+    "right_flank_coordinate",
+]
+
+
+def build_consensus_track(score_tracks: dict[int, pd.DataFrame], settings) -> pd.DataFrame:
+    """Combine aligned score tracks into a common-valid signed-z consensus."""
+    scales = tuple(settings.scales_bp)
+    missing_scales = [scale for scale in scales if scale not in score_tracks]
+    if missing_scales:
+        raise ValueError(f"score tracks missing configured scales: {missing_scales}")
+
+    tracks = [score_tracks[scale].reset_index(drop=True) for scale in scales]
+    required = {"chrom", "coordinate", "valid", "z"}
+    if any(required.difference(track.columns) for track in tracks):
+        raise ValueError("score tracks must contain chrom, coordinate, valid, and z")
+    reference = tracks[0]
+    if any(
+        not reference["chrom"].equals(track["chrom"])
+        or not reference["coordinate"].equals(track["coordinate"])
+        for track in tracks[1:]
+    ):
+        raise ValueError("score tracks must share chromosome and coordinate series")
+
+    z_values = [track["z"].to_numpy(dtype=float) for track in tracks]
+    valid = np.logical_and.reduce(
+        [
+            track["valid"].fillna(False).to_numpy(dtype=bool) & np.isfinite(z)
+            for track, z in zip(tracks, z_values)
+        ]
+    )
+    consensus_z = np.full(len(reference), np.nan, dtype=float)
+    if valid.any():
+        consensus_z[valid] = np.median(np.asarray(z_values)[:, valid], axis=0)
+
+    coordinates = reference["coordinate"].to_numpy()
+    segment_id = np.full(len(reference), np.nan)
+    current_segment = -1
+    for index in np.flatnonzero(valid):
+        if (
+            index == 0
+            or not valid[index - 1]
+            or coordinates[index] - coordinates[index - 1] != settings.resolution_bp
+        ):
+            current_segment += 1
+        segment_id[index] = current_segment
+
+    return pd.DataFrame(
+        {
+            "chrom": reference["chrom"],
+            "coordinate": coordinates,
+            "consensus_z": consensus_z,
+            "valid": valid,
+            "segment_id": segment_id,
+        },
+        columns=CONSENSUS_COLUMNS,
+    )
+
+
+def local_consensus_extrema(consensus: pd.DataFrame, settings) -> pd.DataFrame:
+    """Extract one strict peak or valley for each equal-valued plateau."""
+    required = set(CONSENSUS_COLUMNS)
+    if required.difference(consensus.columns):
+        raise ValueError("consensus track is missing required columns")
+
+    track = consensus.reset_index(drop=True)
+    coordinates = track["coordinate"].to_numpy()
+    segments = track["segment_id"].to_numpy()
+    z = track["consensus_z"].to_numpy(dtype=float)
+    valid = (
+        track["valid"].fillna(False).to_numpy(dtype=bool)
+        & np.isfinite(z)
+        & pd.notna(track["segment_id"]).to_numpy()
+    )
+    records = []
+    start = 0
+    while start < len(track):
+        if not valid[start]:
+            start += 1
+            continue
+        end = start
+        while (
+            end + 1 < len(track)
+            and valid[end + 1]
+            and segments[end + 1] == segments[start]
+            and coordinates[end + 1] - coordinates[end] == settings.resolution_bp
+            and np.isclose(z[end + 1], z[end], rtol=0, atol=1e-12)
+        ):
+            end += 1
+        left = start - 1
+        right = end + 1
+        if (
+            left >= 0
+            and right < len(track)
+            and valid[left]
+            and valid[right]
+            and segments[left] == segments[start] == segments[right]
+            and coordinates[start] - coordinates[left] == settings.resolution_bp
+            and coordinates[right] - coordinates[end] == settings.resolution_bp
+        ):
+            direction = None
+            if z[start] > z[left] and z[start] > z[right]:
+                direction = "peak"
+            elif z[start] < z[left] and z[start] < z[right]:
+                direction = "valley"
+            if direction:
+                records.append(
+                    {
+                        "chrom": track.at[start, "chrom"],
+                        "coordinate": coordinates[start],
+                        "plateau_start": coordinates[start],
+                        "plateau_end": coordinates[end],
+                        "direction": direction,
+                        "segment_id": segments[start],
+                        "prominence": np.nan,
+                        "left_flank_coordinate": np.nan,
+                        "right_flank_coordinate": np.nan,
+                        "_z": z[start],
+                    }
+                )
+        start = end + 1
+
+    for index, record in enumerate(records):
+        left = next(
+            (
+                candidate
+                for candidate in reversed(records[:index])
+                if candidate["segment_id"] == record["segment_id"]
+                and candidate["direction"] != record["direction"]
+            ),
+            None,
+        )
+        right = next(
+            (
+                candidate
+                for candidate in records[index + 1 :]
+                if candidate["segment_id"] == record["segment_id"]
+                and candidate["direction"] != record["direction"]
+            ),
+            None,
+        )
+        if left is not None:
+            record["left_flank_coordinate"] = left["coordinate"]
+        if right is not None:
+            record["right_flank_coordinate"] = right["coordinate"]
+        if left is not None and right is not None:
+            drops = (
+                (record["_z"] - left["_z"], record["_z"] - right["_z"])
+                if record["direction"] == "peak"
+                else (left["_z"] - record["_z"], right["_z"] - record["_z"])
+            )
+            record["prominence"] = min(drops)
+
+    return pd.DataFrame(records, columns=EXTREMUM_COLUMNS)
+
+
+def directional_support(
+    score_tracks: dict[int, pd.DataFrame],
+    coordinate: int,
+    direction: str,
+    settings,
+    require_high_amplitude: bool = False,
+) -> tuple[list[str], list[int]]:
+    """Return configured scale bands and scales supporting one signed extremum."""
+    if direction not in {"peak", "valley"}:
+        raise ValueError("direction must be peak or valley")
+    scales = tuple(settings.scales_bp)
+    missing_scales = [scale for scale in scales if scale not in score_tracks]
+    if missing_scales:
+        raise ValueError(f"score tracks missing configured scales: {missing_scales}")
+
+    supporting_scales = []
+    for scale in scales:
+        rows = score_tracks[scale].loc[
+            score_tracks[scale]["coordinate"] == coordinate
+        ]
+        if rows.empty:
+            return [], []
+        row = rows.iloc[0]
+        z = row["z"]
+        if (
+            not pd.notna(row["valid"])
+            or not bool(row["valid"])
+            or not np.isfinite(z)
+            or (direction == "peak" and z <= 0)
+            or (direction == "valley" and z >= 0)
+        ):
+            continue
+        if require_high_amplitude and (
+            "amplitude_percentile" not in row
+            or not np.isfinite(row["amplitude_percentile"])
+            or row["amplitude_percentile"] < settings.high_percentile
+        ):
+            continue
+        supporting_scales.append(scale)
+
+    support_bands = [
+        band
+        for band, band_scales in settings.scale_bands.items()
+        if any(scale in band_scales for scale in supporting_scales)
+    ]
+    return support_bands, sorted(supporting_scales)
+
+
+
 
 def build_valid_mask(is_a, is_b, balanced_a, balanced_b):
     """Return bins with finite IS values and valid balanced bins in both samples."""
