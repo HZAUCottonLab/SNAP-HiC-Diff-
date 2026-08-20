@@ -82,6 +82,84 @@ def write_tracks(root, nan_weight_bin=None):
         "cool_a": root / "a_iced.cool", "cool_b": root / "b_iced.cool",
     }
 
+
+
+def plot_inputs(tmp_path, events):
+    config = write_config(tmp_path)
+    paths = write_tracks(tmp_path, nan_weight_bin=10)
+    settings = settings_from_config(config)
+    return {
+        "region": region_row(),
+        "events": events,
+        "track_a": plotter.read_track(paths["is_a"], settings),
+        "track_b": plotter.read_track(paths["is_b"], settings),
+        "bins_a": plotter.read_balanced_bins([str(paths["cool_a"])], settings.resolution_bp),
+        "bins_b": plotter.read_balanced_bins([str(paths["cool_b"])], settings.resolution_bp),
+        "coolers_a": plotter.open_coolers_by_chrom([str(paths["cool_a"])], "H1398"),
+        "coolers_b": plotter.open_coolers_by_chrom([str(paths["cool_b"])], "L134"),
+        "settings": settings,
+    }
+
+
+def test_region_figure_places_two_aligned_contact_heatmaps_above_is_tracks(tmp_path):
+    events = pd.DataFrame([{
+        "event_start": 320_000, "event_end": 324_000, "summit": 320_000,
+        "is_change_type": "transition",
+    }])
+    inputs = plot_inputs(tmp_path, events)
+
+    figure, heatmap_axes, is_axes = plotter.build_region_figure(
+        **inputs, sample_a="H1398", sample_b="L134"
+    )
+
+    start, end = plotter.plot_interval(inputs["region"], inputs["settings"])
+    assert len(heatmap_axes) == 2
+    assert len(is_axes) == 10
+    assert all(axis.get_xlim() == (start, end) for axis in (*heatmap_axes, *is_axes))
+    assert all(tuple(axis.images[0].get_extent()) == (start, end, end, start) for axis in heatmap_axes)
+    assert heatmap_axes[0].images[0].norm.vmax == heatmap_axes[1].images[0].norm.vmax
+    assert "H1398" in heatmap_axes[0].get_ylabel()
+    assert "L134" in heatmap_axes[1].get_ylabel()
+    assert any(np.allclose(line.get_xdata(), [320_000, 320_000]) for line in heatmap_axes[0].lines)
+    assert any(np.allclose(line.get_ydata(), [320_000, 320_000]) for line in heatmap_axes[1].lines)
+    plt.close(figure)
+
+
+def test_broad_event_has_vertical_and_horizontal_heatmap_bands(tmp_path):
+    events = pd.DataFrame([{
+        "event_start": 320_000, "event_end": 324_000, "summit": np.nan,
+        "is_change_type": "broad_shift",
+    }])
+    inputs = plot_inputs(tmp_path, events)
+
+    figure, heatmap_axes, _ = plotter.build_region_figure(
+        **inputs, sample_a="H1398", sample_b="L134"
+    )
+
+    assert any(patch.get_alpha() == pytest.approx(0.22) for patch in heatmap_axes[0].patches)
+    assert any(patch.get_alpha() == pytest.approx(0.22) for patch in heatmap_axes[1].patches)
+    plt.close(figure)
+
+
+def test_plotter_keeps_existing_png_when_target_chromosome_cooler_is_missing(tmp_path):
+    events = pd.DataFrame([{
+        "event_start": 320_000, "event_end": 324_000, "summit": 320_000,
+        "is_change_type": "transition",
+    }])
+    inputs = plot_inputs(tmp_path, events)
+    output = tmp_path / "plots" / "chr1_region.png"
+    output.parent.mkdir()
+    output.write_bytes(b"previous-valid-png")
+
+    with pytest.raises(ValueError, match="no iced cooler is available for chr1"):
+        plotter.plot_region(
+            inputs["region"], inputs["events"], inputs["track_a"], inputs["track_b"],
+            inputs["bins_a"], inputs["bins_b"], {}, inputs["coolers_b"], "H1398", "L134",
+            inputs["settings"], output,
+        )
+
+    assert output.read_bytes() == b"previous-valid-png"
+
 def test_plot_interval_is_4kb_aligned_and_shared_by_all_panels(tmp_path):
     settings = settings_from_config(write_config(tmp_path))
     region = region_row()
@@ -182,7 +260,7 @@ def test_plotter_prefers_three_band_primary_event_across_regions(tmp_path):
         },
         {
             "comparison": "A__vs__B", "region_id": 2, "chrom": "chr1",
-            "event_start": 400000, "event_end": 404000, "summit": 400000,
+            "event_start": 320000, "event_end": 324000, "summit": 320000,
             "is_change_type": "transition", "confidence_tier": "primary",
             "support_scale_bands": "small,medium,large", "support_scales": "32000,120000,212000",
             "max_amplitude_percentile": 0.90, "max_transition_percentile": 0.90,
@@ -192,7 +270,7 @@ def test_plotter_prefers_three_band_primary_event_across_regions(tmp_path):
     ]).to_csv(tmp_path / "primary.tsv", sep="\t", index=False)
     pd.DataFrame([
         {"region_id": 1, "chrom": "chr1", "region_start": 320000, "region_end": 324000},
-        {"region_id": 2, "chrom": "chr1", "region_start": 400000, "region_end": 404000},
+        {"region_id": 2, "chrom": "chr1", "region_start": 320000, "region_end": 324000},
     ]).to_csv(tmp_path / "candidate_regions.tsv", sep="\t", index=False)
 
     result = subprocess.run(
@@ -302,25 +380,28 @@ def test_plotter_strictly_validates_track_coordinates_and_scales(tmp_path, colum
         plotter.read_track(path, settings)
 
 
-def test_plotter_removes_partial_png_after_render_failure(tmp_path, monkeypatch):
-    sys.path.insert(0, str(REPO / "scripts"))
-    import plot_is_change_loci as plotter
-    from types import SimpleNamespace
 
+def test_plotter_removes_partial_png_after_render_failure(tmp_path, monkeypatch):
     def fail_savefig(self, path, *args, **kwargs):
         Path(path).write_bytes(b"partial")
         raise OSError("render failed")
 
     monkeypatch.setattr(plotter.plt.Figure, "savefig", fail_savefig)
-    region = SimpleNamespace(chrom="chr1", region_start=4000, region_end=8000)
-    tracks = pd.DataFrame({"chrom": ["chr1", "chr1"], "start": [0, 4000], "IS_distance": [32000, 32000], "IS": [0.0, 1.0]})
-    settings = SimpleNamespace(scales_bp=(32000,), resolution_bp=4000, context_bp=4000)
+    inputs = plot_inputs(
+        tmp_path,
+        pd.DataFrame(columns=["event_start", "event_end", "summit", "is_change_type"]),
+    )
     output = tmp_path / "plot.png"
 
     with pytest.raises(OSError, match="render failed"):
-        plotter.plot_region(region, pd.DataFrame(), tracks, tracks, pd.DataFrame({"chrom": ["chr1", "chr1"], "start": [0, 4000], "available": [True, True]}), pd.DataFrame({"chrom": ["chr1", "chr1"], "start": [0, 4000], "available": [True, True]}), settings, output)
+        plotter.plot_region(
+            inputs["region"], inputs["events"], inputs["track_a"], inputs["track_b"],
+            inputs["bins_a"], inputs["bins_b"], inputs["coolers_a"], inputs["coolers_b"],
+            "H1398", "L134", inputs["settings"], output,
+        )
+
     assert not output.exists()
-    assert not list(tmp_path.glob(".*.tmp"))
+    assert not list(tmp_path.glob(".plot.png.*.png"))
 
 def test_plot_cli_requires_cooler_lists(monkeypatch):
     sys.path.insert(0, str(REPO / "scripts"))

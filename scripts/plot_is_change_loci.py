@@ -68,6 +68,10 @@ def read_track(path, settings):
     return track[["chrom", "start", "IS_distance", "IS"]]
 
 CONTACT_VMAX_PERCENTILE = 99.5
+CONTACT_CMAP = "magma"
+HEATMAP_HEIGHT_RATIO = 2.8
+EVENT_COLOR = "red"
+EVENT_ALPHA = 0.22
 
 
 def plot_interval(region: pd.Series, settings: ISChangeSettings) -> tuple[int, int]:
@@ -153,46 +157,132 @@ def scale_plot_frame(region, track_a, track_b, bins_a, bins_b, scale, settings):
     return frame
 
 
-def plot_region(region, events, track_a, track_b, bins_a, bins_b, settings, output):
-    output = Path(output)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(
-        dir=output.parent, prefix=f".{output.name}.", suffix=".png"
+def draw_contact_heatmap(
+    axis: Axes,
+    matrix: np.ma.MaskedArray,
+    start: int,
+    end: int,
+    sample_label: str,
+    norm: Normalize,
+    events: pd.DataFrame,
+) -> AxesImage:
+    cmap = plt.get_cmap(CONTACT_CMAP).copy()
+    cmap.set_bad("0.85")
+    image = axis.imshow(
+        matrix,
+        extent=(start, end, end, start),
+        origin="upper",
+        aspect="auto",
+        cmap=cmap,
+        norm=norm,
+        interpolation="nearest",
     )
-    os.close(descriptor)
+    axis.set_ylabel(f"{sample_label}\ncontact coordinate (bp)")
+    for event in events.itertuples(index=False):
+        if event.is_change_type == "broad_shift":
+            axis.axvspan(event.event_start, event.event_end, color=EVENT_COLOR, alpha=EVENT_ALPHA, linewidth=0)
+            axis.axhspan(event.event_start, event.event_end, color=EVENT_COLOR, alpha=EVENT_ALPHA, linewidth=0)
+        elif pd.notna(event.summit):
+            axis.axvline(event.summit, color=EVENT_COLOR, linewidth=1.0)
+            axis.axhline(event.summit, color=EVENT_COLOR, linewidth=1.0)
+    axis.set_xlim(start, end)
+    axis.set_ylim(end, start)
+    return image
+
+
+def build_region_figure(
+    region: pd.Series,
+    events: pd.DataFrame,
+    track_a: pd.DataFrame,
+    track_b: pd.DataFrame,
+    bins_a: pd.DataFrame,
+    bins_b: pd.DataFrame,
+    coolers_a: Mapping[str, cooler.Cooler],
+    coolers_b: Mapping[str, cooler.Cooler],
+    sample_a: str,
+    sample_b: str,
+    settings: ISChangeSettings,
+) -> tuple[Figure, tuple[Axes, Axes], tuple[Axes, ...]]:
+    start, end = plot_interval(region, settings)
+    matrix_a = load_log_contact_matrix(coolers_a, region.chrom, start, end, sample_a)
+    matrix_b = load_log_contact_matrix(coolers_b, region.chrom, start, end, sample_b)
+    norm = shared_contact_norm(matrix_a, matrix_b)
+    figure = plt.figure(
+        figsize=(13, 2.1 * len(settings.scales_bp) + 2 * HEATMAP_HEIGHT_RATIO),
+        constrained_layout=True,
+    )
+    grid = figure.add_gridspec(
+        nrows=len(settings.scales_bp) + 2,
+        ncols=1,
+        height_ratios=[HEATMAP_HEIGHT_RATIO, HEATMAP_HEIGHT_RATIO, *([1.0] * len(settings.scales_bp))],
+    )
+    heatmap_a = figure.add_subplot(grid[0, 0])
+    heatmap_b = figure.add_subplot(grid[1, 0], sharex=heatmap_a)
+    is_axes = tuple(
+        figure.add_subplot(grid[index + 2, 0], sharex=heatmap_a)
+        for index in range(len(settings.scales_bp))
+    )
+    image = draw_contact_heatmap(heatmap_a, matrix_a, start, end, sample_a, norm, events)
+    draw_contact_heatmap(heatmap_b, matrix_b, start, end, sample_b, norm, events)
+    figure.colorbar(image, ax=(heatmap_a, heatmap_b), label="log1p(balanced contact)")
+    for axis, scale in zip(is_axes, settings.scales_bp):
+        frame = scale_plot_frame(region, track_a, track_b, bins_a, bins_b, scale, settings)
+        for point in frame.loc[frame["unavailable"], "start"]:
+            axis.axvspan(point, point + settings.resolution_bp, color="0.85", zorder=0)
+        axis.axvspan(region.region_start, region.region_end, color="#dbeafe", zorder=0)
+        axis.plot(frame.start, frame.a, color="#2563eb", lw=0.8, label="A")
+        axis.plot(frame.start, frame.b, color="#16a34a", lw=0.8, label="B")
+        axis.plot(frame.start, frame.b - frame.a, color="#6b21a8", lw=0.8, label="B-A")
+        for event in events.itertuples(index=False):
+            if event.is_change_type == "broad_shift":
+                axis.axvspan(event.event_start, event.event_end, color="#dc2626", alpha=0.20)
+            elif pd.notna(event.summit):
+                axis.axvline(event.summit, color="#dc2626", lw=1)
+        axis.set_ylabel(f"{scale // 1000} kb")
+        axis.grid(axis="y", alpha=0.2)
+    is_axes[0].legend(loc="upper right", ncol=3, fontsize=8)
+    is_axes[-1].set_xlabel(f"{region.chrom} coordinate (bp)")
+    for axis in (heatmap_a, heatmap_b, *is_axes[:-1]):
+        axis.tick_params(axis="x", labelbottom=False)
+    return figure, (heatmap_a, heatmap_b), is_axes
+
+
+def plot_region(
+    region,
+    events,
+    track_a,
+    track_b,
+    bins_a,
+    bins_b,
+    coolers_a,
+    coolers_b,
+    sample_a,
+    sample_b,
+    settings,
+    output,
+):
+    output = Path(output)
     figure = None
+    temporary = None
     try:
-        figure, axes = plt.subplots(
-            len(settings.scales_bp), 1, figsize=(13, 2.1 * len(settings.scales_bp)), sharex=True
+        figure, _, _ = build_region_figure(
+            region, events, track_a, track_b, bins_a, bins_b,
+            coolers_a, coolers_b, sample_a, sample_b, settings,
         )
-        axes = np.atleast_1d(axes)
-        for axis, scale in zip(axes, settings.scales_bp):
-            frame = scale_plot_frame(region, track_a, track_b, bins_a, bins_b, scale, settings)
-            for point in frame.loc[frame["unavailable"], "start"]:
-                axis.axvspan(point, point + settings.resolution_bp, color="0.85", zorder=0)
-            axis.axvspan(region.region_start, region.region_end, color="#dbeafe", zorder=0)
-            axis.plot(frame.start, frame.a, color="#2563eb", lw=0.8, label="A")
-            axis.plot(frame.start, frame.b, color="#16a34a", lw=0.8, label="B")
-            axis.plot(frame.start, frame.b - frame.a, color="#6b21a8", lw=0.8, label="B-A")
-            for event in events.itertuples():
-                if event.is_change_type == "broad_shift":
-                    axis.axvspan(event.event_start, event.event_end, color="#dc2626", alpha=0.20)
-                elif pd.notna(event.summit):
-                    axis.axvline(event.summit, color="#dc2626", lw=1)
-            axis.set_ylabel(f"{scale // 1000} kb")
-            axis.grid(axis="y", alpha=0.2)
-        axes[0].legend(loc="upper right", ncol=3, fontsize=8)
-        axes[-1].set_xlabel(f"{region.chrom} coordinate (bp)")
-        figure.tight_layout()
+        output.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary = tempfile.mkstemp(
+            dir=output.parent, prefix=f".{output.name}.", suffix=".png"
+        )
+        os.close(descriptor)
         figure.savefig(temporary, dpi=140)
         os.replace(temporary, output)
     except BaseException:
-        Path(temporary).unlink(missing_ok=True)
+        if temporary is not None:
+            Path(temporary).unlink(missing_ok=True)
         raise
     finally:
         if figure is not None:
             plt.close(figure)
-
 
 def atomic_manifest(frame, path):
     target = Path(path)
@@ -230,6 +320,10 @@ def main():
     track_a, track_b = read_track(args.is_a, settings), read_track(args.is_b, settings)
     bins_a = read_balanced_bins(args.cool_a, settings.resolution_bp)
     bins_b = read_balanced_bins(args.cool_b, settings.resolution_bp)
+    coolers_a = open_coolers_by_chrom(args.cool_a, "sample A")
+    coolers_b = open_coolers_by_chrom(args.cool_b, "sample B")
+    sample_a = Path(args.is_a).stem.removesuffix("_IS")
+    sample_b = Path(args.is_b).stem.removesuffix("_IS")
     top = primary.assign(
         _support_band_count=primary["support_scale_bands"].fillna("").map(
             lambda bands: len({band.strip() for band in str(bands).split(",") if band.strip()})
@@ -255,7 +349,10 @@ def main():
         events = primary[primary.region_id == region_id]
         comparison = str(events.iloc[0].get("comparison", "comparison"))
         output = output_dir / f"{comparison}_region_{region_id}.png"
-        plot_region(region, events, track_a, track_b, bins_a, bins_b, settings, output)
+        plot_region(
+            region, events, track_a, track_b, bins_a, bins_b,
+            coolers_a, coolers_b, sample_a, sample_b, settings, output,
+        )
         manifest.append({"region_id": region_id, "chrom": region.chrom, "plot_path": str(output.resolve())})
     atomic_manifest(pd.DataFrame(manifest, columns=["region_id", "chrom", "plot_path"]), args.manifest)
 
