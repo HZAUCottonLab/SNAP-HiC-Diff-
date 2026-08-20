@@ -697,6 +697,45 @@ def test_recovery_adds_supported_peak_and_valley_at_global_prominence_cutoff(set
     assert peak["refinement_status"] == "recovered"
 
 
+def test_recovery_uses_one_comparison_wide_prominence_cutoff(settings):
+    settings.scales_bp = (32000, 120000, 212000)
+    tracks = recovery_tracks(
+        settings, {scale: [1.0, 1.0, 1.0] for scale in settings.scales_bp}
+    )
+
+    def residuals(prominences):
+        return pd.DataFrame(
+            [
+                {
+                    "chrom": "chr1",
+                    "coordinate": index * settings.resolution_bp,
+                    "plateau_start": index * settings.resolution_bp,
+                    "plateau_end": index * settings.resolution_bp,
+                    "direction": "peak",
+                    "segment_id": 0,
+                    "prominence": prominence,
+                    "left_flank_coordinate": np.nan,
+                    "right_flank_coordinate": np.nan,
+                }
+                for index, prominence in enumerate(prominences)
+            ]
+        )
+
+    weak, strong = residuals([1.0, 2.0, 3.0]), residuals([10.0, 20.0, 30.0])
+    recovered = recover_residual_events(
+        {"weak": weak, "strong": strong},
+        {"weak": tracks, "strong": tracks},
+        settings,
+    )
+
+    assert weak["prominence"].quantile(settings.high_percentile) < 3.0
+    assert pd.concat((weak, strong))["prominence"].quantile(
+        settings.high_percentile
+    ) > 3.0
+    assert recovered["weak"].empty
+    assert recovered["strong"]["summit"].tolist() == [8000]
+
+
 def test_recovery_rejects_single_band_low_amplitude_and_low_prominence_extrema(settings):
     settings.scales_bp = (32000, 60000, 120000)
     high = [0.0, -5.0, 5.0, -5.0, 0.0]

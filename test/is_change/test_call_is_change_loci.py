@@ -367,3 +367,78 @@ def test_caller_writes_recovered_residual_only_to_primary(tmp_path):
     assert row["is_change_type"] == f"recovered_{row['refinement_direction']}"
     assert len(row["refinement_support_scale_bands"].split(",")) >= 2
     assert not (preliminary["discovery_mode"] == "recovered").any()
+
+
+def test_caller_keeps_collision_lost_original_summit_occupied_for_recovery(monkeypatch):
+    sys.path.insert(0, str(REPO / "scripts"))
+    import call_is_change_loci as caller
+
+    settings = SimpleNamespace(
+        resolution_bp=4000,
+        scales_bp=(32000, 120000, 212000),
+        scale_bands={
+            "small": (32000,),
+            "medium": (120000,),
+            "large": (212000,),
+        },
+        min_primary_scale_bands=2,
+        high_percentile=0.95,
+    )
+    coordinates = np.arange(7) * settings.resolution_bp
+    tracks = {
+        scale: pd.DataFrame(
+            {
+                "chrom": "chr1",
+                "coordinate": coordinates,
+                "valid": True,
+                "z": [-1.0, -2.0, 1.0, 3.0, 3.0, -2.0, -1.0],
+                "amplitude_percentile": settings.high_percentile,
+            }
+        )
+        for scale in settings.scales_bp
+    }
+    strong = {
+        "chrom": "chr1", "event_start": 8000, "event_end": 12000, "summit": 8000,
+        "event_type": "transition", "confidence_tier": "primary",
+        "support_scale_bands": "small,medium", "support_scales": "32000,120000",
+        "n_supporting_scales": 2, "max_amplitude_percentile": 0.96,
+        "max_transition_percentile": 0.99, "max_pulse_percentile": 0.95,
+    }
+    dropped = {
+        **strong,
+        "event_start": 12000,
+        "event_end": 16000,
+        "summit": 12000,
+        "support_scale_bands": "small",
+        "support_scales": "32000",
+        "n_supporting_scales": 1,
+        "max_transition_percentile": 0.90,
+    }
+    clusters = pd.DataFrame([strong, dropped])
+    consensus = caller.build_consensus_track(tracks, settings)
+    assert (
+        caller.residual_extrema(consensus, {8000}, settings)["plateau_start"] == 12000
+    ).any()
+    captured = {}
+    recover = caller.recover_residual_events
+
+    def capture_residuals(residuals_by_region, *args):
+        captured.update(residuals_by_region)
+        return recover(residuals_by_region, *args)
+
+    monkeypatch.setattr(caller, "_event_rows_for_region", lambda *args: (clusters, [], tracks))
+    monkeypatch.setattr(caller, "recover_residual_events", capture_residuals)
+    regions = pd.DataFrame([
+        {"region_id": 1, "chrom": "chr1", "region_start": 0, "region_end": 28000}
+    ])
+
+    primary, preliminary, _ = caller.output_rows(
+        regions, settings, None, None, None, None, "A__vs__B"
+    )
+
+    assert primary["original_summit"].tolist() == [8000]
+    assert preliminary.empty
+    assert not (
+        captured[1]["plateau_start"].le(12000)
+        & captured[1]["plateau_end"].ge(12000)
+    ).any()
