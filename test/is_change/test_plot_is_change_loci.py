@@ -56,6 +56,22 @@ def region_row(start=320_000, end=324_000):
     )
 
 
+@pytest.fixture
+def recovered_primary_row():
+    return {
+        "comparison": "A__vs__B", "region_id": 1, "chrom": "chr1",
+        "event_start": 324_000, "event_end": 328_000, "summit": 324_000,
+        "is_change_type": "recovered_valley", "confidence_tier": "primary",
+        "support_scale_bands": "small,medium", "support_scales": "32000,120000",
+        "max_amplitude_percentile": 0.99, "max_transition_percentile": 0.99,
+        "max_pulse_percentile": 0.1, "broad_shift_length_bp": 0,
+        "mask_status": "clean", "coverage_state_summary": "clean", "rank_within_region": 1,
+        "discovery_mode": "recovered", "original_summit": 320_000,
+        "refinement_status": "recovered", "refinement_direction": "valley",
+        "refinement_support_scale_bands": "small,medium",
+    }
+
+
 def write_tracks(root, nan_weight_bin=None):
     starts = np.arange(160) * 4000
     rows_a, rows_b = [], []
@@ -163,6 +179,34 @@ def test_broad_event_has_vertical_and_horizontal_heatmap_bands(tmp_path):
 
     assert any(patch.get_alpha() == pytest.approx(0.22) for patch in heatmap_axes[0].patches)
     assert any(patch.get_alpha() == pytest.approx(0.22) for patch in heatmap_axes[1].patches)
+    plt.close(figure)
+
+
+def test_region_figure_marks_recovered_final_summit_not_original(tmp_path, recovered_primary_row):
+    final_summit = recovered_primary_row["summit"]
+    original_summit = recovered_primary_row["original_summit"]
+    inputs = plot_inputs(tmp_path, pd.DataFrame([recovered_primary_row]))
+
+    figure, heatmap_axes, is_axes = plotter.build_region_figure(
+        **inputs, sample_a="H1398", sample_b="L134"
+    )
+
+    def has_marker(axis, coordinate, value, color):
+        return any(
+            line.get_color() == color
+            and len(getattr(line, f"get_{coordinate}data")()) == 2
+            and np.allclose(getattr(line, f"get_{coordinate}data")(), [value] * 2)
+            for line in axis.lines
+        )
+
+    for axis in heatmap_axes:
+        assert has_marker(axis, "x", final_summit, "red")
+        assert has_marker(axis, "y", final_summit, "red")
+        assert not has_marker(axis, "x", original_summit, "red")
+        assert not has_marker(axis, "y", original_summit, "red")
+    for axis in is_axes:
+        assert has_marker(axis, "x", final_summit, "#dc2626")
+        assert not has_marker(axis, "x", original_summit, "#dc2626")
     plt.close(figure)
 
 
@@ -285,20 +329,12 @@ def test_balanced_contact_matrix_rejects_interval_beyond_chromosome(tmp_path):
 
 
 
-def test_plot_manifest_contains_existing_pngs(tmp_path):
+def test_plot_manifest_contains_existing_pngs(tmp_path, recovered_primary_row):
     config = write_config(tmp_path)
     write_tracks(tmp_path)
-    primary = pd.DataFrame([{
-        "comparison": "A__vs__B", "region_id": 1, "chrom": "chr1",
-        "event_start": 320000, "event_end": 324000, "summit": 320000,
-        "is_change_type": "transition", "confidence_tier": "primary",
-        "support_scale_bands": "small,medium", "support_scales": "32000,120000",
-        "max_amplitude_percentile": 0.99, "max_transition_percentile": 0.99,
-        "max_pulse_percentile": 0.1, "broad_shift_length_bp": 0,
-        "mask_status": "clean", "coverage_state_summary": "clean", "rank_within_region": 1,
-    }])
+    primary = pd.DataFrame([recovered_primary_row])
     primary.to_csv(tmp_path / "primary.tsv", sep="\t", index=False)
-    pd.DataFrame([{"region_id": 1, "chrom": "chr1", "region_start": 320000, "region_end": 324000}]).to_csv(
+    pd.DataFrame([{"region_id": 1, "chrom": "chr1", "region_start": 324000, "region_end": 328000}]).to_csv(
         tmp_path / "candidate_regions.tsv", sep="\t", index=False
     )
 
@@ -318,6 +354,29 @@ def test_plot_manifest_contains_existing_pngs(tmp_path):
     assert all(Path(path).is_file() for path in paths)
 
 
+
+def test_plotter_keeps_legacy_primary_columns_required_with_audit_fields(tmp_path, recovered_primary_row):
+    config = write_config(tmp_path)
+    pd.DataFrame([recovered_primary_row]).drop(columns="rank_within_region").to_csv(
+        tmp_path / "primary.tsv", sep="\t", index=False
+    )
+    pd.DataFrame([{"region_id": 1, "chrom": "chr1", "region_start": 324000, "region_end": 328000}]).to_csv(
+        tmp_path / "candidate_regions.tsv", sep="\t", index=False
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable, str(SCRIPT), "--primary", str(tmp_path / "primary.tsv"),
+            "--candidate-regions", str(tmp_path / "candidate_regions.tsv"),
+            "--is-a", "unused_a.tsv", "--is-b", "unused_b.tsv",
+            "--cool-a", "unused_a_iced.cool", "--cool-b", "unused_b_iced.cool",
+            "--config", str(config), "--outdir", str(tmp_path / "plots"),
+            "--manifest", str(tmp_path / "plots" / "manifest.tsv"),
+        ], text=True, capture_output=True, check=False,
+    )
+
+    assert result.returncode != 0
+    assert "rank_within_region" in result.stderr
 
 def test_plotter_prefers_three_band_primary_event_across_regions(tmp_path):
     config = write_config(tmp_path)

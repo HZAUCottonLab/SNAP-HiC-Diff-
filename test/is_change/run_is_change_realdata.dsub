@@ -12,7 +12,11 @@ export NUMEXPR_NUM_THREADS=1
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 MAIN_WORKTREE=/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff
 PYTHON="$MAIN_WORKTREE/.snakemake/conda/59271960b794774df1c934b1e7affef8_/bin/python"
-OUTDIR="$(mktemp -d "${TMPDIR:-/tmp}/is-change-realdata.XXXXXX")"
+TMP_ROOT=${TMPDIR:-/tmp}
+if [[ ! -d "$TMP_ROOT" ]]; then
+  TMP_ROOT=/tmp
+fi
+OUTDIR="$(mktemp -d "$TMP_ROOT/is-change-realdata.XXXXXX")"
 cd "$ROOT"
 "$PYTHON" scripts/build_is_change_candidates.py \
   --knn-enriched "$MAIN_WORKTREE/results/knn_empirical_pvalue/H1398_vs_L134/H1398_vs_L134_knn_enriched.tsv" \
@@ -31,3 +35,79 @@ grep -E 'Matched|Selected|end delta|Wrote' "$OUTDIR/candidates.log"
   --out-masked "$OUTDIR/masked.bed" --log "$OUTDIR/caller.log"
 wc -l "$OUTDIR/primary.tsv" "$OUTDIR/preliminary.tsv" "$OUTDIR/masked.bed"
 cat "$OUTDIR/caller.log"
+"$PYTHON" - "$OUTDIR/primary.tsv" "$OUTDIR/preliminary.tsv" <<'PY'
+import sys
+
+import numpy as np
+import pandas as pd
+
+AUDIT_COLUMNS = (
+    "discovery_mode",
+    "original_summit",
+    "refinement_status",
+    "refinement_direction",
+    "refinement_support_scale_bands",
+)
+
+
+def discovery_mode_counts(frame):
+    return frame["discovery_mode"].fillna("<NA>").value_counts().sort_index().to_dict()
+
+
+def points_are_aligned(frame, require_one_bin=True):
+    points = frame.loc[frame["is_change_type"].ne("broad_shift")]
+    if points.empty:
+        return True
+    coordinates = points[["event_start", "event_end", "summit"]].apply(
+        pd.to_numeric, errors="coerce"
+    )
+    values = coordinates.to_numpy(dtype=float)
+    return bool(
+        np.isfinite(values).all()
+        and np.equal(np.mod(values, 4000), 0).all()
+        and (
+            not require_one_bin
+            or np.equal(
+                coordinates["event_end"].to_numpy(dtype=float)
+                - coordinates["event_start"].to_numpy(dtype=float),
+                4000,
+            ).all()
+        )
+    )
+
+
+primary, preliminary = (
+    pd.read_csv(path, sep="\t") for path in sys.argv[1:]
+)
+for label, frame in (("primary", primary), ("preliminary", preliminary)):
+    missing = sorted(set(AUDIT_COLUMNS).difference(frame.columns))
+    if missing:
+        raise SystemExit(f"{label} missing audit columns: {', '.join(missing)}")
+
+all_points = pd.concat((primary, preliminary), ignore_index=True)
+refined_points = all_points.loc[all_points["discovery_mode"].eq("refined")]
+recovered_points = all_points.loc[all_points["discovery_mode"].eq("recovered")]
+original_points = all_points.loc[all_points["discovery_mode"].eq("original")]
+final_points = pd.concat((refined_points, recovered_points), ignore_index=True)
+final_points_aligned = points_are_aligned(final_points)
+original_aligned = points_are_aligned(original_points, require_one_bin=False)
+refined_aligned = points_are_aligned(refined_points)
+recovered_aligned = points_are_aligned(recovered_points)
+print(f"primary_discovery_mode_counts={discovery_mode_counts(primary)}")
+print(f"preliminary_discovery_mode_counts={discovery_mode_counts(preliminary)}")
+print(f"refined_point_alignment={str(refined_aligned).lower()}")
+print(f"recovered_point_alignment={str(recovered_aligned).lower()}")
+
+if not final_points_aligned:
+    raise SystemExit("non-broad final points must be 4 kb-aligned one-bin intervals")
+if not original_aligned:
+    raise SystemExit("original non-broad points must have 4 kb-aligned coordinates")
+if not refined_aligned:
+    raise SystemExit("refined final points must be 4 kb-aligned one-bin intervals")
+if not recovered_aligned:
+    raise SystemExit("recovered final points must be 4 kb-aligned one-bin intervals")
+if preliminary["discovery_mode"].eq("recovered").any() or not primary.loc[
+    primary["discovery_mode"].eq("recovered"), "confidence_tier"
+].eq("primary").all():
+    raise SystemExit("recovered rows must be primary")
+PY
