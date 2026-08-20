@@ -215,7 +215,7 @@ def test_balanced_contact_matrix_masks_unavailable_bins_and_uses_log1p(tmp_path)
     assert float(matrix.max()) == pytest.approx(np.log1p(20.0))
 
 
-def test_shared_contact_norm_uses_pooled_finite_995_percentile():
+def test_shared_contact_norm_uses_pooled_finite_2_to_98_percentiles_and_ylorrd():
     matrix_a = np.ma.masked_array(
         [[0.0, 1.0], [2.0, np.nan]], mask=[[False, False], [False, True]]
     )
@@ -223,8 +223,10 @@ def test_shared_contact_norm_uses_pooled_finite_995_percentile():
 
     norm = plotter.shared_contact_norm(matrix_a, matrix_b)
 
-    assert norm.vmin == 0.0
-    assert norm.vmax == pytest.approx(np.percentile([0, 1, 2, 3, 4, 5, 6], 99.5))
+    values = [0, 1, 2, 3, 4, 5, 6]
+    assert plotter.CONTACT_CMAP == "YlOrRd"
+    assert norm.vmin == pytest.approx(np.percentile(values, 2.0))
+    assert norm.vmax == pytest.approx(np.percentile(values, 98.0))
 
 
 def test_shared_contact_norm_uses_unit_range_for_all_zero_contacts():

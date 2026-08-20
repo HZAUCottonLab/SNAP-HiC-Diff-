@@ -67,8 +67,9 @@ def read_track(path, settings):
     track["IS"] = pd.to_numeric(track["IS"], errors="coerce")
     return track[["chrom", "start", "IS_distance", "IS"]]
 
-CONTACT_VMAX_PERCENTILE = 99.5
-CONTACT_CMAP = "magma"
+CONTACT_VMIN_PERCENTILE = 2.0
+CONTACT_VMAX_PERCENTILE = 98.0
+CONTACT_CMAP = "YlOrRd"
 HEATMAP_HEIGHT_RATIO = 2.8
 EVENT_COLOR = "red"
 EVENT_ALPHA = 0.22
@@ -161,10 +162,10 @@ def shared_contact_norm(matrix_a: np.ma.MaskedArray, matrix_b: np.ma.MaskedArray
     values = np.concatenate((matrix_a.compressed(), matrix_b.compressed()))
     if values.size == 0:
         raise ValueError("No finite balanced contacts are available for either sample")
-    vmax = float(np.percentile(values, CONTACT_VMAX_PERCENTILE))
-    if not np.isfinite(vmax) or vmax < 0.0:
+    vmin, vmax = np.percentile(values, (CONTACT_VMIN_PERCENTILE, CONTACT_VMAX_PERCENTILE))
+    if not np.isfinite(vmin) or not np.isfinite(vmax) or vmin < 0.0:
         raise ValueError("Shared Hi-C colour scale has no finite non-negative range")
-    return Normalize(vmin=0.0, vmax=1.0 if vmax == 0.0 else vmax, clip=True)
+    return Normalize(vmin=float(vmin), vmax=float(vmin + 1.0 if vmax <= vmin else vmax), clip=True)
 
 
 def scale_plot_frame(region, track_a, track_b, bins_a, bins_b, scale, settings, interval=None):
@@ -259,7 +260,7 @@ def build_region_figure(
     )
     image = draw_contact_heatmap(heatmap_a, matrix_a, start, end, sample_a, norm, events)
     draw_contact_heatmap(heatmap_b, matrix_b, start, end, sample_b, norm, events)
-    figure.colorbar(image, ax=(heatmap_a, heatmap_b), label="log1p(balanced contact)")
+    figure.colorbar(image, ax=(heatmap_a, heatmap_b), label="log1p(balanced contact; shared P2-P98)")
     for axis, scale in zip(is_axes, settings.scales_bp):
         frame = scale_plot_frame(
             region, track_a, track_b, bins_a, bins_b, scale, settings, interval=(start, end)
