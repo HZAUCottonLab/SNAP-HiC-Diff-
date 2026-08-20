@@ -1,0 +1,67 @@
+#!/bin/bash
+#DSUB -n is_change_a05_heatmap
+#DSUB -q arm
+#DSUB -aa
+#DSUB -R 'cpu=2'
+#DSUB -o logs/cluster/is_change_a05_heatmap_%J.out
+set -euo pipefail
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+MAIN_WORKTREE=/share/home/xhhuang24/project/PanTE/SNAP-HiC-Diff
+PYTHON="$MAIN_WORKTREE/.snakemake/conda/59271960b794774df1c934b1e7affef8_/bin/python"
+mkdir -p "$ROOT/tmp/is_change_a05_heatmap"
+OUTDIR="$(mktemp -d "$ROOT/tmp/is_change_a05_heatmap/run.XXXXXX")"
+printf 'A05 output directory: %s\n' "$OUTDIR"
+cd "$ROOT"
+
+"$PYTHON" scripts/build_is_change_candidates.py \
+  --knn-enriched "$MAIN_WORKTREE/results/knn_empirical_pvalue/H1398_vs_L134/H1398_vs_L134_knn_enriched.tsv" \
+  --meltron-merged "$MAIN_WORKTREE/results/meltron/H1398_vs_L134/H1398_vs_L134_meltron_merged.tsv" \
+  --config config/config.yaml \
+  --out "$OUTDIR/candidate_regions.tsv" \
+  --log "$OUTDIR/candidates.log"
+
+# candidate: region_id, chrom, region_start, region_end
+awk -F '\t' 'BEGIN {OFS="\t"} NR == 1 {print; next} $2 == "HC04_A05" && $3 < 71340000 && $4 > 71040000 {print}' \
+  "$OUTDIR/candidate_regions.tsv" > "$OUTDIR/a05_candidates.tsv"
+candidate_count="$(awk 'NR > 1 {count++} END {print count + 0}' "$OUTDIR/a05_candidates.tsv")"
+test "$candidate_count" -gt 0
+
+"$PYTHON" scripts/call_is_change_loci.py \
+  --candidate-regions "$OUTDIR/a05_candidates.tsv" \
+  --is-a "$MAIN_WORKTREE/results/IS/H1398/H1398_IS.tsv" \
+  --is-b "$MAIN_WORKTREE/results/IS/L134/L134_IS.tsv" \
+  --cool-a "$MAIN_WORKTREE"/results/balanced/H1398/*_iced.cool \
+  --cool-b "$MAIN_WORKTREE"/results/balanced/L134/*_iced.cool \
+  --config config/config.yaml \
+  --out-primary "$OUTDIR/a05_primary.tsv" \
+  --out-preliminary "$OUTDIR/a05_preliminary.tsv" \
+  --out-masked "$OUTDIR/a05_masked.bed" \
+  --log "$OUTDIR/a05_caller.log"
+primary_count="$(awk 'NR > 1 {count++} END {print count + 0}' "$OUTDIR/a05_primary.tsv")"
+test "$primary_count" -gt 0
+
+"$PYTHON" scripts/plot_is_change_loci.py \
+  --primary "$OUTDIR/a05_primary.tsv" \
+  --candidate-regions "$OUTDIR/a05_candidates.tsv" \
+  --is-a "$MAIN_WORKTREE/results/IS/H1398/H1398_IS.tsv" \
+  --is-b "$MAIN_WORKTREE/results/IS/L134/L134_IS.tsv" \
+  --cool-a "$MAIN_WORKTREE"/results/balanced/H1398/*_iced.cool \
+  --cool-b "$MAIN_WORKTREE"/results/balanced/L134/*_iced.cool \
+  --config config/config.yaml \
+  --outdir "$OUTDIR/plots" \
+  --manifest "$OUTDIR/plots/manifest.tsv"
+
+manifest_count="$(awk 'NR > 1 {count++} END {print count + 0}' "$OUTDIR/plots/manifest.tsv")"
+test "$manifest_count" -gt 0
+awk -F '\t' 'NR > 1 {print $3}' "$OUTDIR/plots/manifest.tsv" | while IFS= read -r png; do
+  test -s "$png"
+done
+
+printf 'A05 candidate rows: %s\n' "$candidate_count"
+printf 'A05 primary rows: %s\n' "$primary_count"
+cat "$OUTDIR/plots/manifest.tsv"
