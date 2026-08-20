@@ -58,6 +58,8 @@ def build_consensus_track(score_tracks: dict[int, pd.DataFrame], settings) -> pd
     if any(required.difference(track.columns) for track in tracks):
         raise ValueError("score tracks must contain chrom, coordinate, valid, and z")
     reference = tracks[0]
+    if reference["chrom"].nunique(dropna=False) != 1:
+        raise ValueError("score tracks must describe one chromosome")
     if any(
         not reference["chrom"].equals(track["chrom"])
         or not reference["coordinate"].equals(track["coordinate"])
@@ -163,29 +165,22 @@ def local_consensus_extrema(consensus: pd.DataFrame, settings) -> pd.DataFrame:
                 )
         start = end + 1
 
-    for index, record in enumerate(records):
-        left = next(
-            (
-                candidate
-                for candidate in reversed(records[:index])
-                if candidate["segment_id"] == record["segment_id"]
-                and candidate["direction"] != record["direction"]
-            ),
-            None,
-        )
-        right = next(
-            (
-                candidate
-                for candidate in records[index + 1 :]
-                if candidate["segment_id"] == record["segment_id"]
-                and candidate["direction"] != record["direction"]
-            ),
-            None,
-        )
+    left_flanks = {}
+    for record in records:
+        opposite = "valley" if record["direction"] == "peak" else "peak"
+        left = left_flanks.get((record["segment_id"], opposite))
+        record["_left"] = left
         if left is not None:
             record["left_flank_coordinate"] = left["coordinate"]
+        left_flanks[(record["segment_id"], record["direction"])] = record
+
+    right_flanks = {}
+    for record in reversed(records):
+        opposite = "valley" if record["direction"] == "peak" else "peak"
+        right = right_flanks.get((record["segment_id"], opposite))
         if right is not None:
             record["right_flank_coordinate"] = right["coordinate"]
+        left = record["_left"]
         if left is not None and right is not None:
             drops = (
                 (record["_z"] - left["_z"], record["_z"] - right["_z"])
@@ -193,6 +188,7 @@ def local_consensus_extrema(consensus: pd.DataFrame, settings) -> pd.DataFrame:
                 else (left["_z"] - record["_z"], right["_z"] - record["_z"])
             )
             record["prominence"] = min(drops)
+        right_flanks[(record["segment_id"], record["direction"])] = record
 
     return pd.DataFrame(records, columns=EXTREMUM_COLUMNS)
 

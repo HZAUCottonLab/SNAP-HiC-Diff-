@@ -149,6 +149,23 @@ def test_consensus_median_uses_signed_z_and_common_valid_segments(settings):
     assert pd.isna(consensus["segment_id"].iloc[1])
 
 
+def test_consensus_rejects_adjacent_chromosome_transition(settings):
+    settings.scales_bp = (32000, 120000, 212000)
+    tracks = aligned_score_tracks(
+        settings,
+        {
+            32000: [-1.0, 3.0, -1.0],
+            120000: [-1.0, 3.0, -1.0],
+            212000: [-1.0, 3.0, -1.0],
+        },
+    )
+    for track in tracks.values():
+        track.loc[1:, "chrom"] = "chr2"
+
+    with pytest.raises(ValueError, match="one chromosome"):
+        is_change_detection.build_consensus_track(tracks, settings)
+
+
 def test_plateau_aware_extrema_emit_one_peak_and_valley_with_prominence(settings):
     # A valley, two-bin peak plateau, and valley expose limiting-flank prominence.
     consensus = pd.DataFrame(
@@ -177,6 +194,10 @@ def test_plateau_aware_extrema_emit_one_peak_and_valley_with_prominence(settings
     assert peak["prominence"] == 4.0
     assert valley["direction"] == "valley"
     assert valley["prominence"] == 5.0
+    assert valley[["left_flank_coordinate", "right_flank_coordinate"]].to_dict() == {
+        "left_flank_coordinate": 4000,
+        "right_flank_coordinate": 12000,
+    }
 
 
 def test_segment_edges_and_invalid_gaps_have_no_recovery_prominence(settings):
