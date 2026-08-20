@@ -149,6 +149,23 @@ def write_all_scale_is_tracks(root, n_bins=160):
     return a_path, b_path
 
 
+def write_recovery_is_tracks(root, n_bins=160):
+    starts = np.arange(n_bins) * 4000
+    rows_a, rows_b = [], []
+    for scale in SCALES:
+        delta = np.tile(np.array([-0.2, 0.2]), n_bins // 2)
+        for start in range(20, 80, 6):
+            delta[start : start + 6] = [0.0, -20.0, 0.1, 0.1, -20.0, 0.0]
+        delta[88:96] = [0.0, 2.0, -3.0, 3.0, 3.0, -3.0, 2.0, 0.0]
+        rows_a.extend(("chr1", start, scale, 0.0) for start in starts)
+        rows_b.extend(("chr1", start, scale, value) for start, value in zip(starts, delta))
+    columns = ["chrom", "viewpoint", "IS_distance", "IS"]
+    a_path, b_path = root / "is_a.tsv", root / "is_b.tsv"
+    pd.DataFrame(rows_a, columns=columns).to_csv(a_path, sep="\t", index=False)
+    pd.DataFrame(rows_b, columns=columns).to_csv(b_path, sep="\t", index=False)
+    return a_path, b_path
+
+
 def write_candidate_regions(root, rows):
     path = root / "candidate_regions.tsv"
     pd.DataFrame(rows, columns=["region_id", "chrom", "region_start", "region_end"]).to_csv(
@@ -324,3 +341,29 @@ def test_caller_serializes_refinement_provenance_without_changing_stage_one_fiel
     assert unchanged[["confidence_tier", "support_scale_bands", "support_scales", "refinement_status"]].tolist() == [
         "single_band_preliminary", "small", "32000", "unchanged"
     ]
+
+
+def test_caller_writes_recovered_residual_only_to_primary(tmp_path):
+    config = write_config(tmp_path)
+    cool_a, cool_b = make_balanced_coolers(tmp_path, [1.0] * 160, [1.0] * 160)
+    write_recovery_is_tracks(tmp_path)
+    regions = write_candidate_regions(
+        tmp_path, [(1, "chr1", 0, 32000), (2, "chr1", 320000, 448000)]
+    )
+
+    result = run_caller(tmp_path, config, cool_a, cool_b, regions)
+
+    assert result.returncode == 0, result.stderr
+    primary = pd.read_csv(tmp_path / "primary.tsv", sep="\t")
+    preliminary = pd.read_csv(tmp_path / "preliminary.tsv", sep="\t")
+    recovered = primary.loc[primary["discovery_mode"] == "recovered"]
+    assert not recovered.empty
+    row = recovered.iloc[0]
+    assert row[["confidence_tier", "refinement_status"]].tolist() == ["primary", "recovered"]
+    assert pd.isna(row["original_summit"])
+    assert row["event_end"] - row["event_start"] == 4000
+    assert row["is_change_type"] in {"recovered_peak", "recovered_valley"}
+    assert row["refinement_direction"] in {"peak", "valley"}
+    assert row["is_change_type"] == f"recovered_{row['refinement_direction']}"
+    assert len(row["refinement_support_scale_bands"].split(",")) >= 2
+    assert not (preliminary["discovery_mode"] == "recovered").any()

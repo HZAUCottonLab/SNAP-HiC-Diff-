@@ -388,24 +388,149 @@ def refine_point_clusters(clusters, consensus, extrema, score_tracks, settings):
     for indices in collisions.values():
         if len(indices) < 2 or not (refined.loc[indices, "refinement_status"] == "refined").any():
             continue
-
-        def evidence_key(index):
-            row = refined.loc[index]
-            band_count = len(set(filter(None, str(row["support_scale_bands"]).split(","))))
-            scores = [
-                row["max_transition_percentile"],
-                row["max_pulse_percentile"],
-                row["max_amplitude_percentile"],
-            ]
-            return (
-                -band_count,
-                *(-float(score) if np.isfinite(score) else np.inf for score in scores),
-                row["original_summit"] if pd.notna(row["original_summit"]) else row["summit"],
-            )
-
-        winner = min(indices, key=evidence_key)
+        winner = min(indices, key=lambda index: _evidence_key(refined.loc[index]))
         keep.difference_update(set(indices) - {winner})
     return refined.loc[sorted(keep)].reset_index(drop=True)
+
+
+def _evidence_key(row):
+    band_count = len(set(filter(None, str(row["support_scale_bands"]).split(","))))
+    scores = [
+        row["max_transition_percentile"],
+        row["max_pulse_percentile"],
+        row["max_amplitude_percentile"],
+    ]
+    return (
+        -band_count,
+        *(-float(score) if np.isfinite(score) else np.inf for score in scores),
+        row["original_summit"] if pd.notna(row["original_summit"]) else row["summit"],
+    )
+
+
+def residual_extrema(consensus: pd.DataFrame, occupied_coordinates: set[int], settings) -> pd.DataFrame:
+    """Return finite-prominence consensus extrema not occupied by point calls."""
+    residuals = local_consensus_extrema(consensus, settings)
+    prominence = pd.to_numeric(residuals["prominence"], errors="coerce")
+    eligible = np.isfinite(prominence) & prominence.ge(0)
+    for coordinate in occupied_coordinates:
+        eligible &= ~(
+            residuals["plateau_start"].le(coordinate)
+            & residuals["plateau_end"].ge(coordinate)
+        )
+    residuals = residuals.loc[eligible].copy()
+    for index, extremum in residuals.iterrows():
+        members = consensus.loc[
+            consensus["coordinate"].between(
+                extremum["plateau_start"], extremum["plateau_end"]
+            )
+        ]
+        coordinate = min(
+            members.itertuples(),
+            key=lambda member: (-abs(member.consensus_z), member.coordinate),
+        ).coordinate
+        residuals.at[index, "coordinate"] = coordinate
+    return residuals.reset_index(drop=True)
+
+
+def recover_residual_events(
+    residuals_by_region, score_tracks_by_region, settings
+) -> dict[object, pd.DataFrame]:
+    """Recover high-prominence, high-amplitude extrema across candidate cores."""
+    recovered = {region_id: [] for region_id in residuals_by_region}
+    pool = []
+    for region_id, residuals in residuals_by_region.items():
+        if residuals.empty:
+            continue
+        for residual in residuals.to_dict("records"):
+            residual["_region_id"] = region_id
+            pool.append(residual)
+    if not pool:
+        return {
+            region_id: pd.DataFrame(columns=_CLUSTER_COLUMNS + _REFINEMENT_COLUMNS)
+            for region_id in recovered
+        }
+
+    prominence_cutoff = pd.DataFrame(pool)["prominence"].quantile(
+        settings.high_percentile
+    )
+    candidates = []
+    for residual in pool:
+        if residual["prominence"] < prominence_cutoff:
+            continue
+        region_id = residual["_region_id"]
+        if region_id not in score_tracks_by_region:
+            continue
+        coordinate = int(residual["coordinate"])
+        direction = residual["direction"]
+        bands, scales = directional_support(
+            score_tracks_by_region[region_id],
+            coordinate,
+            direction,
+            settings,
+            require_high_amplitude=True,
+        )
+        if len(bands) < settings.min_primary_scale_bands:
+            continue
+        evidence = {}
+        for column in (
+            "amplitude_percentile",
+            "transition_percentile",
+            "pulse_percentile",
+        ):
+            evidence[f"max_{column}"] = _finite_max(
+                [
+                    track.loc[track["coordinate"] == coordinate, column].iloc[0]
+                    if column in track and not track.loc[track["coordinate"] == coordinate].empty
+                    else np.nan
+                    for scale, track in score_tracks_by_region[region_id].items()
+                    if scale in scales
+                ]
+            )
+        candidates.append(
+            {
+                "chrom": residual["chrom"],
+                "event_type": "recovered_peak" if direction == "peak" else "recovered_valley",
+                "event_start": coordinate,
+                "event_end": coordinate + settings.resolution_bp,
+                "summit": coordinate,
+                "confidence_tier": "primary",
+                "support_scale_bands": ",".join(bands),
+                "support_scales": ",".join(map(str, scales)),
+                "n_supporting_scales": len(scales),
+                "max_amplitude_percentile": evidence["max_amplitude_percentile"],
+                "max_transition_percentile": evidence["max_transition_percentile"],
+                "max_pulse_percentile": evidence["max_pulse_percentile"],
+                "discovery_mode": "recovered",
+                "original_summit": np.nan,
+                "refinement_status": "recovered",
+                "refinement_direction": direction,
+                "refinement_support_scale_bands": ",".join(bands),
+                "_region_id": region_id,
+                "_plateau_key": (
+                    residual["chrom"],
+                    direction,
+                    residual["segment_id"],
+                    residual["plateau_start"],
+                    residual["plateau_end"],
+                ),
+            }
+        )
+
+    winners = {}
+    for candidate in candidates:
+        key = candidate["_plateau_key"]
+        if key not in winners or (
+            _evidence_key(candidate), str(candidate["_region_id"])
+        ) < (
+            _evidence_key(winners[key]), str(winners[key]["_region_id"])
+        ):
+            winners[key] = candidate
+    for candidate in winners.values():
+        recovered[candidate["_region_id"]].append(candidate)
+    return {
+        region_id: pd.DataFrame(records, columns=_CLUSTER_COLUMNS + _REFINEMENT_COLUMNS)
+        for region_id, records in recovered.items()
+    }
 
 
 def build_valid_mask(is_a, is_b, balanced_a, balanced_b):

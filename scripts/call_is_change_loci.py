@@ -19,6 +19,8 @@ from is_change_detection import (
     cluster_multiscale_events,
     local_consensus_extrema,
     refine_point_clusters,
+    recover_residual_events,
+    residual_extrema,
     score_scale,
 )
 
@@ -221,16 +223,29 @@ def output_rows(regions, settings, track_a, track_b, bins_a, bins_b, comparison)
         masks.extend(region_masks)
         analyses.append((region, clusters, region_masks, core_score_tracks))
 
+    residuals_by_region, score_tracks_by_region, refined_analyses = {}, {}, []
     for region, clusters, region_masks, core_score_tracks in analyses:
+        region_id = region["region_id"]
+        initial_summits = set(
+            clusters.loc[
+                clusters["event_type"].ne("broad_shift"), "summit"
+            ].dropna().astype(int)
+        )
         if core_score_tracks:
             consensus = build_consensus_track(core_score_tracks, settings)
+            extrema = local_consensus_extrema(consensus, settings)
             clusters = refine_point_clusters(
-                clusters,
-                consensus,
-                local_consensus_extrema(consensus, settings),
-                core_score_tracks,
-                settings,
+                clusters, consensus, extrema, core_score_tracks, settings
             )
+            final_summits = set(
+                clusters.loc[
+                    clusters["event_type"].ne("broad_shift"), "summit"
+                ].dropna().astype(int)
+            )
+            residuals_by_region[region_id] = residual_extrema(
+                consensus, initial_summits | final_summits, settings
+            )
+            score_tracks_by_region[region_id] = core_score_tracks
         else:
             clusters = clusters.copy()
             broad = clusters["event_type"].eq("broad_shift")
@@ -239,6 +254,16 @@ def output_rows(regions, settings, track_a, track_b, bins_a, bins_b, comparison)
             clusters["refinement_status"] = "unchanged"
             clusters["refinement_direction"] = np.nan
             clusters["refinement_support_scale_bands"] = ""
+            residuals_by_region[region_id] = pd.DataFrame()
+        refined_analyses.append((region, clusters, region_masks))
+
+    recovered_by_region = recover_residual_events(
+        residuals_by_region, score_tracks_by_region, settings
+    )
+    for region, clusters, region_masks in refined_analyses:
+        recovered = recovered_by_region[region["region_id"]]
+        if not recovered.empty:
+            clusters = pd.concat((clusters, recovered), ignore_index=True)
         summary = _coverage_summary(region, region_masks)
         for _, cluster in clusters.iterrows():
             row = {
@@ -278,7 +303,6 @@ def output_rows(regions, settings, track_a, track_b, bins_a, bins_b, comparison)
         return frame.drop(columns="_support_band_count")
     masked = pd.DataFrame(sorted(set(masks)), columns=MASK_COLUMNS)
     return finish(primary), finish(preliminary), masked
-
 
 def atomic_write(primary, preliminary, masked, paths):
     tables = ((primary, paths[0], True), (preliminary, paths[1], True), (masked, paths[2], False))

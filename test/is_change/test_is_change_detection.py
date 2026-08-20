@@ -16,6 +16,8 @@ from is_change_detection import (
     classify_scale_events,
     cluster_multiscale_events,
     refine_point_clusters,
+    recover_residual_events,
+    residual_extrema,
     score_scale,
 )
 
@@ -649,3 +651,153 @@ def test_refinement_collision_keeps_stronger_multiband_event(settings):
     assert row[["summit", "original_summit", "support_scale_bands"]].tolist() == [
         8000, 8000, "small,medium"
     ]
+
+
+def recovery_tracks(settings, z_by_scale, amplitude_by_scale=None, evidence=0.95):
+    tracks = aligned_score_tracks(
+        settings, z_by_scale, amplitude=amplitude_by_scale
+    )
+    for track in tracks.values():
+        track["transition_percentile"] = evidence
+        track["pulse_percentile"] = evidence
+    return tracks
+
+
+def test_recovery_adds_supported_peak_and_valley_at_global_prominence_cutoff(settings):
+    settings.scales_bp = (32000, 120000, 212000)
+    peak_tracks = recovery_tracks(
+        settings, {scale: [0.0, -5.0, 5.0, -5.0, 0.0] for scale in settings.scales_bp}
+    )
+    valley_tracks = recovery_tracks(
+        settings, {scale: [0.0, 5.0, -5.0, 5.0, 0.0] for scale in settings.scales_bp}
+    )
+    peak_consensus, _ = consensus_and_extrema(peak_tracks, settings)
+    valley_consensus, _ = consensus_and_extrema(valley_tracks, settings)
+
+    recovered = recover_residual_events(
+        {
+            "peak": residual_extrema(peak_consensus, set(), settings),
+            "valley": residual_extrema(valley_consensus, set(), settings),
+        },
+        {"peak": peak_tracks, "valley": valley_tracks},
+        settings,
+    )
+
+    peak = recovered["peak"].iloc[0]
+    valley = recovered["valley"].iloc[0]
+    assert peak[["event_type", "event_start", "event_end", "summit"]].tolist() == [
+        "recovered_peak", 8000, 12000, 8000
+    ]
+    assert valley[["event_type", "event_start", "event_end", "summit"]].tolist() == [
+        "recovered_valley", 8000, 12000, 8000
+    ]
+    assert peak["confidence_tier"] == valley["confidence_tier"] == "primary"
+    assert peak["refinement_support_scale_bands"] == "small,medium,large"
+    assert pd.isna(peak["original_summit"])
+    assert peak["refinement_status"] == "recovered"
+
+
+def test_recovery_rejects_single_band_low_amplitude_and_low_prominence_extrema(settings):
+    settings.scales_bp = (32000, 60000, 120000)
+    high = [0.0, -5.0, 5.0, -5.0, 0.0]
+    low = [0.0, -2.0, 2.0, -2.0, 0.0]
+    single_band = recovery_tracks(
+        settings,
+        {32000: high, 60000: high, 120000: [-0.1 * value for value in high]},
+    )
+    low_amplitude = recovery_tracks(
+        settings,
+        {scale: high for scale in settings.scales_bp},
+        {scale: np.full(len(high), settings.high_percentile - 0.01) for scale in settings.scales_bp},
+    )
+    low_prominence = recovery_tracks(
+        settings, {scale: low for scale in settings.scales_bp}
+    )
+    consensuses = {
+        name: consensus_and_extrema(tracks, settings)[0]
+        for name, tracks in {
+            "single_band": single_band,
+            "low_amplitude": low_amplitude,
+            "low_prominence": low_prominence,
+        }.items()
+    }
+
+    recovered = recover_residual_events(
+        {name: residual_extrema(consensus, set(), settings) for name, consensus in consensuses.items()},
+        {
+            "single_band": single_band,
+            "low_amplitude": low_amplitude,
+            "low_prominence": low_prominence,
+        },
+        settings,
+    )
+
+    assert all(events.empty for events in recovered.values())
+
+
+def test_recovery_excludes_initial_final_occupied_plateaus_and_invalid_bins(settings):
+    settings.scales_bp = (32000, 120000, 212000)
+    consensus = pd.DataFrame(
+        {
+            "chrom": "chr1",
+            "coordinate": np.arange(12) * settings.resolution_bp,
+            "consensus_z": [0.0, 5.0, -5.0, 4.0, 4.0, -5.0, 5.0, 0.0, np.nan, 0.0, 4.0, -4.0],
+            "valid": [True] * 8 + [False] + [True] * 3,
+            "segment_id": [0.0] * 8 + [np.nan] + [1.0] * 3,
+        }
+    )
+
+    residuals = residual_extrema(consensus, {12000, 16000}, settings)
+
+    assert not (
+        residuals["plateau_start"].le(12000)
+        & residuals["plateau_end"].ge(12000)
+    ).any()
+    assert not (
+        residuals["plateau_start"].le(16000)
+        & residuals["plateau_end"].ge(16000)
+    ).any()
+    assert (residuals["plateau_end"] < 32000).all()
+    assert np.isfinite(residuals["prominence"]).all()
+    assert (residuals["prominence"] >= 0).all()
+
+
+def test_recovery_never_uses_context_or_segment_edge_extrema(settings):
+    settings.scales_bp = (32000, 120000, 212000)
+    consensus = pd.DataFrame(
+        {
+            "chrom": "chr1",
+            "coordinate": np.arange(9) * settings.resolution_bp,
+            "consensus_z": [5.0, -3.0, 3.0, -3.0, 5.0, np.nan, 5.0, -3.0, 5.0],
+            "valid": [True] * 5 + [False] + [True] * 3,
+            "segment_id": [0.0] * 5 + [np.nan] + [1.0] * 3,
+        }
+    )
+
+    residuals = residual_extrema(consensus, set(), settings)
+
+    assert residuals[["plateau_start", "plateau_end"]].to_dict("records") == [
+        {"plateau_start": 8000, "plateau_end": 8000}
+    ]
+
+
+def test_recovery_collapses_duplicate_plateau_rows_by_evidence(settings):
+    settings.scales_bp = (32000, 120000, 212000)
+    z = [0.0, -5.0, 5.0, -5.0, 0.0]
+    weaker = recovery_tracks(
+        settings, {scale: z for scale in settings.scales_bp}, evidence=0.95
+    )
+    stronger = recovery_tracks(
+        settings, {scale: z for scale in settings.scales_bp}, evidence=0.99
+    )
+    consensus, _ = consensus_and_extrema(weaker, settings)
+    residuals = residual_extrema(consensus, set(), settings)
+
+    recovered = recover_residual_events(
+        {"weaker": residuals, "stronger": residuals.copy()},
+        {"weaker": weaker, "stronger": stronger},
+        settings,
+    )
+
+    assert recovered["weaker"].empty
+    assert recovered["stronger"]["max_transition_percentile"].tolist() == [0.99]
