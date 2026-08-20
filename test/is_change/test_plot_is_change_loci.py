@@ -7,11 +7,14 @@ import pandas as pd
 import yaml
 import pytest
 import cooler
+import matplotlib.pyplot as plt
 
 
 REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "scripts" / "plot_is_change_loci.py"
 SCALES = (32000, 60000, 92000, 120000, 152000, 180000, 212000, 240000, 272000, 300000)
+sys.path.insert(0, str(REPO / "scripts"))
+import plot_is_change_loci as plotter
 
 
 def write_config(root):
@@ -40,7 +43,20 @@ def write_config(root):
     return path
 
 
-def write_tracks(root):
+def settings_from_config(path):
+    config = yaml.safe_load(path.read_text())
+    return plotter.parse_is_change_settings(
+        config, plotter.parse_cworld_is_settings(config)
+    )
+
+
+def region_row(start=320_000, end=324_000):
+    return pd.Series(
+        {"region_id": 1, "chrom": "chr1", "region_start": start, "region_end": end}
+    )
+
+
+def write_tracks(root, nan_weight_bin=None):
     starts = np.arange(160) * 4000
     rows_a, rows_b = [], []
     for scale in SCALES:
@@ -52,9 +68,60 @@ def write_tracks(root):
     for name, rows in (("is_a.tsv", rows_a), ("is_b.tsv", rows_b)):
         pd.DataFrame(rows, columns=columns).to_csv(root / name, sep="\t", index=False)
     bins = pd.DataFrame({"chrom": "chr1", "start": starts, "end": starts + 4000, "weight": 1.0})
-    pixels = pd.DataFrame({"bin1_id": np.arange(len(bins)), "bin2_id": np.arange(len(bins)), "count": 1})
-    for name in ("a.cool", "b.cool"):
-        cooler.create_cooler(str(root / name), bins, pixels, ordered=True)
+    if nan_weight_bin is not None:
+        bins.loc[nan_weight_bin, "weight"] = np.nan
+    diagonal = pd.DataFrame({"bin1_id": np.arange(len(bins)), "bin2_id": np.arange(len(bins)), "count": 20})
+    adjacent = pd.DataFrame({"bin1_id": np.arange(len(bins) - 1), "bin2_id": np.arange(1, len(bins)), "count": 10})
+    pixels_a = pd.concat((diagonal, adjacent), ignore_index=True)
+    pixels_b = pixels_a.copy()
+    pixels_b.loc[pixels_b.bin1_id + 1 == pixels_b.bin2_id, "count"] = 5
+    cooler.create_cooler(str(root / "a.cool"), bins, pixels_a, ordered=True)
+    cooler.create_cooler(str(root / "b.cool"), bins, pixels_b, ordered=True)
+    return {
+        "is_a": root / "is_a.tsv", "is_b": root / "is_b.tsv",
+        "cool_a": root / "a.cool", "cool_b": root / "b.cool",
+    }
+
+def test_plot_interval_is_4kb_aligned_and_shared_by_all_panels(tmp_path):
+    settings = settings_from_config(write_config(tmp_path))
+    region = region_row()
+
+    start, end = plotter.plot_interval(region, settings)
+
+    assert start == 20_000
+    assert end == 624_000
+    assert (start % 4_000, end % 4_000) == (0, 0)
+
+
+def test_balanced_contact_matrix_masks_unavailable_bins_and_uses_log1p(tmp_path):
+    paths = write_tracks(tmp_path, nan_weight_bin=10)
+    coolers = plotter.open_coolers_by_chrom([str(paths["cool_a"])], "sample A")
+
+    matrix = plotter.load_log_contact_matrix(coolers, "chr1", 0, 640_000, "sample A")
+
+    assert np.ma.isMaskedArray(matrix)
+    assert np.ma.getmaskarray(matrix)[10].all()
+    assert float(matrix.max()) == pytest.approx(np.log1p(20.0))
+
+
+def test_shared_contact_norm_uses_pooled_finite_995_percentile():
+    matrix_a = np.ma.masked_array(
+        [[0.0, 1.0], [2.0, np.nan]], mask=[[False, False], [False, True]]
+    )
+    matrix_b = np.ma.masked_array([[3.0, 4.0], [5.0, 6.0]])
+
+    norm = plotter.shared_contact_norm(matrix_a, matrix_b)
+
+    assert norm.vmin == 0.0
+    assert norm.vmax == pytest.approx(np.percentile([0, 1, 2, 3, 4, 5, 6], 99.5))
+
+
+def test_balanced_contact_matrix_rejects_interval_beyond_chromosome(tmp_path):
+    paths = write_tracks(tmp_path)
+    coolers = plotter.open_coolers_by_chrom([str(paths["cool_a"])], "sample A")
+
+    with pytest.raises(ValueError, match="invalid plotting interval"):
+        plotter.load_log_contact_matrix(coolers, "chr1", 0, 644_000, "sample A")
 
 
 

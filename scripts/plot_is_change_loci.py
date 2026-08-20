@@ -5,17 +5,23 @@ import argparse
 import os
 from pathlib import Path
 import tempfile
+from typing import Mapping, Sequence
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
+from matplotlib.colors import Normalize
+from matplotlib.figure import Figure
+from matplotlib.image import AxesImage
 import numpy as np
 import pandas as pd
 import yaml
+import cooler
 
 from cworld_is_config import parse_cworld_is_settings
 from call_is_change_loci import read_balanced_bins
-from is_change_config import parse_is_change_settings
+from is_change_config import ISChangeSettings, parse_is_change_settings
 
 
 def parse_args():
@@ -61,10 +67,69 @@ def read_track(path, settings):
     track["IS"] = pd.to_numeric(track["IS"], errors="coerce")
     return track[["chrom", "start", "IS_distance", "IS"]]
 
+CONTACT_VMAX_PERCENTILE = 99.5
+
+
+def plot_interval(region: pd.Series, settings: ISChangeSettings) -> tuple[int, int]:
+    """Return the common, resolution-aligned genomic extent for one region."""
+    resolution = settings.resolution_bp
+    context = settings.context_bp
+    start = max(0, ((int(region.region_start) - context) // resolution) * resolution)
+    end = ((int(region.region_end) + context + resolution - 1) // resolution) * resolution
+    return start, end
+
+
+def open_coolers_by_chrom(paths: Sequence[str], sample_label: str) -> dict[str, cooler.Cooler]:
+    """Open each supplied iced cooler once and index it by the chromosomes it contains."""
+    by_chrom: dict[str, cooler.Cooler] = {}
+    for path in paths:
+        handle = cooler.Cooler(path)
+        for chrom in handle.chromnames:
+            if chrom in by_chrom:
+                raise ValueError(f"{sample_label}: duplicate cooler for chromosome {chrom}")
+            by_chrom[chrom] = handle
+    if not by_chrom:
+        raise ValueError(f"{sample_label}: no chromosomes found in supplied coolers")
+    return by_chrom
+
+
+def load_log_contact_matrix(
+    coolers_by_chrom: Mapping[str, cooler.Cooler],
+    chrom: str,
+    start: int,
+    end: int,
+    sample_label: str,
+) -> np.ma.MaskedArray:
+    """Fetch one balanced cis matrix, retaining unavailable values as a mask."""
+    if chrom not in coolers_by_chrom:
+        raise ValueError(f"{sample_label}: no iced cooler is available for {chrom}")
+    handle = coolers_by_chrom[chrom]
+    if start < 0 or end <= start or end > int(handle.chromsizes[chrom]):
+        raise ValueError(f"{sample_label}: invalid plotting interval {chrom}:{start}-{end}")
+    raw = np.asarray(handle.matrix(balance=True).fetch(f"{chrom}:{start}-{end}"))
+    finite = np.isfinite(raw)
+    if np.any(raw[finite] < 0):
+        raise ValueError(f"{sample_label}: balanced contacts contain finite negative values in {chrom}:{start}-{end}")
+    if not finite.any():
+        raise ValueError(f"{sample_label}: no finite balanced contacts in {chrom}:{start}-{end}")
+    transformed = np.zeros(raw.shape, dtype=float)
+    transformed[finite] = np.log1p(raw[finite])
+    return np.ma.masked_array(transformed, mask=~finite)
+
+
+def shared_contact_norm(matrix_a: np.ma.MaskedArray, matrix_b: np.ma.MaskedArray) -> Normalize:
+    """Create the single linear colour normalisation used by both heatmaps."""
+    values = np.concatenate((matrix_a.compressed(), matrix_b.compressed()))
+    if values.size == 0:
+        raise ValueError("No finite balanced contacts are available for either sample")
+    vmax = float(np.percentile(values, CONTACT_VMAX_PERCENTILE))
+    if not np.isfinite(vmax) or vmax <= 0.0:
+        raise ValueError("Shared Hi-C colour scale has no positive finite range")
+    return Normalize(vmin=0.0, vmax=vmax, clip=True)
+
 
 def scale_plot_frame(region, track_a, track_b, bins_a, bins_b, scale, settings):
-    start = max(0, ((int(region.region_start) - settings.context_bp) // settings.resolution_bp) * settings.resolution_bp)
-    end = ((int(region.region_end) + settings.context_bp + settings.resolution_bp - 1) // settings.resolution_bp) * settings.resolution_bp
+    start, end = plot_interval(region, settings)
     a = track_a[(track_a.chrom == region.chrom) & (track_a.IS_distance == scale) & track_a.start.between(start, end - settings.resolution_bp)]
     b = track_b[(track_b.chrom == region.chrom) & (track_b.IS_distance == scale) & track_b.start.between(start, end - settings.resolution_bp)]
     frame = pd.DataFrame({"chrom": region.chrom, "start": np.arange(start, end, settings.resolution_bp)})
@@ -95,8 +160,6 @@ def plot_region(region, events, track_a, track_b, bins_a, bins_b, settings, outp
     os.close(descriptor)
     figure = None
     try:
-        start = max(0, ((int(region.region_start) - settings.context_bp) // settings.resolution_bp) * settings.resolution_bp)
-        end = ((int(region.region_end) + settings.context_bp + settings.resolution_bp - 1) // settings.resolution_bp) * settings.resolution_bp
         figure, axes = plt.subplots(
             len(settings.scales_bp), 1, figsize=(13, 2.1 * len(settings.scales_bp)), sharex=True
         )
