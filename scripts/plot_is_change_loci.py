@@ -138,7 +138,8 @@ def load_log_contact_matrix(
     handle = coolers_by_chrom[chrom]
     if start < 0 or end <= start or end > int(handle.chromsizes[chrom]):
         raise ValueError(f"{sample_label}: invalid plotting interval {chrom}:{start}-{end}")
-    bin_count = (end - start) // int(handle.binsize)
+    binsize = int(handle.binsize)
+    bin_count = (end + binsize - 1) // binsize - start // binsize
     if bin_count > MAX_CONTACT_MATRIX_BINS:
         raise ValueError(
             f"{sample_label}: plotting interval {chrom}:{start}-{end} exceeds dense plotting limit "

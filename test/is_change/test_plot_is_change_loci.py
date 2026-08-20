@@ -245,6 +245,35 @@ def test_balanced_contact_matrix_rejects_interval_over_dense_matrix_limit():
         )
 
 
+def test_balanced_contact_matrix_rejects_unaligned_interval_that_fetches_over_dense_limit():
+    class MatrixSelector:
+        fetch_called = False
+
+        def fetch(self, region):
+            self.fetch_called = True
+            raise AssertionError(f"fetch should not be called for {region}")
+
+    class CoolerStub:
+        chromsizes = {"chr1": (plotter.MAX_CONTACT_MATRIX_BINS + 1) * 4000}
+        binsize = 4000
+
+        def __init__(self):
+            self.selector = MatrixSelector()
+
+        def matrix(self, balance):
+            return self.selector
+
+    cooler_stub = CoolerStub()
+    end = 1 + plotter.MAX_CONTACT_MATRIX_BINS * cooler_stub.binsize
+
+    with pytest.raises(ValueError, match="dense plotting limit"):
+        plotter.load_log_contact_matrix(
+            {"chr1": cooler_stub}, "chr1", 1, end, "sample A"
+        )
+
+    assert not cooler_stub.selector.fetch_called
+
+
 def test_balanced_contact_matrix_rejects_interval_beyond_chromosome(tmp_path):
     paths = write_tracks(tmp_path)
     coolers = plotter.open_coolers_by_chrom([str(paths["cool_a"])], "sample A")
