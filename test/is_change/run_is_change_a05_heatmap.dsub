@@ -38,12 +38,16 @@ test "$candidate_count" -gt 0
   --cool-a "$MAIN_WORKTREE"/results/balanced/H1398/*_iced.cool \
   --cool-b "$MAIN_WORKTREE"/results/balanced/L134/*_iced.cool \
   --config config/config.yaml \
-  --out-primary "$OUTDIR/a05_primary.tsv" \
+  --out-primary "$OUTDIR/a05_primary_all.tsv" \
   --out-preliminary "$OUTDIR/a05_preliminary.tsv" \
   --out-masked "$OUTDIR/a05_masked.bed" \
   --log "$OUTDIR/a05_caller.log"
-primary_count="$(awk 'NR > 1 {count++} END {print count + 0}' "$OUTDIR/a05_primary.tsv")"
-test "$primary_count" -gt 0
+primary_raw_count="$(awk 'NR > 1 {count++} END {print count + 0}' "$OUTDIR/a05_primary_all.tsv")"
+# primary schema: comparison, region_id, chrom, event_start, event_end, ...
+awk -F '\t' 'BEGIN {OFS="\t"} NR == 1 {print; next} $3 == "HC04_A05" && $4 < 71340000 && $5 > 71040000 {print}' \
+  "$OUTDIR/a05_primary_all.tsv" > "$OUTDIR/a05_primary.tsv"
+primary_reference_overlap_count="$(awk 'NR > 1 {count++} END {print count + 0}' "$OUTDIR/a05_primary.tsv")"
+test "$primary_reference_overlap_count" -gt 0
 
 "$PYTHON" scripts/plot_is_change_loci.py \
   --primary "$OUTDIR/a05_primary.tsv" \
@@ -63,5 +67,6 @@ awk -F '\t' 'NR > 1 {print $3}' "$OUTDIR/plots/manifest.tsv" | while IFS= read -
 done
 
 printf 'A05 candidate rows: %s\n' "$candidate_count"
-printf 'A05 primary rows: %s\n' "$primary_count"
+printf 'A05 raw primary rows: %s\n' "$primary_raw_count"
+printf 'A05 reference-overlap primary rows: %s\n' "$primary_reference_overlap_count"
 cat "$OUTDIR/plots/manifest.tsv"
