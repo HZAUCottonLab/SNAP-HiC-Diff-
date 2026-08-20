@@ -241,6 +241,171 @@ def directional_support(
     return support_bands, sorted(supporting_scales)
 
 
+_REFINEMENT_COLUMNS = [
+    "discovery_mode",
+    "original_summit",
+    "refinement_status",
+    "refinement_direction",
+    "refinement_support_scale_bands",
+]
+
+
+def select_nearest_extremum(
+    original_summit, direction, extrema, consensus, resolution_bp
+):
+    """Select the closest member of either nearest same-direction plateau."""
+    original = consensus.loc[consensus["coordinate"] == original_summit]
+    if original.empty or not bool(original.iloc[0]["valid"]):
+        return None
+    segment_id = original.iloc[0]["segment_id"]
+    if pd.isna(segment_id):
+        return None
+
+    candidates = extrema.loc[
+        (extrema["direction"] == direction)
+        & (extrema["segment_id"] == segment_id)
+    ]
+    if candidates.empty:
+        return None
+    containing = candidates.loc[
+        candidates["plateau_start"].le(original_summit)
+        & candidates["plateau_end"].ge(original_summit)
+    ]
+    if containing.empty:
+        left = candidates.loc[candidates["plateau_end"] < original_summit]
+        right = candidates.loc[candidates["plateau_start"] > original_summit]
+        candidates = pd.concat(
+            (
+                left.loc[[left["plateau_end"].idxmax()]] if not left.empty else left,
+                right.loc[[right["plateau_start"].idxmin()]] if not right.empty else right,
+            )
+        )
+    else:
+        candidates = containing
+
+    choices = []
+    for _, extremum in candidates.iterrows():
+        members = np.arange(
+            extremum["plateau_start"],
+            extremum["plateau_end"] + resolution_bp,
+            resolution_bp,
+        )
+        coordinate = min(members, key=lambda member: (abs(member - original_summit), member))
+        z = consensus.loc[consensus["coordinate"] == coordinate, "consensus_z"].iloc[0]
+        choices.append((coordinate, z))
+    return min(
+        choices,
+        key=lambda choice: (abs(choice[0] - original_summit), -abs(choice[1]), choice[0]),
+    )[0]
+
+
+def refine_point_clusters(clusters, consensus, extrema, score_tracks, settings):
+    """Move point clusters to supported consensus extrema and record provenance."""
+    columns = list(clusters.columns) + [
+        column for column in _REFINEMENT_COLUMNS if column not in clusters
+    ]
+    if clusters.empty:
+        return clusters.reindex(columns=columns)
+
+    records = []
+    for _, row in clusters.iterrows():
+        record = row.to_dict()
+        if row["event_type"] == "broad_shift":
+            record.update(
+                discovery_mode="original",
+                original_summit=np.nan,
+                refinement_status="unchanged",
+                refinement_direction=np.nan,
+                refinement_support_scale_bands="",
+            )
+            records.append(record)
+            continue
+
+        original_summit = int(row["summit"])
+        record.update(
+            discovery_mode="original",
+            original_summit=original_summit,
+            refinement_status="ambiguous",
+            refinement_direction=np.nan,
+            refinement_support_scale_bands="",
+        )
+        original = consensus.loc[consensus["coordinate"] == original_summit]
+        if (
+            original.empty
+            or not bool(original.iloc[0]["valid"])
+            or not np.isfinite(original.iloc[0]["consensus_z"])
+            or original.iloc[0]["consensus_z"] == 0
+        ):
+            records.append(record)
+            continue
+
+        direction = "peak" if original.iloc[0]["consensus_z"] > 0 else "valley"
+        candidate = select_nearest_extremum(
+            original_summit, direction, extrema, consensus, settings.resolution_bp
+        )
+        final_summit = original_summit
+        if candidate is not None:
+            bands, _ = directional_support(score_tracks, candidate, direction, settings)
+            if len(bands) >= settings.min_primary_scale_bands:
+                final_summit = int(candidate)
+        bands, _ = directional_support(score_tracks, final_summit, direction, settings)
+        record.update(
+            refinement_status="refined" if final_summit != original_summit else "unchanged",
+            refinement_direction=direction,
+            refinement_support_scale_bands=",".join(bands),
+        )
+        if final_summit != original_summit:
+            record.update(
+                discovery_mode="refined",
+                summit=final_summit,
+                event_start=final_summit,
+                event_end=final_summit + settings.resolution_bp,
+            )
+        records.append(record)
+
+    refined = pd.DataFrame(records, columns=columns)
+    collisions = {}
+    for index, row in refined.iterrows():
+        if row["event_type"] == "broad_shift" or pd.isna(row["refinement_direction"]):
+            continue
+        plateau = extrema.loc[
+            (extrema["direction"] == row["refinement_direction"])
+            & extrema["plateau_start"].le(row["summit"])
+            & extrema["plateau_end"].ge(row["summit"])
+        ]
+        if not plateau.empty:
+            extremum = plateau.iloc[0]
+            key = (
+                row["chrom"],
+                row["refinement_direction"],
+                extremum["segment_id"],
+                extremum["plateau_start"],
+                extremum["plateau_end"],
+            )
+            collisions.setdefault(key, []).append(index)
+
+    keep = set(refined.index)
+    for indices in collisions.values():
+        if len(indices) < 2 or not (refined.loc[indices, "refinement_status"] == "refined").any():
+            continue
+
+        def evidence_key(index):
+            row = refined.loc[index]
+            band_count = len(set(filter(None, str(row["support_scale_bands"]).split(","))))
+            scores = [
+                row["max_transition_percentile"],
+                row["max_pulse_percentile"],
+                row["max_amplitude_percentile"],
+            ]
+            return (
+                -band_count,
+                *(-float(score) if np.isfinite(score) else np.inf for score in scores),
+                row["original_summit"] if pd.notna(row["original_summit"]) else row["summit"],
+            )
+
+        winner = min(indices, key=evidence_key)
+        keep.difference_update(set(indices) - {winner})
+    return refined.loc[sorted(keep)].reset_index(drop=True)
 
 
 def build_valid_mask(is_a, is_b, balanced_a, balanced_b):

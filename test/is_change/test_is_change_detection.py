@@ -15,6 +15,7 @@ from is_change_detection import (
     build_valid_mask,
     classify_scale_events,
     cluster_multiscale_events,
+    refine_point_clusters,
     score_scale,
 )
 
@@ -110,6 +111,29 @@ def event(chrom="chr1", scale_bp=32000, summit=100000, event_type="transition"):
         "transition_percentile": 0.99 if event_type == "transition" else 0.10,
         "pulse_percentile": 0.99 if event_type == "focal_pulse" else 0.10,
     }
+
+
+
+def point_cluster(summit, support_bands="small,medium", support_scales="32000,120000"):
+    return {
+        "chrom": "chr1",
+        "event_type": "transition",
+        "event_start": summit,
+        "event_end": summit + 4000,
+        "summit": summit,
+        "confidence_tier": "primary",
+        "support_scale_bands": support_bands,
+        "support_scales": support_scales,
+        "n_supporting_scales": len(support_scales.split(",")),
+        "max_amplitude_percentile": 0.96,
+        "max_transition_percentile": 0.99,
+        "max_pulse_percentile": 0.95,
+    }
+
+
+def consensus_and_extrema(score_tracks, settings):
+    consensus = is_change_detection.build_consensus_track(score_tracks, settings)
+    return consensus, is_change_detection.local_consensus_extrema(consensus, settings)
 
 
 def test_zero_is_is_valid_but_nan_is_is_missing():
@@ -505,3 +529,123 @@ def test_compatible_transition_and_pulse_cluster_as_mixed(settings):
     clustered = cluster_multiscale_events(events, settings)
 
     assert clustered.loc[0, "event_type"] == "mixed"
+
+
+
+def test_refinement_moves_a_positive_event_to_nearest_supported_peak(settings):
+    settings.scales_bp = (32000, 120000, 212000)
+    tracks = aligned_score_tracks(
+        settings,
+        {scale: [-1.0, 3.0, -1.0, 1.0, 2.0, -1.0, 4.0, -1.0] for scale in settings.scales_bp},
+    )
+    consensus, extrema = consensus_and_extrema(tracks, settings)
+
+    refined = refine_point_clusters(
+        pd.DataFrame([point_cluster(12000)]), consensus, extrema, tracks, settings
+    )
+
+    row = refined.iloc[0]
+    assert row[["summit", "event_start", "event_end"]].tolist() == [16000, 16000, 20000]
+    assert row[["discovery_mode", "original_summit", "refinement_status", "refinement_direction"]].tolist() == [
+        "refined", 12000, "refined", "peak"
+    ]
+    assert row["refinement_support_scale_bands"] == "small,medium,large"
+
+
+def test_refinement_moves_a_negative_event_to_nearest_supported_valley(settings):
+    settings.scales_bp = (32000, 120000, 212000)
+    tracks = aligned_score_tracks(
+        settings,
+        {scale: [1.0, -3.0, 1.0, -1.0, -2.0, 1.0, -4.0, 1.0] for scale in settings.scales_bp},
+    )
+    consensus, extrema = consensus_and_extrema(tracks, settings)
+
+    refined = refine_point_clusters(
+        pd.DataFrame([point_cluster(12000)]), consensus, extrema, tracks, settings
+    )
+
+    row = refined.iloc[0]
+    assert row[["summit", "event_start", "event_end"]].tolist() == [16000, 16000, 20000]
+    assert len(refined) == 1
+
+
+def test_refinement_chooses_nearest_plateau_member_and_stops_at_invalid_gap(settings):
+    settings.scales_bp = (32000, 120000, 212000)
+    valid = [True, True, True, True, True, True, False, True, True]
+    tracks = aligned_score_tracks(
+        settings,
+        {scale: [-1.0, -1.0, 1.0, 3.0, 3.0, -1.0, np.nan, 1.0, -1.0] for scale in settings.scales_bp},
+        {scale: valid for scale in settings.scales_bp},
+    )
+    consensus, extrema = consensus_and_extrema(tracks, settings)
+
+    refined = refine_point_clusters(
+        pd.DataFrame([point_cluster(8000), point_cluster(28000)]),
+        consensus,
+        extrema,
+        tracks,
+        settings,
+    ).set_index("original_summit")
+
+    assert refined.loc[8000, "summit"] == 12000
+    assert refined.loc[28000, ["summit", "event_start", "event_end"]].tolist() == [28000, 28000, 32000]
+    assert refined.loc[28000, "refinement_status"] == "unchanged"
+
+
+def test_refinement_preserves_ambiguous_or_single_band_event_and_broad_shift(settings):
+    settings.scales_bp = (32000, 60000, 120000)
+    tracks = aligned_score_tracks(
+        settings,
+        {
+            32000: [0.0, -1.0, 1.0, 3.0, -1.0],
+            60000: [0.0, -1.0, 1.0, 3.0, -1.0],
+            120000: [0.0, -1.0, -1.0, -1.0, -1.0],
+        },
+    )
+    consensus, extrema = consensus_and_extrema(tracks, settings)
+    broad = point_cluster(16000)
+    broad.update({"event_type": "broad_shift", "summit": np.nan, "event_end": 24000})
+
+    refined = refine_point_clusters(
+        pd.DataFrame([point_cluster(0), point_cluster(8000), broad]),
+        consensus,
+        extrema,
+        tracks,
+        settings,
+    )
+    ambiguous = refined.loc[refined["original_summit"] == 0].iloc[0]
+    single_band = refined.loc[refined["original_summit"] == 8000].iloc[0]
+    observed_broad = refined.loc[refined["event_type"] == "broad_shift"].iloc[0]
+
+    assert ambiguous["refinement_status"] == "ambiguous"
+    assert pd.isna(ambiguous["refinement_direction"])
+    assert ambiguous["refinement_support_scale_bands"] == ""
+    assert single_band[["summit", "event_start", "event_end"]].tolist() == [8000, 8000, 12000]
+    assert single_band[["refinement_status", "refinement_direction", "refinement_support_scale_bands"]].tolist() == [
+        "unchanged", "peak", "small"
+    ]
+    assert observed_broad[["event_start", "event_end", "discovery_mode", "refinement_status"]].tolist() == [
+        16000, 24000, "original", "unchanged"
+    ]
+    assert pd.isna(observed_broad["original_summit"])
+
+
+def test_refinement_collision_keeps_stronger_multiband_event(settings):
+    settings.scales_bp = (32000, 120000, 212000)
+    tracks = aligned_score_tracks(
+        settings,
+        {scale: [-1.0, 1.0, 3.0, 3.0, 1.0, -1.0] for scale in settings.scales_bp},
+    )
+    consensus, extrema = consensus_and_extrema(tracks, settings)
+    weaker = point_cluster(4000, "small", "32000")
+    weaker["max_transition_percentile"] = 0.90
+
+    refined = refine_point_clusters(
+        pd.DataFrame([weaker, point_cluster(8000)]), consensus, extrema, tracks, settings
+    )
+
+    assert len(refined) == 1
+    row = refined.iloc[0]
+    assert row[["summit", "original_summit", "support_scale_bands"]].tolist() == [
+        8000, 8000, "small,medium"
+    ]

@@ -13,15 +13,26 @@ import yaml
 
 from cworld_is_config import parse_cworld_is_settings
 from is_change_config import parse_is_change_settings
-from is_change_detection import classify_scale_events, cluster_multiscale_events, score_scale
+from is_change_detection import (
+    build_consensus_track,
+    classify_scale_events,
+    cluster_multiscale_events,
+    local_consensus_extrema,
+    refine_point_clusters,
+    score_scale,
+)
 
 
+REFINEMENT_COLUMNS = [
+    "discovery_mode", "original_summit", "refinement_status",
+    "refinement_direction", "refinement_support_scale_bands",
+]
 PRIMARY_COLUMNS = [
     "comparison", "region_id", "chrom", "event_start", "event_end", "summit",
     "is_change_type", "confidence_tier", "support_scale_bands", "support_scales",
     "max_amplitude_percentile", "max_transition_percentile", "max_pulse_percentile",
     "broad_shift_length_bp", "mask_status", "coverage_state_summary", "rank_within_region",
-]
+] + REFINEMENT_COLUMNS
 MASK_COLUMNS = ["chrom", "start", "end", "reason"]
 TRACK_VALUE_COLUMNS = ["start", "IS"]
 
@@ -153,7 +164,7 @@ def context_frame(chrom, core_start, core_end, settings, track_a, track_b, bins_
 def _event_rows_for_region(region, settings, track_a, track_b, bins_a, bins_b):
     chrom, core_start, core_end = region[["chrom", "region_start", "region_end"]]
     base = context_frame(chrom, core_start, core_end, settings, track_a, track_b, bins_a, bins_b)
-    events, masks = [], []
+    events, masks, core_score_tracks = [], [], {}
     for scale in settings.scales_bp:
         frame = base.copy()
         for track_index, column in ((track_a, "is_a"), (track_b, "is_b")):
@@ -166,6 +177,7 @@ def _event_rows_for_region(region, settings, track_a, track_b, bins_a, bins_b):
         scored = score_scale(chrom, frame["start"], frame["is_a"], frame["is_b"], frame["balanced_a"], frame["balanced_b"], scale, settings)
         core = frame[frame["start"].between(core_start, core_end - settings.resolution_bp)].reset_index(drop=True)
         core_scores = scored[scored["coordinate"].between(core_start, core_end - settings.resolution_bp)].reset_index(drop=True)
+        core_score_tracks[scale] = core_scores
         for index, row in core.iterrows():
             reasons = []
             if not row["balanced_a"] and not row["balanced_b"]:
@@ -192,7 +204,7 @@ def _event_rows_for_region(region, settings, track_a, track_b, bins_a, bins_b):
         events.append(pd.concat((points, broad), ignore_index=True))
     events = pd.concat(events, ignore_index=True) if events else pd.DataFrame()
     clusters = cluster_multiscale_events(events, settings)
-    return clusters, masks
+    return clusters, masks, core_score_tracks
 
 
 def _coverage_summary(region, mask_rows):
@@ -201,10 +213,32 @@ def _coverage_summary(region, mask_rows):
 
 
 def output_rows(regions, settings, track_a, track_b, bins_a, bins_b, comparison):
-    primary, preliminary, masks = [], [], []
+    primary, preliminary, masks, analyses = [], [], [], []
     for _, region in regions.iterrows():
-        clusters, region_masks = _event_rows_for_region(region, settings, track_a, track_b, bins_a, bins_b)
+        clusters, region_masks, core_score_tracks = _event_rows_for_region(
+            region, settings, track_a, track_b, bins_a, bins_b
+        )
         masks.extend(region_masks)
+        analyses.append((region, clusters, region_masks, core_score_tracks))
+
+    for region, clusters, region_masks, core_score_tracks in analyses:
+        if core_score_tracks:
+            consensus = build_consensus_track(core_score_tracks, settings)
+            clusters = refine_point_clusters(
+                clusters,
+                consensus,
+                local_consensus_extrema(consensus, settings),
+                core_score_tracks,
+                settings,
+            )
+        else:
+            clusters = clusters.copy()
+            broad = clusters["event_type"].eq("broad_shift")
+            clusters["discovery_mode"] = "original"
+            clusters["original_summit"] = clusters["summit"].where(~broad, np.nan)
+            clusters["refinement_status"] = "unchanged"
+            clusters["refinement_direction"] = np.nan
+            clusters["refinement_support_scale_bands"] = ""
         summary = _coverage_summary(region, region_masks)
         for _, cluster in clusters.iterrows():
             row = {
@@ -218,6 +252,10 @@ def output_rows(regions, settings, track_a, track_b, bins_a, bins_b, comparison)
                 "max_pulse_percentile": cluster["max_pulse_percentile"],
                 "broad_shift_length_bp": int(cluster["event_end"] - cluster["event_start"]) if cluster["event_type"] == "broad_shift" else 0,
                 "mask_status": "clean", "coverage_state_summary": summary, "rank_within_region": 0,
+                "discovery_mode": cluster["discovery_mode"], "original_summit": cluster["original_summit"],
+                "refinement_status": cluster["refinement_status"],
+                "refinement_direction": cluster["refinement_direction"],
+                "refinement_support_scale_bands": cluster["refinement_support_scale_bands"],
             }
             (primary if row["confidence_tier"] == "primary" else preliminary).append(row)
     def finish(rows):

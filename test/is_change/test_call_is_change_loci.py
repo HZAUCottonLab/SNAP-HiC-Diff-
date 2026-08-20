@@ -1,6 +1,7 @@
 from pathlib import Path
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import cooler
 import numpy as np
@@ -12,7 +13,7 @@ import yaml
 REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "scripts" / "call_is_change_loci.py"
 sys.path.insert(0, str(REPO / "scripts"))
-from call_is_change_loci import index_is_track, read_balanced_bins, track_values
+from call_is_change_loci import REFINEMENT_COLUMNS, index_is_track, read_balanced_bins, track_values
 
 SCALES = (32000, 60000, 92000, 120000, 152000, 180000, 212000, 240000, 272000, 300000)
 PRIMARY_COLUMNS = [
@@ -20,7 +21,7 @@ PRIMARY_COLUMNS = [
     "is_change_type", "confidence_tier", "support_scale_bands", "support_scales",
     "max_amplitude_percentile", "max_transition_percentile", "max_pulse_percentile",
     "broad_shift_length_bp", "mask_status", "coverage_state_summary", "rank_within_region",
-]
+] + REFINEMENT_COLUMNS
 
 
 def test_index_is_track_partitions_chromosome_and_scale():
@@ -256,9 +257,70 @@ def test_caller_ranks_region_events_by_evidence_before_coordinates(monkeypatch):
             "max_pulse_percentile": 0.50,
         },
     ])
-    monkeypatch.setattr(caller, "_event_rows_for_region", lambda *args: (clusters, []))
+    monkeypatch.setattr(caller, "_event_rows_for_region", lambda *args: (clusters, [], {}))
     regions = pd.DataFrame([{"region_id": 1, "chrom": "chr1", "region_start": 0, "region_end": 12000}])
 
     primary, _, _ = caller.output_rows(regions, None, None, None, None, None, "A__vs__B")
 
     assert primary.loc[primary["event_start"] == 8000, "rank_within_region"].item() == 1
+
+
+
+def test_caller_serializes_refinement_provenance_without_changing_stage_one_fields(monkeypatch):
+    sys.path.insert(0, str(REPO / "scripts"))
+    import call_is_change_loci as caller
+
+    settings = SimpleNamespace(
+        resolution_bp=4000,
+        scales_bp=SCALES,
+        scale_bands={
+            "small": (32000, 60000, 92000),
+            "medium": (120000, 152000, 180000),
+            "large": (212000, 240000, 272000, 300000),
+        },
+        min_primary_scale_bands=2,
+    )
+    coordinates = np.arange(8) * settings.resolution_bp
+    valid = np.array([True, True, True, True, True, False, True, True])
+    z = np.array([-1.0, -1.0, 1.0, 3.0, -1.0, np.nan, 1.0, -1.0])
+    tracks = {
+        scale: pd.DataFrame(
+            {"chrom": "chr1", "coordinate": coordinates, "valid": valid, "z": z}
+        )
+        for scale in settings.scales_bp
+    }
+    clusters = pd.DataFrame([
+        {
+            "chrom": "chr1", "event_start": 8000, "event_end": 12000, "summit": 8000,
+            "event_type": "transition", "confidence_tier": "primary",
+            "support_scale_bands": "small,medium", "support_scales": "32000,120000",
+            "max_amplitude_percentile": 0.96, "max_transition_percentile": 0.99,
+            "max_pulse_percentile": 0.95,
+        },
+        {
+            "chrom": "chr1", "event_start": 24000, "event_end": 28000, "summit": 24000,
+            "event_type": "transition", "confidence_tier": "single_band_preliminary",
+            "support_scale_bands": "small", "support_scales": "32000",
+            "max_amplitude_percentile": 0.91, "max_transition_percentile": 0.92,
+            "max_pulse_percentile": 0.93,
+        },
+    ])
+    monkeypatch.setattr(caller, "_event_rows_for_region", lambda *args: (clusters, [], tracks))
+    regions = pd.DataFrame([
+        {"region_id": 1, "chrom": "chr1", "region_start": 0, "region_end": 32000}
+    ])
+
+    primary, preliminary, _ = caller.output_rows(
+        regions, settings, None, None, None, None, "A__vs__B"
+    )
+
+    assert primary.columns.tolist() == PRIMARY_COLUMNS
+    assert preliminary.columns.tolist() == PRIMARY_COLUMNS
+    assert primary.loc[0, ["summit", "discovery_mode", "original_summit", "refinement_status"]].tolist() == [
+        12000, "refined", 8000, "refined"
+    ]
+    assert len(primary.loc[0, "refinement_support_scale_bands"].split(",")) >= 2
+    unchanged = preliminary.iloc[0]
+    assert unchanged[["confidence_tier", "support_scale_bands", "support_scales", "refinement_status"]].tolist() == [
+        "single_band_preliminary", "small", "32000", "unchanged"
+    ]
