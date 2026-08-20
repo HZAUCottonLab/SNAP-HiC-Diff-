@@ -75,11 +75,11 @@ def write_tracks(root, nan_weight_bin=None):
     pixels_a = pd.concat((diagonal, adjacent), ignore_index=True)
     pixels_b = pixels_a.copy()
     pixels_b.loc[pixels_b.bin1_id + 1 == pixels_b.bin2_id, "count"] = 5
-    cooler.create_cooler(str(root / "a.cool"), bins, pixels_a, ordered=True)
-    cooler.create_cooler(str(root / "b.cool"), bins, pixels_b, ordered=True)
+    cooler.create_cooler(str(root / "a_iced.cool"), bins, pixels_a, ordered=True)
+    cooler.create_cooler(str(root / "b_iced.cool"), bins, pixels_b, ordered=True)
     return {
         "is_a": root / "is_a.tsv", "is_b": root / "is_b.tsv",
-        "cool_a": root / "a.cool", "cool_b": root / "b.cool",
+        "cool_a": root / "a_iced.cool", "cool_b": root / "b_iced.cool",
     }
 
 def test_plot_interval_is_4kb_aligned_and_shared_by_all_panels(tmp_path):
@@ -92,6 +92,14 @@ def test_plot_interval_is_4kb_aligned_and_shared_by_all_panels(tmp_path):
     assert end == 624_000
     assert (start % 4_000, end % 4_000) == (0, 0)
 
+
+def test_open_coolers_by_chrom_rejects_non_iced_path(tmp_path):
+    paths = write_tracks(tmp_path)
+    uniced_path = paths["cool_a"].with_name("a.cool")
+    paths["cool_a"].rename(uniced_path)
+
+    with pytest.raises(ValueError, match=r"requires _iced.cool"):
+        plotter.open_coolers_by_chrom([str(uniced_path)], "sample A")
 
 def test_balanced_contact_matrix_masks_unavailable_bins_and_uses_log1p(tmp_path):
     paths = write_tracks(tmp_path, nan_weight_bin=10)
@@ -147,7 +155,7 @@ def test_plot_manifest_contains_existing_pngs(tmp_path):
             sys.executable, str(SCRIPT), "--primary", str(tmp_path / "primary.tsv"),
             "--candidate-regions", str(tmp_path / "candidate_regions.tsv"),
             "--is-a", str(tmp_path / "is_a.tsv"), "--is-b", str(tmp_path / "is_b.tsv"),
-            "--cool-a", str(tmp_path / "a.cool"), "--cool-b", str(tmp_path / "b.cool"),
+            "--cool-a", str(tmp_path / "a_iced.cool"), "--cool-b", str(tmp_path / "b_iced.cool"),
             "--config", str(config), "--outdir", str(tmp_path / "plots"),
             "--manifest", str(tmp_path / "plots" / "manifest.tsv"),
         ], text=True, capture_output=True, check=False,
@@ -192,7 +200,7 @@ def test_plotter_prefers_three_band_primary_event_across_regions(tmp_path):
             sys.executable, str(SCRIPT), "--primary", str(tmp_path / "primary.tsv"),
             "--candidate-regions", str(tmp_path / "candidate_regions.tsv"),
             "--is-a", str(tmp_path / "is_a.tsv"), "--is-b", str(tmp_path / "is_b.tsv"),
-            "--cool-a", str(tmp_path / "a.cool"), "--cool-b", str(tmp_path / "b.cool"),
+            "--cool-a", str(tmp_path / "a_iced.cool"), "--cool-b", str(tmp_path / "b_iced.cool"),
             "--config", str(config), "--outdir", str(tmp_path / "plots"),
             "--manifest", str(tmp_path / "plots" / "manifest.tsv"),
         ], text=True, capture_output=True, check=False,
@@ -223,7 +231,7 @@ def test_plotter_rejects_preliminary_rows(tmp_path):
             sys.executable, str(SCRIPT), "--primary", str(tmp_path / "primary.tsv"),
             "--candidate-regions", str(tmp_path / "candidate_regions.tsv"),
             "--is-a", str(tmp_path / "is_a.tsv"), "--is-b", str(tmp_path / "is_b.tsv"),
-            "--cool-a", str(tmp_path / "a.cool"), "--cool-b", str(tmp_path / "b.cool"),
+            "--cool-a", str(tmp_path / "a_iced.cool"), "--cool-b", str(tmp_path / "b_iced.cool"),
             "--config", str(config), "--outdir", str(tmp_path / "plots"),
             "--manifest", str(tmp_path / "plots" / "manifest.tsv"),
         ], text=True, capture_output=True, check=False,
@@ -258,7 +266,7 @@ def test_plotter_rejects_off_grid_track_coordinates(tmp_path):
             sys.executable, str(SCRIPT), "--primary", str(tmp_path / "primary.tsv"),
             "--candidate-regions", str(tmp_path / "candidate_regions.tsv"),
             "--is-a", str(tmp_path / "is_a.tsv"), "--is-b", str(tmp_path / "is_b.tsv"),
-            "--cool-a", str(tmp_path / "a.cool"), "--cool-b", str(tmp_path / "b.cool"),
+            "--cool-a", str(tmp_path / "a_iced.cool"), "--cool-b", str(tmp_path / "b_iced.cool"),
             "--config", str(config), "--outdir", str(tmp_path / "plots"),
             "--manifest", str(tmp_path / "plots" / "manifest.tsv"),
         ], text=True, capture_output=True, check=False,

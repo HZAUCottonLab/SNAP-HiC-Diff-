@@ -83,6 +83,8 @@ def open_coolers_by_chrom(paths: Sequence[str], sample_label: str) -> dict[str, 
     """Open each supplied iced cooler once and index it by the chromosomes it contains."""
     by_chrom: dict[str, cooler.Cooler] = {}
     for path in paths:
+        if not path.endswith("_iced.cool"):
+            raise ValueError(f"{sample_label}: requires _iced.cool cooler paths, got {path}")
         handle = cooler.Cooler(path)
         for chrom in handle.chromnames:
             if chrom in by_chrom:
