@@ -391,14 +391,14 @@ def test_caller_keeps_collision_lost_original_summit_occupied_for_recovery(monke
                 "chrom": "chr1",
                 "coordinate": coordinates,
                 "valid": True,
-                "z": [-1.0, -2.0, 1.0, 3.0, 3.0, -2.0, -1.0],
+                "z": [-1.0, -3.0, 1.0, 4.0, 2.0, -3.0, -1.0],
                 "amplitude_percentile": settings.high_percentile,
             }
         )
         for scale in settings.scales_bp
     }
     strong = {
-        "chrom": "chr1", "event_start": 8000, "event_end": 12000, "summit": 8000,
+        "chrom": "chr1", "event_start": 16000, "event_end": 20000, "summit": 16000,
         "event_type": "transition", "confidence_tier": "primary",
         "support_scale_bands": "small,medium", "support_scales": "32000,120000",
         "n_supporting_scales": 2, "max_amplitude_percentile": 0.96,
@@ -406,9 +406,9 @@ def test_caller_keeps_collision_lost_original_summit_occupied_for_recovery(monke
     }
     dropped = {
         **strong,
-        "event_start": 12000,
-        "event_end": 16000,
-        "summit": 12000,
+        "event_start": 8000,
+        "event_end": 12000,
+        "summit": 8000,
         "support_scale_bands": "small",
         "support_scales": "32000",
         "n_supporting_scales": 1,
@@ -416,18 +416,19 @@ def test_caller_keeps_collision_lost_original_summit_occupied_for_recovery(monke
     }
     clusters = pd.DataFrame([strong, dropped])
     consensus = caller.build_consensus_track(tracks, settings)
-    assert (
-        caller.residual_extrema(consensus, {8000}, settings)["plateau_start"] == 12000
-    ).any()
     captured = {}
-    recover = caller.recover_residual_events
+    residual_extrema = caller.residual_extrema
 
-    def capture_residuals(residuals_by_region, *args):
-        captured.update(residuals_by_region)
-        return recover(residuals_by_region, *args)
+    def capture_residuals(consensus_track, occupied_coordinates, caller_settings):
+        captured["occupied_coordinates"] = occupied_coordinates
+        residuals = residual_extrema(
+            consensus_track, occupied_coordinates, caller_settings
+        )
+        captured["residuals"] = residuals
+        return residuals
 
     monkeypatch.setattr(caller, "_event_rows_for_region", lambda *args: (clusters, [], tracks))
-    monkeypatch.setattr(caller, "recover_residual_events", capture_residuals)
+    monkeypatch.setattr(caller, "residual_extrema", capture_residuals)
     regions = pd.DataFrame([
         {"region_id": 1, "chrom": "chr1", "region_start": 0, "region_end": 28000}
     ])
@@ -436,9 +437,10 @@ def test_caller_keeps_collision_lost_original_summit_occupied_for_recovery(monke
         regions, settings, None, None, None, None, "A__vs__B"
     )
 
-    assert primary["original_summit"].tolist() == [8000]
+    assert primary[["summit", "original_summit"]].values.tolist() == [[12000, 16000]]
     assert preliminary.empty
+    assert {8000, 12000}.issubset(captured["occupied_coordinates"])
     assert not (
-        captured[1]["plateau_start"].le(12000)
-        & captured[1]["plateau_end"].ge(12000)
+        captured["residuals"]["plateau_start"].le(12000)
+        & captured["residuals"]["plateau_end"].ge(12000)
     ).any()
