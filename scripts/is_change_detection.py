@@ -67,6 +67,14 @@ def build_consensus_track(score_tracks: dict[int, pd.DataFrame], settings) -> pd
     ):
         raise ValueError("score tracks must share chromosome and coordinate series")
 
+    coordinates = reference["coordinate"].to_numpy()
+    if np.any(coordinates % settings.resolution_bp):
+        raise ValueError("score track coordinates must be aligned to resolution_bp")
+    if len(np.unique(coordinates)) != len(coordinates):
+        raise ValueError("score track coordinates must be unique")
+    if np.any(coordinates[1:] <= coordinates[:-1]):
+        raise ValueError("score track coordinates must be strictly increasing")
+
     z_values = [track["z"].to_numpy(dtype=float) for track in tracks]
     valid = np.logical_and.reduce(
         [
@@ -78,7 +86,6 @@ def build_consensus_track(score_tracks: dict[int, pd.DataFrame], settings) -> pd
     if valid.any():
         consensus_z[valid] = np.median(np.asarray(z_values)[:, valid], axis=0)
 
-    coordinates = reference["coordinate"].to_numpy()
     segment_id = np.full(len(reference), np.nan)
     current_segment = -1
     for index in np.flatnonzero(valid):

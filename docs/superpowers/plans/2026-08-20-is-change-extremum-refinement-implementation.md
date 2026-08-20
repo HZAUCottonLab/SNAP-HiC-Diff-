@@ -586,4 +586,3 @@ results/figures/is_change/H1398_vs_L134/manifest.tsv. The normal regenerated
 figures, including the A05 candidate core containing 71.724 Mb, are the user's
 visual review artifact. Do not add a special-case A05, region-56, or region-911
 rule or manual replay filter.
-

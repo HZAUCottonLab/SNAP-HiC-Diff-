@@ -175,6 +175,29 @@ def test_consensus_median_uses_signed_z_and_common_valid_segments(settings):
     assert pd.isna(consensus["segment_id"].iloc[1])
 
 
+@pytest.mark.parametrize(
+    ("coordinates", "message"),
+    [
+        ([0, 4001, 8000], "aligned"),
+        ([0, 4000, 4000], "unique"),
+        ([0, 8000, 4000], "strictly increasing"),
+    ],
+)
+def test_invalid_coordinate_grid_cannot_construct_consensus_for_refinement_or_recovery(
+    settings, coordinates, message
+):
+    settings.scales_bp = (32000, 120000, 212000)
+    tracks = aligned_score_tracks(
+        settings,
+        {scale: [-1.0, 3.0, -1.0] for scale in settings.scales_bp},
+    )
+    for track in tracks.values():
+        track["coordinate"] = coordinates
+
+    with pytest.raises(ValueError, match=message):
+        consensus_and_extrema(tracks, settings)
+
+
 def test_consensus_rejects_adjacent_chromosome_transition(settings):
     settings.scales_bp = (32000, 120000, 212000)
     tracks = aligned_score_tracks(
