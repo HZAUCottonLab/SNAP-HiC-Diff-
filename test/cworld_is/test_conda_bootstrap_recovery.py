@@ -16,7 +16,7 @@ def test_bootstrap_creates_snakemake_compatible_prefixes_with_mamba(tmp_path: Pa
     root = tmp_path / "project"
     env_dir = root / "env"
     env_dir.mkdir(parents=True)
-    for spec in ("SNAP-HiC-Diff.yaml", "cworld.yaml", "meltron.yaml"):
+    for spec in ("SNAP-HiC-Diff.yaml", "cworld.yaml", "meltron.yaml", "tad.yaml"):
         (env_dir / spec).write_text(f"name: {spec}\n")
 
     prefix_dir = tmp_path / "conda-prefix"
@@ -84,6 +84,7 @@ for tool in {
     "SNAP-HiC-Diff.yaml": ("python", "hictk"),
     "cworld.yaml": ("python", "perl", "bedtools"),
     "meltron.yaml": ("Rscript", "python"),
+    "tad.yaml": ("python",),
 }[spec]:
     executable = bin_dir / tool
     executable.write_text("#!/usr/bin/env bash")
@@ -118,7 +119,7 @@ if spec == "meltron.yaml":
     assert not (prefix_dir / "snakemake.calls").exists()
     assert mamba_log.read_text().splitlines()[:3] == ["env", "create", "--yes"]
     marker = prefix_dir / "offline.ready.tsv"
-    assert len(marker.read_text().splitlines()) == 3
+    assert len(marker.read_text().splitlines()) == 4
 
     verify = subprocess.run(
         ["bash", str(CONDA_HELPER), "verify"],
