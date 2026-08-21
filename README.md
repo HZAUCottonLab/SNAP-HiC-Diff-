@@ -81,6 +81,41 @@ dsub -s run_snakemake.sh
 
 See [docs/dsub_hpc_standard.md](docs/dsub_hpc_standard.md) for HPC setup details.
 
+## 3DNetMod TADs and boundary regions
+
+The default workflow runs raw and balanced 3DNetMod D calls at 4 kb, 8 kb,
+and 20 kb for every manifest sample. Raw calls use positive pixel counts;
+balanced calls use `count * weight1 * weight2`. No chromosome is excluded by
+default.
+
+Build or refresh all Conda prefixes on the login node before submission:
+
+```bash
+bash scripts/conda_envs.sh bootstrap
+CONDA_OFFLINE=true bash scripts/conda_envs.sh verify
+```
+
+Compute nodes do not create environments or access Conda channels.
+
+Stable outputs are:
+
+```text
+results/tads/{sample}.{4kb|8kb|20kb}.{raw|balanced}.3dnetmod.bed
+results/tads/{sample}.{4kb|8kb|20kb}.{raw|balanced}.3dnetmod.bedpe
+results/tad_boundaries/{sample}.{4kb|8kb|20kb}.{raw|balanced}.boundaries.bed
+results/tad_boundaries/{sample}.multires.{raw|balanced}.boundaries.bed
+```
+
+Run one sample by targeting its two merged boundary files; Snakemake will pull
+the six required TAD calls:
+
+```bash
+snakemake --use-conda --conda-prefix "$PWD/.snakemake/conda" \
+  --configfile config/config.yaml -- \
+  results/tad_boundaries/H1394.multires.raw.boundaries.bed \
+  results/tad_boundaries/H1394.multires.balanced.boundaries.bed
+```
+
 ## CWorld insulation scores for Meltron
 
 CWorld IS is produced only for Meltron from the configured balanced `.cool`
