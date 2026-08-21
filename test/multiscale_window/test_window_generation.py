@@ -100,3 +100,55 @@ def test_all_window_rule_declarations_are_scale_qualified():
                 actual.append((declaration, path_match.group(1)))
 
         assert actual == expected
+
+
+def test_window_compare_rules_are_isolated_by_window_scale():
+    rule_text = (REPO / "rules" / "window_compare.smk").read_text()
+
+    declaration_blocks = re.compile(
+        r"(?ms)^    (output|log|benchmark):\n(.*?)(?=^    [a-z_]+:|\Z)"
+    )
+    path_literals = re.compile(r'"([^"]*/[^"]*)"')
+    actual_paths = []
+    for declaration, body in declaration_blocks.findall(rule_text):
+        for path_match in path_literals.finditer(body):
+            prefix = body[:path_match.start()].rstrip()
+            assert prefix.endswith("SCALE_ROOT +"), (
+                f"window_compare.smk {declaration} path is not scale-qualified: "
+                f"{path_match.group(1)}"
+            )
+            actual_paths.append((declaration, path_match.group(1)))
+
+    assert actual_paths == [
+        ("output", "/window_compare/{comparison}/{comparison}_covariates.tsv"),
+        ("log", "/logs/window_compare/{comparison}/compute_covariates.log"),
+        ("benchmark", "/benchmark/window_compare/{comparison}/compute_covariates.tsv"),
+        ("output", "/window_compare/{comparison}/{comparison}_gaussian_metrics.tsv"),
+        ("log", "/logs/window_compare/{comparison}/compare_gaussian.log"),
+        ("benchmark", "/benchmark/window_compare/{comparison}/compare_gaussian.tsv"),
+        ("output", "/window_compare/{comparison}/{comparison}_tw.tsv"),
+        ("log", "/logs/window_compare/{comparison}/compare_tw.log"),
+        ("benchmark", "/benchmark/window_compare/{comparison}/compare_tw.tsv"),
+        ("output", "/window_compare/{comparison}/{comparison}_window_pair_metrics.tsv"),
+        ("log", "/logs/window_compare/{comparison}/merge_metrics.log"),
+        ("benchmark", "/benchmark/window_compare/{comparison}/merge_metrics.tsv"),
+        ("output", "/window_compare/merged_window_pair_metrics.tsv"),
+        ("log", "/logs/window_compare/merge_all_window_pair_metrics.log"),
+        ("benchmark", "/benchmark/window_compare/merge_all_window_pair_metrics.tsv"),
+    ]
+
+    assert all("{comparison}" in path for _, path in actual_paths[:-3])
+
+    gaussian_checkpoints = re.findall(
+        r"checkpoints\.sliding_window\.get\(\s*"
+        r"sample=get_pair_samples\(w\.comparison\)\[\d\],\s*"
+        r"window_bins=w\.window_bins,\s*"
+        r"\)\.output\.manifest",
+        rule_text,
+    )
+    assert len(gaussian_checkpoints) == 2
+    assert "{params.scale_root}/windows/${{SAMPLE_A}}/" in rule_text
+    assert "{params.scale_root}/windows/${{SAMPLE_B}}/" in rule_text
+    assert rule_text.count("outdir = OUTDIR,") == 1
+    assert '--outdir "{params.outdir}"' in rule_text
+    assert "merged_files = lambda w: expand(" in rule_text

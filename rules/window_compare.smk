@@ -26,19 +26,19 @@ rule compute_window_pair_covariates:
     input:
         script = SCRIPT_DIR + "/scripts/compute_window_pair_covariates.py",
         qc_a = lambda w: expand(
-            OUTDIR + "/windows/{sample}/{sample}__{chrom}_window_qc.tsv",
-            sample=get_pair_samples(w.comparison)[0], chrom=CHROMS
+            SCALE_ROOT + "/windows/{sample}/{sample}__{chrom}_window_qc.tsv",
+            sample=get_pair_samples(w.comparison)[0], chrom=CHROMS, window_bins=w.window_bins
         ),
         qc_b = lambda w: expand(
-            OUTDIR + "/windows/{sample}/{sample}__{chrom}_window_qc.tsv",
-            sample=get_pair_samples(w.comparison)[1], chrom=CHROMS
+            SCALE_ROOT + "/windows/{sample}/{sample}__{chrom}_window_qc.tsv",
+            sample=get_pair_samples(w.comparison)[1], chrom=CHROMS, window_bins=w.window_bins
         ),
     output:
-        covariates = OUTDIR + "/window_compare/{comparison}/{comparison}_covariates.tsv",
+        covariates = SCALE_ROOT + "/window_compare/{comparison}/{comparison}_covariates.tsv",
     log:
-        OUTDIR + "/logs/window_compare/{comparison}/compute_covariates.log",
+        SCALE_ROOT + "/logs/window_compare/{comparison}/compute_covariates.log",
     benchmark:
-        OUTDIR + "/benchmark/window_compare/{comparison}/compute_covariates.tsv",
+        SCALE_ROOT + "/benchmark/window_compare/{comparison}/compute_covariates.tsv",
     threads: config["parallel"]["threads_per_job"]
     params:
         sample_a = lambda w: get_pair_samples(w.comparison)[0],
@@ -50,7 +50,6 @@ rule compute_window_pair_covariates:
         weight_ec = config["window_compare"]["covariates"]["weights"]["EC"],
         weight_ib = config["window_compare"]["covariates"]["weights"]["IB"],
         weight_sp = config["window_compare"]["covariates"]["weights"]["SP"],
-        outdir = OUTDIR,
     conda:
         "../env/SNAP-HiC-Diff.yaml"
     shell:
@@ -103,23 +102,25 @@ rule compare_gaussian_smoothed_windows:
         script = SCRIPT_DIR + "/scripts/compare_gaussian_smoothed_windows.py",
         covariates = rules.compute_window_pair_covariates.output.covariates,
         checkpoint_a = lambda w: checkpoints.sliding_window.get(
-            sample=get_pair_samples(w.comparison)[0]
+            sample=get_pair_samples(w.comparison)[0],
+            window_bins=w.window_bins,
         ).output.manifest,
         checkpoint_b = lambda w: checkpoints.sliding_window.get(
-            sample=get_pair_samples(w.comparison)[1]
+            sample=get_pair_samples(w.comparison)[1],
+            window_bins=w.window_bins,
         ).output.manifest,
     output:
-        gaussian = OUTDIR + "/window_compare/{comparison}/{comparison}_gaussian_metrics.tsv",
+        gaussian = SCALE_ROOT + "/window_compare/{comparison}/{comparison}_gaussian_metrics.tsv",
     log:
-        OUTDIR + "/logs/window_compare/{comparison}/compare_gaussian.log",
+        SCALE_ROOT + "/logs/window_compare/{comparison}/compare_gaussian.log",
     benchmark:
-        OUTDIR + "/benchmark/window_compare/{comparison}/compare_gaussian.tsv",
+        SCALE_ROOT + "/benchmark/window_compare/{comparison}/compare_gaussian.tsv",
     threads: config["window_compare"]["gaussian_metrics"]["n_jobs"]
     params:
         sample_a = lambda w: get_pair_samples(w.comparison)[0],
         sample_b = lambda w: get_pair_samples(w.comparison)[1],
         chroms = CHROMS,
-        outdir = OUTDIR,
+        scale_root = lambda w: SCALE_ROOT.format(window_bins=w.window_bins),
     conda:
         "../env/SNAP-HiC-Diff.yaml"
     shell:
@@ -136,12 +137,12 @@ rule compare_gaussian_smoothed_windows:
         # Use sample names to construct paths
         H5_A=""
         for chrom in {params.chroms}; do
-            H5_A="$H5_A {params.outdir}/windows/${{SAMPLE_A}}/${{SAMPLE_A}}__${{chrom}}_gaussian.h5"
+            H5_A="$H5_A {params.scale_root}/windows/${{SAMPLE_A}}/${{SAMPLE_A}}__${{chrom}}_gaussian.h5"
         done
 
         H5_B=""
         for chrom in {params.chroms}; do
-            H5_B="$H5_B {params.outdir}/windows/${{SAMPLE_B}}/${{SAMPLE_B}}__${{chrom}}_gaussian.h5"
+            H5_B="$H5_B {params.scale_root}/windows/${{SAMPLE_B}}/${{SAMPLE_B}}__${{chrom}}_gaussian.h5"
         done
 
         python {input.script} \
@@ -175,11 +176,11 @@ rule compare_iced_windows_tw:
             sample=get_pair_samples(w.comparison)[1]
         ).output.manifest,
     output:
-        tw = OUTDIR + "/window_compare/{comparison}/{comparison}_tw.tsv",
+        tw = SCALE_ROOT + "/window_compare/{comparison}/{comparison}_tw.tsv",
     log:
-        OUTDIR + "/logs/window_compare/{comparison}/compare_tw.log",
+        SCALE_ROOT + "/logs/window_compare/{comparison}/compare_tw.log",
     benchmark:
-        OUTDIR + "/benchmark/window_compare/{comparison}/compare_tw.tsv",
+        SCALE_ROOT + "/benchmark/window_compare/{comparison}/compare_tw.tsv",
     threads: config["window_compare"]["tw"]["n_jobs"]
     params:
         sample_a = lambda w: get_pair_samples(w.comparison)[0],
@@ -230,11 +231,11 @@ rule merge_window_pair_metrics:
         gaussian = rules.compare_gaussian_smoothed_windows.output.gaussian,
         tw = rules.compare_iced_windows_tw.output.tw,
     output:
-        merged = OUTDIR + "/window_compare/{comparison}/{comparison}_window_pair_metrics.tsv",
+        merged = SCALE_ROOT + "/window_compare/{comparison}/{comparison}_window_pair_metrics.tsv",
     log:
-        OUTDIR + "/logs/window_compare/{comparison}/merge_metrics.log",
+        SCALE_ROOT + "/logs/window_compare/{comparison}/merge_metrics.log",
     benchmark:
-        OUTDIR + "/benchmark/window_compare/{comparison}/merge_metrics.tsv",
+        SCALE_ROOT + "/benchmark/window_compare/{comparison}/merge_metrics.tsv",
     threads: 1
     params:
         sample_a = lambda w: get_pair_samples(w.comparison)[0],
@@ -271,16 +272,16 @@ rule merge_window_pair_metrics:
 rule merge_all_window_pair_metrics:
     """Merge all comparison-level window pair metrics into one background file."""
     input:
-        merged_files = expand(
-            OUTDIR + "/window_compare/{comparison}/{comparison}_window_pair_metrics.tsv",
-            comparison=get_comparison_pairs()
+        merged_files = lambda w: expand(
+            SCALE_ROOT + "/window_compare/{comparison}/{comparison}_window_pair_metrics.tsv",
+            comparison=get_comparison_pairs(), window_bins=w.window_bins,
         )
     output:
-        merged_all = OUTDIR + "/window_compare/merged_window_pair_metrics.tsv"
+        merged_all = SCALE_ROOT + "/window_compare/merged_window_pair_metrics.tsv"
     log:
-        OUTDIR + "/logs/window_compare/merge_all_window_pair_metrics.log"
+        SCALE_ROOT + "/logs/window_compare/merge_all_window_pair_metrics.log"
     benchmark:
-        OUTDIR + "/benchmark/window_compare/merge_all_window_pair_metrics.tsv"
+        SCALE_ROOT + "/benchmark/window_compare/merge_all_window_pair_metrics.tsv"
     threads: 1
     conda:
         "../env/SNAP-HiC-Diff.yaml"
@@ -290,9 +291,7 @@ rule merge_all_window_pair_metrics:
 
         mkdir -p "$(dirname "{output.merged_all}")" "$(dirname "{log}")"
 
-        find "{OUTDIR}/window_compare" -type f -name "*_window_pair_metrics.tsv" -print0 \
-            | sort -z \
-            | xargs -0 awk 'FNR==1 && NR!=1 {{next}} {{print}}' \
+        awk 'FNR==1 && NR!=1 {{next}} {{print}}' {input.merged_files} \
             > "{output.merged_all}"
 
         echo "[INFO] Merged all window_pair_metrics into {output.merged_all}" > "{log}"
