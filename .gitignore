@@ -9,3 +9,6 @@ logs/
 
 # Isolated development worktrees
 .worktrees/
+
+# Subagent development scratch state
+.superpowers/

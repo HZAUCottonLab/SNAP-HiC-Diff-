@@ -82,7 +82,7 @@ the repository's component-local thread convention:
 
 ```yaml
 convert:
-  resolutions: [4000, 8000, 20000, 100000]
+  resolutions: [4000, 8000, 10000, 20000, 100000]
 
 tad:
   resolutions: [4000, 8000, 20000]

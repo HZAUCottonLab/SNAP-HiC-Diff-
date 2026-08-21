@@ -70,7 +70,7 @@
 
 **Interfaces:**
 - Consumes: existing `run_convert(cool_uri, mcool_out, resolutions, threads, log_file)`.
-- Produces: new mcools with balanced 4/8/20/100 kb layers; later TAD rules rely on the 8 kb group and `bins/weight`.
+- Produces: new mcools with balanced 4/8/10/20/100 kb layers; later TAD rules rely on the 8 kb group and `bins/weight`.
 
 - [ ] **Step 1: Write the failing conversion contract test**
 
@@ -96,9 +96,9 @@ def load_converter():
     return module
 
 
-def test_conversion_builds_balanced_4_8_20_100kb_mcool():
+def test_conversion_builds_balanced_4_8_10_20_100kb_mcool():
     config = yaml.safe_load((REPO / "config" / "config.yaml").read_text())
-    assert config["convert"]["resolutions"] == [4000, 8000, 20000, 100000]
+    assert config["convert"]["resolutions"] == [4000, 8000, 10000, 20000, 100000]
 
     converter = load_converter()
     with patch.object(converter.subprocess, "run") as run:
@@ -114,7 +114,7 @@ def test_conversion_builds_balanced_4_8_20_100kb_mcool():
         [
             "cooler", "zoomify", "input.cool",
             "-o", "output.mcool",
-            "-r", "4000,8000,20000,100000",
+            "-r", "4000,8000,10000,20000,100000",
             "--balance",
             "--nproc", "20",
         ],
@@ -130,7 +130,7 @@ Run:
 pytest test/tad/test_mcool_conversion.py -v
 ```
 
-Expected: FAIL because `convert.resolutions` lacks 8000 and the command lacks `--balance`.
+Expected: FAIL because `convert.resolutions` lacks 8000 and 10000, and the command lacks `--balance`.
 
 - [ ] **Step 3: Add 8 kb and the native Cooler balance flag**
 
@@ -138,7 +138,7 @@ Change the config block to:
 
 ```yaml
 convert:
-  resolutions: [4000, 8000, 20000, 100000]
+  resolutions: [4000, 8000, 10000, 20000, 100000]
   threads: 20
 ```
 
