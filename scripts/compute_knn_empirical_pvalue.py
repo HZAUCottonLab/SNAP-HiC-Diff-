@@ -6,7 +6,10 @@ Usage:
     python scripts/compute_knn_empirical_pvalue.py \
         --comparison H1398_vs_L134 \
         --input results/window_compare/H1398_vs_L134/H1398_vs_L134_window_pair_metrics.tsv \
-        --background /share/home/xhhuang24/project/PanTE/background_pool/results/window_compare/HiC_window_background.tsv \
+        --background backgrounds/r4000_w25.tsv \
+        --config config/config.yaml \
+        --resolution-bp 4000 --window-bins 25 --window-size-bp 100000 \
+        --step-bins 5 --step-size-bp 20000 \
         --out results/knn_empirical_pvalue/H1398_vs_L134/H1398_vs_L134_knn_enriched.tsv \
         --log logs/knn_empirical_pvalue/H1398_vs_L134/knn_empirical_pvalue.log
 """
@@ -162,18 +165,42 @@ def compute_knn_pvalues(query_df, bg_df, knn_k, n_jobs, score_cols, log_file):
     return pd.DataFrame(rows)
 
 
+def validate_query_identity(query_df, resolution_bp, window_bins):
+    """Require each query row to have one complete, unique scale coordinate."""
+    required = ["chrom", "window_id", "window_start", "window_end", "comparison"]
+    missing = [column for column in required if column not in query_df.columns]
+    if missing:
+        raise ValueError(f"query missing columns: {', '.join(missing)}")
+
+    coordinate_columns = ["chrom", "window_start", "window_end"]
+    if query_df[coordinate_columns].isna().any().any():
+        raise ValueError("query has incomplete resolution/window/chrom/window coordinates")
+
+    identity = query_df[coordinate_columns].copy()
+    identity.insert(0, "window_bins", window_bins)
+    identity.insert(0, "resolution_bp", resolution_bp)
+    if identity.duplicated().any():
+        raise ValueError("duplicate query resolution/window/chrom/window coordinates")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Compute KNN-based empirical P-values for window pair metrics.")
     parser.add_argument("--comparison", required=True, help="Comparison name")
     parser.add_argument("--input", required=True, help="Input window_pair_metrics TSV file")
     parser.add_argument("--background", required=True, help="Background TSV file")
+    parser.add_argument("--config", required=True, help="Pipeline configuration YAML file")
+    parser.add_argument("--resolution-bp", required=True, type=int)
+    parser.add_argument("--window-bins", required=True, type=int)
+    parser.add_argument("--window-size-bp", required=True, type=int)
+    parser.add_argument("--step-bins", required=True, type=int)
+    parser.add_argument("--step-size-bp", required=True, type=int)
     parser.add_argument("--out", required=True, help="Output TSV file")
     parser.add_argument("--log", required=True, help="Log file path")
     args = parser.parse_args()
 
     Path(args.log).parent.mkdir(parents=True, exist_ok=True)
 
-    with open("config/config.yaml") as f:
+    with open(args.config) as f:
         knn_cfg = yaml.safe_load(f)["knn_empirical_pvalue"]
 
     knn_k = knn_cfg["knn_k"]
@@ -190,6 +217,7 @@ def main():
     log(f"[INFO] n_jobs: {n_jobs}", args.log)
 
     query_df = pd.read_csv(args.input, sep="\t")
+    validate_query_identity(query_df, args.resolution_bp, args.window_bins)
     log(f"[INFO] Loaded input: {len(query_df)} rows", args.log)
 
     derive_configs = knn_cfg.get("derive_scores", {})
@@ -217,8 +245,19 @@ def main():
     )
 
     key_cols = ["chrom", "window_id", "window_start", "window_end", "comparison"]
-    out_df = query_df[key_cols].copy()
-    out_df = pd.concat([out_df.reset_index(drop=True), knn_results], axis=1)
+    scale_df = pd.DataFrame(
+        {
+            "resolution_bp": args.resolution_bp,
+            "window_bins": args.window_bins,
+            "window_size_bp": args.window_size_bp,
+            "step_bins": args.step_bins,
+            "step_size_bp": args.step_size_bp,
+        },
+        index=range(len(query_df)),
+    )
+    out_df = pd.concat(
+        [scale_df, query_df[key_cols].reset_index(drop=True), knn_results], axis=1
+    )
 
     log(f"[INFO] Final output: {len(out_df)} rows, {len(out_df.columns)} columns", args.log)
 

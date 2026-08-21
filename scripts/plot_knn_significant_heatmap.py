@@ -45,7 +45,6 @@ os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["OMP_NUM_THREADS"] = "1"
 warnings.filterwarnings("ignore")
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 METRICS = [
     "MSE",
@@ -161,10 +160,10 @@ def get_pair_samples(comparison):
     return parts[0], parts[1]
 
 
-def load_iced_matrix(sample, chrom, window_start, window_end):
+def load_iced_matrix(shared_results_root, sample, chrom, window_start, window_end):
     """Load ICE O/E matrix from per-chrom .cool file."""
     cool_path = os.path.join(
-        PROJECT_ROOT, "results", "balanced", sample,
+        shared_results_root, "balanced", sample,
         f"{sample}__{chrom}_iced.cool"
     )
     if not os.path.exists(cool_path):
@@ -180,10 +179,10 @@ def load_iced_matrix(sample, chrom, window_start, window_end):
     return (mat + mat.T) / 2.0
 
 
-def load_gaussian_matrix(sample, chrom, window_id):
+def load_gaussian_matrix(window_results_root, sample, chrom, window_id):
     """Load Gaussian-smoothed matrix from per-chrom HDF5 file."""
     h5_path = os.path.join(
-        PROJECT_ROOT, "results", "windows", sample,
+        window_results_root, "windows", sample,
         f"{sample}__{chrom}_gaussian.h5"
     )
     if not os.path.exists(h5_path):
@@ -299,10 +298,10 @@ def mask_iced_diagonal(mat):
     return m
 
 
-def load_ln_oe_matrix(sample, chrom, window_id):
+def load_ln_oe_matrix(window_results_root, sample, chrom, window_id):
     """Load ln(O/E) matrix from per-window HDF5."""
     h5_path = os.path.join(
-        PROJECT_ROOT, "results", "windows", sample,
+        window_results_root, "windows", sample,
         f"{sample}__{chrom}_ln_oe.h5"
     )
     if not os.path.exists(h5_path):
@@ -405,6 +404,8 @@ def run_chrom(
     chrom,
     enriched_path,
     out_dir,
+    shared_results_root,
+    window_results_root,
     manifest_path=None,
     pvalue_threshold=0.05,
     pass_mode="all",
@@ -449,14 +450,14 @@ def run_chrom(
         png_path = os.path.join(out_dir, f"{chrom}_{wid}.png")
         pdf_path = os.path.join(out_dir, f"{chrom}_{wid}.pdf")
 
-        m_ci_raw = load_iced_matrix(control, chrom, ws, we)
-        m_ti_raw = load_iced_matrix(treatment, chrom, ws, we)
+        m_ci_raw = load_iced_matrix(shared_results_root, control, chrom, ws, we)
+        m_ti_raw = load_iced_matrix(shared_results_root, treatment, chrom, ws, we)
         m_ci = mask_iced_diagonal(m_ci_raw)
         m_ti = mask_iced_diagonal(m_ti_raw)
-        m_cl = load_ln_oe_matrix(control, chrom, wid)
-        m_tl = load_ln_oe_matrix(treatment, chrom, wid)
-        m_cg = load_gaussian_matrix(control, chrom, wid)
-        m_tg = load_gaussian_matrix(treatment, chrom, wid)
+        m_cl = load_ln_oe_matrix(window_results_root, control, chrom, wid)
+        m_tl = load_ln_oe_matrix(window_results_root, treatment, chrom, wid)
+        m_cg = load_gaussian_matrix(window_results_root, control, chrom, wid)
+        m_tg = load_gaussian_matrix(window_results_root, treatment, chrom, wid)
 
         plot_2x3_heatmap(
             m_ci, m_ti, m_cl, m_tl, m_cg, m_tg,
@@ -502,6 +503,16 @@ def main():
         help="Output directory",
     )
     parser.add_argument(
+        "--shared-results-root",
+        required=True,
+        help="Root containing shared balanced cooler results",
+    )
+    parser.add_argument(
+        "--window-results-root",
+        required=True,
+        help="Scale-specific root containing window HDF5 results",
+    )
+    parser.add_argument(
         "--pvalue-threshold",
         type=float,
         default=0.05,
@@ -524,18 +535,8 @@ def main():
     if len(metrics) == 0:
         metrics = list(METRICS)
 
-    # Resolve enriched path relative to project root
-    if os.path.isabs(args.enriched):
-        enriched_path = args.enriched
-    else:
-        enriched_path = os.path.join(PROJECT_ROOT, args.enriched)
-
-    manifest_path = None
-    if args.manifest:
-        if os.path.isabs(args.manifest):
-            manifest_path = args.manifest
-        else:
-            manifest_path = os.path.join(PROJECT_ROOT, args.manifest)
+    enriched_path = args.enriched
+    manifest_path = args.manifest
 
     if args.scan_only:
         run_scan(
@@ -553,6 +554,8 @@ def main():
             args.chrom,
             enriched_path,
             args.out_dir,
+            args.shared_results_root,
+            args.window_results_root,
             manifest_path=manifest_path,
             pvalue_threshold=args.pvalue_threshold,
             pass_mode=args.pass_mode,

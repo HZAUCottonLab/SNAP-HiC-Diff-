@@ -17,19 +17,21 @@
 checkpoint plot_knn_significant_heatmap:
     input:
         script = SCRIPT_DIR + "/scripts/plot_knn_significant_heatmap.py",
-        enriched = OUTDIR + "/knn_empirical_pvalue/{comparison}/{comparison}_knn_enriched.tsv",
+        enriched = SCALE_ROOT + "/knn_empirical_pvalue/{comparison}/{comparison}_knn_enriched.tsv",
     output:
-        manifest = OUTDIR + "/logs/knn_significant_heatmap/{comparison}/significant_windows.tsv",
-        pval_table = OUTDIR + "/logs/knn_significant_heatmap/{comparison}/pval_table.tsv",
-        pval_summary = OUTDIR + "/logs/knn_significant_heatmap/{comparison}/pval_summary.tsv",
+        manifest = SCALE_ROOT + "/logs/knn_significant_heatmap/{comparison}/significant_windows.tsv",
+        pval_table = SCALE_ROOT + "/logs/knn_significant_heatmap/{comparison}/pval_table.tsv",
+        pval_summary = SCALE_ROOT + "/logs/knn_significant_heatmap/{comparison}/pval_summary.tsv",
     log:
-        OUTDIR + "/logs/knn_significant_heatmap/{comparison}/scan.log",
+        SCALE_ROOT + "/logs/knn_significant_heatmap/{comparison}/scan.log",
     benchmark:
-        OUTDIR + "/benchmark/knn_significant_heatmap/{comparison}/scan.tsv",
+        SCALE_ROOT + "/benchmark/knn_significant_heatmap/{comparison}/scan.tsv",
     params:
         pvalue_threshold = config["knn_significant_heatmap"]["pvalue_threshold"],
         pass_mode = config["knn_significant_heatmap"]["pass_mode"],
         metrics = ",".join(config["knn_significant_heatmap"]["metrics"]),
+        shared_results_root = OUTDIR,
+        window_results_root = lambda w: SCALE_ROOT.format(window_bins=w.window_bins),
     conda:
         "../env/SNAP-HiC-Diff.yaml",
     shell:
@@ -39,6 +41,8 @@ checkpoint plot_knn_significant_heatmap:
             --scan-only \
             --enriched "{input.enriched}" \
             --out-dir "$(dirname "{output.manifest}")" \
+            --shared-results-root "{params.shared_results_root}" \
+            --window-results-root "{params.window_results_root}" \
             --pvalue-threshold "{params.pvalue_threshold}" \
             --pass-mode "{params.pass_mode}" \
             --metrics "{params.metrics}" \
@@ -52,18 +56,20 @@ rule plot_knn_chrom:
     input:
         manifest = rules.plot_knn_significant_heatmap.output.manifest,
         script = SCRIPT_DIR + "/scripts/plot_knn_significant_heatmap.py",
-        enriched = OUTDIR + "/knn_empirical_pvalue/{comparison}/{comparison}_knn_enriched.tsv",
+        enriched = SCALE_ROOT + "/knn_empirical_pvalue/{comparison}/{comparison}_knn_enriched.tsv",
     output:
-        done = OUTDIR + "/logs/knn_significant_heatmap/{comparison}/{chrom}.done",
+        done = SCALE_ROOT + "/logs/knn_significant_heatmap/{comparison}/{chrom}.done",
     log:
-        OUTDIR + "/logs/knn_significant_heatmap/{comparison}/{chrom}.log",
+        SCALE_ROOT + "/logs/knn_significant_heatmap/{comparison}/{chrom}.log",
     benchmark:
-        OUTDIR + "/benchmark/knn_significant_heatmap/{comparison}/{chrom}.tsv",
+        SCALE_ROOT + "/benchmark/knn_significant_heatmap/{comparison}/{chrom}.tsv",
     params:
         pvalue_threshold = config["knn_significant_heatmap"]["pvalue_threshold"],
         pass_mode = config["knn_significant_heatmap"]["pass_mode"],
         metrics = ",".join(config["knn_significant_heatmap"]["metrics"]),
-        out_dir = OUTDIR + "/knn_significant_heatmap/{comparison}",
+        out_dir = SCALE_ROOT + "/knn_significant_heatmap/{comparison}",
+        shared_results_root = OUTDIR,
+        window_results_root = lambda w: SCALE_ROOT.format(window_bins=w.window_bins),
     threads:
         config["parallel"]["threads_per_job"],
     conda:
@@ -80,6 +86,8 @@ rule plot_knn_chrom:
             --enriched "{input.enriched}" \
             --manifest "{input.manifest}" \
             --out-dir "{params.out_dir}" \
+            --shared-results-root "{params.shared_results_root}" \
+            --window-results-root "{params.window_results_root}" \
             --pvalue-threshold "{params.pvalue_threshold}" \
             --pass-mode "{params.pass_mode}" \
             --metrics "{params.metrics}" \

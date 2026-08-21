@@ -123,12 +123,16 @@ def knn_heatmap_chrom_done_by_comp(wildcards):
 
     Uses checkpoint output so dry-run schedules checkpoint job.
     """
-    ck = checkpoints.plot_knn_significant_heatmap.get(comparison=wildcards.comparison)
+    ck = checkpoints.plot_knn_significant_heatmap.get(
+        comparison=wildcards.comparison,
+        window_bins=wildcards.window_bins,
+    )
     manifest = ck.output.manifest
     df = pd.read_csv(manifest, sep="\t")
     chroms = sorted(df["chrom"].unique())
+    scale_root = SCALE_ROOT.format(window_bins=wildcards.window_bins)
     return [
-        f"{OUTDIR}/logs/knn_significant_heatmap/{wildcards.comparison}/{chrom}.done"
+        f"{scale_root}/logs/knn_significant_heatmap/{wildcards.comparison}/{chrom}.done"
         for chrom in chroms
     ]
 
