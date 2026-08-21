@@ -30,6 +30,17 @@ class TadSettings:
 
 def parse_tad_settings(config):
     try:
+        return _parse_tad_settings(config)
+    except TadConfigError:
+        raise
+    except Exception as error:
+        raise TadConfigError(
+            f"ERROR[TAD_CONFIG_INVALID] invalid={type(error).__name__}"
+        ) from error
+
+
+def _parse_tad_settings(config):
+    try:
         section = config["tad"]
         resolutions = tuple(section["resolutions"])
         signals = tuple(section["signals"])
