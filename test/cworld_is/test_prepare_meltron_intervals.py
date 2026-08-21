@@ -15,9 +15,34 @@ P_VALUE_COLUMNS = (
     "d_NCC_empirical_pvalue",
 )
 
+SCALE_COLUMNS = (
+    "resolution_bp",
+    "window_bins",
+    "window_size_bp",
+    "step_bins",
+    "step_size_bp",
+)
+
+INTERVAL_MAP_COLUMNS = [
+    *SCALE_COLUMNS,
+    "chrom",
+    "interval_start",
+    "interval_end",
+    "window_start",
+    "window_end",
+    "window_id",
+    "ID",
+    "n_significant_metrics",
+]
+
 
 def write_enriched(path, **coordinates):
     row = {
+        "resolution_bp": 4000,
+        "window_bins": 25,
+        "window_size_bp": 100000,
+        "step_bins": 5,
+        "step_size_bp": 20000,
         "chrom": "HC04_A01",
         "window_id": 17,
         "comparison": "H1398_vs_L134",
@@ -39,7 +64,7 @@ def run_preparer(enriched, output):
             str(output),
             "--min-significant",
             "1",
-            "--fdr-threshold",
+            "--raw-pvalue-threshold",
             "0.05",
         ],
         text=True,
@@ -63,7 +88,7 @@ def test_preparer_maps_knn_window_coordinates_to_canonical_intervals(tmp_path):
     intervals = pd.read_csv(output, sep="\t")
     assert list(intervals.columns) == ["chrom", "start", "end", "ID"]
     assert intervals.to_dict("records") == [
-        {"chrom": "HC04_A01", "start": 4000, "end": 8000, "ID": "HC04_A01_17"}
+        {"chrom": "HC04_A01", "start": 4000, "end": 8000, "ID": "r4000_w25_HC04_A01_17"}
     ]
 
 
@@ -120,7 +145,7 @@ def test_preparer_accepts_legacy_canonical_coordinates_without_window_columns(tm
     assert result.returncode == 0, result.stderr
     intervals = pd.read_csv(output, sep="\t")
     assert intervals.to_dict("records") == [
-        {"chrom": "HC04_A01", "start": 4000, "end": 8000, "ID": "HC04_A01_17"}
+        {"chrom": "HC04_A01", "start": 4000, "end": 8000, "ID": "r4000_w25_HC04_A01_17"}
     ]
 
 
@@ -136,3 +161,77 @@ def test_preparer_rejects_partial_coordinate_schema(tmp_path):
         "input coordinate schema requires either start/end or "
         "window_start/window_end" in result.stderr
     )
+
+
+def test_preparer_records_full_scale_and_source_identity_in_interval_map(tmp_path):
+    enriched = tmp_path / "knn_enriched.tsv"
+    output = tmp_path / "meltron" / "H1398_vs_L134_intervals.tsv"
+    write_enriched(
+        enriched,
+        start=3000,
+        end=9000,
+        window_start=4000,
+        window_end=8000,
+    )
+
+    result = run_preparer(enriched, output)
+
+    assert result.returncode == 0, result.stderr
+    interval_map = pd.read_csv(
+        output.with_name("H1398_vs_L134_interval_map.tsv"), sep="\t"
+    )
+    assert list(interval_map.columns) == INTERVAL_MAP_COLUMNS
+    assert interval_map.to_dict("records") == [
+        {
+            "resolution_bp": 4000,
+            "window_bins": 25,
+            "window_size_bp": 100000,
+            "step_bins": 5,
+            "step_size_bp": 20000,
+            "chrom": "HC04_A01",
+            "interval_start": 3000,
+            "interval_end": 9000,
+            "window_start": 4000,
+            "window_end": 8000,
+            "window_id": 17,
+            "ID": "r4000_w25_HC04_A01_17",
+            "n_significant_metrics": 5,
+        }
+    ]
+
+
+def test_preparer_writes_stable_empty_interval_map_at_raw_threshold(tmp_path):
+    enriched = tmp_path / "knn_enriched.tsv"
+    output = tmp_path / "meltron" / "H1398_vs_L134_intervals.tsv"
+    pvalues = {column: 0.05 for column in P_VALUE_COLUMNS}
+    write_enriched(
+        enriched,
+        window_start=4000,
+        window_end=8000,
+        **pvalues,
+    )
+
+    result = run_preparer(enriched, output)
+
+    assert result.returncode == 0, result.stderr
+    intervals = pd.read_csv(output, sep="\t")
+    interval_map = pd.read_csv(output.with_name("H1398_vs_L134_interval_map.tsv"), sep="\t")
+    assert list(intervals.columns) == ["chrom", "start", "end", "ID"]
+    assert intervals.empty
+    assert list(interval_map.columns) == INTERVAL_MAP_COLUMNS
+    assert interval_map.empty
+
+
+def test_preparer_requires_exactly_the_canonical_raw_pvalue_columns(tmp_path):
+    enriched = tmp_path / "knn_enriched.tsv"
+    output = tmp_path / "meltron" / "H1398_vs_L134_intervals.tsv"
+    write_enriched(
+        enriched,
+        window_start=4000,
+        window_end=8000,
+        extra_empirical_pvalue=0.001,
+    )
+
+    result = run_preparer(enriched, output)
+
+    assert result.returncode != 0

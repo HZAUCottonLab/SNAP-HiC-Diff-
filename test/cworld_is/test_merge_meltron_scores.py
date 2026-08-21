@@ -10,6 +10,39 @@ REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "scripts" / "merge_meltron_scores.py"
 KEY_COLUMNS = ["chrom", "start", "end", "ID"]
 
+SCALE_COLUMNS = [
+    "resolution_bp",
+    "window_bins",
+    "window_size_bp",
+    "step_bins",
+    "step_size_bp",
+]
+
+INTERVAL_MAP_COLUMNS = [
+    *SCALE_COLUMNS,
+    "chrom",
+    "interval_start",
+    "interval_end",
+    "window_start",
+    "window_end",
+    "window_id",
+    "ID",
+    "n_significant_metrics",
+]
+
+MERGED_COLUMNS = [
+    *INTERVAL_MAP_COLUMNS,
+    "meltron_melting_score",
+    "meltron_compaction_score",
+    "meltron_best_score",
+    "meltron_best_direction",
+    "meltron_is_significant",
+    "perc_na_or_missing_ref_decondensation",
+    "perc_na_or_missing_inp_decondensation",
+    "perc_na_or_missing_ref_condensation",
+    "perc_na_or_missing_inp_condensation",
+]
+
 
 def write_tsv(path, records, columns=None):
     pd.DataFrame(records, columns=columns).to_csv(path, sep="\t", index=False)
@@ -42,7 +75,23 @@ def run_merge(decondensation, condensation, interval_map, output):
 def write_interval_map(path):
     write_tsv(
         path,
-        [{"ID": "HC04_A01_17", "window_id": 17, "n_significant_metrics": 3}],
+        [
+            {
+                "resolution_bp": 4000,
+                "window_bins": 25,
+                "window_size_bp": 100000,
+                "step_bins": 5,
+                "step_size_bp": 20000,
+                "chrom": "HC04_A01",
+                "interval_start": 4000,
+                "interval_end": 8000,
+                "window_start": 4000,
+                "window_end": 8000,
+                "window_id": 17,
+                "ID": "HC04_A01_17",
+                "n_significant_metrics": 3,
+            }
+        ],
     )
 
 
@@ -331,4 +380,40 @@ def test_merge_reports_missing_interval_metric_count_schema(tmp_path):
     assert (
         "interval map requires n_significant or n_significant_metrics"
         in result.stderr
+
     )
+
+def test_merge_carries_full_scale_and_source_schema_from_interval_map(tmp_path):
+    decondensation = tmp_path / "decondensation.tsv"
+    condensation = tmp_path / "condensation.tsv"
+    interval_map = tmp_path / "interval_map.tsv"
+    output = tmp_path / "merged.tsv"
+    write_tsv(decondensation, [{"chrom": "HC04_A01", "start": 4000, "end": 8000, "ID": "HC04_A01_17", "melting_score": 6.0}])
+    write_tsv(condensation, [{"chrom": "HC04_A01", "start": 4000, "end": 8000, "ID": "HC04_A01_17", "compaction_score": 8.0}])
+    write_interval_map(interval_map)
+
+    result = run_merge(decondensation, condensation, interval_map, output)
+
+    assert result.returncode == 0, result.stderr
+    merged = pd.read_csv(output, sep="\t")
+    assert list(merged.columns) == MERGED_COLUMNS
+    row = merged.iloc[0]
+    assert row[SCALE_COLUMNS].tolist() == [4000, 25, 100000, 5, 20000]
+    assert row[["interval_start", "interval_end", "window_start", "window_end"]].tolist() == [4000, 8000, 4000, 8000]
+
+
+def test_merge_writes_full_stable_schema_when_both_directions_are_empty(tmp_path):
+    decondensation = tmp_path / "decondensation.tsv"
+    condensation = tmp_path / "condensation.tsv"
+    interval_map = tmp_path / "interval_map.tsv"
+    output = tmp_path / "merged.tsv"
+    write_tsv(decondensation, [], columns=[*KEY_COLUMNS, "melting_score"])
+    write_tsv(condensation, [], columns=[*KEY_COLUMNS, "compaction_score"])
+    write_interval_map(interval_map)
+
+    result = run_merge(decondensation, condensation, interval_map, output)
+
+    assert result.returncode == 0, result.stderr
+    merged = pd.read_csv(output, sep="\t")
+    assert list(merged.columns) == MERGED_COLUMNS
+    assert merged.empty

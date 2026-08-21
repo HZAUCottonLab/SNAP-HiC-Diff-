@@ -21,26 +21,27 @@ rule meltron_per_comparison:
             w.comparison.split("_vs_")[1],
             w.comparison.split("_vs_")[1],
         ),
-        knn_enriched = OUTDIR + "/knn_empirical_pvalue/{comparison}/{comparison}_knn_enriched.tsv",
+        knn_enriched = SCALE_ROOT + "/knn_empirical_pvalue/{comparison}/{comparison}_knn_enriched.tsv",
         script_prepare = SCRIPT_DIR + "/scripts/prepare_meltron_intervals.py",
         script_run = SCRIPT_DIR + "/scripts/run_meltron.py",
         script_merge = SCRIPT_DIR + "/scripts/merge_meltron_scores.py",
     output:
-        manifest = OUTDIR + "/logs/meltron/{comparison}.done",
-        intervals = OUTDIR + "/meltron/{comparison}/{comparison}_intervals.tsv",
-        interval_map = OUTDIR + "/meltron/{comparison}/{comparison}_interval_map.tsv",
-        decond = OUTDIR + "/meltron/{comparison}/{comparison}_decondensation.tsv",
-        condens = OUTDIR + "/meltron/{comparison}/{comparison}_condensation.tsv",
-        merged = OUTDIR + "/meltron/{comparison}/{comparison}_meltron_merged.tsv",
+        manifest = SCALE_ROOT + "/logs/meltron/{comparison}.done",
+        intervals = SCALE_ROOT + "/meltron/{comparison}/{comparison}_intervals.tsv",
+        interval_map = SCALE_ROOT + "/meltron/{comparison}/{comparison}_interval_map.tsv",
+        decond = SCALE_ROOT + "/meltron/{comparison}/{comparison}_decondensation.tsv",
+        condens = SCALE_ROOT + "/meltron/{comparison}/{comparison}_condensation.tsv",
+        merged = SCALE_ROOT + "/meltron/{comparison}/{comparison}_meltron_merged.tsv",
     log:
-        "{}/logs/meltron/{{comparison}}.log".format(OUTDIR)
+        SCALE_ROOT + "/logs/meltron/{comparison}.log"
     benchmark:
-        "{}/benchmark/meltron/{{comparison}}.tsv".format(OUTDIR)
+        SCALE_ROOT + "/benchmark/meltron/{comparison}.tsv"
     threads:
         config["meltron"]["cores"]
     params:
         outdir = OUTDIR,
         cutoff_na = config["meltron"]["cutoff_na"],
+        scale_root = lambda w: SCALE_ROOT.format(window_bins=w.window_bins),
         score_threshold = config["meltron"]["score_threshold"],
         min_significant = config["meltron"]["min_significant"],
         meltron_cores = config["meltron"]["cores"],
@@ -61,14 +62,14 @@ rule meltron_per_comparison:
         IS_A="{params.outdir}/IS/${{SAMPLE_A}}/${{SAMPLE_A}}_IS.tsv"
         IS_B="{params.outdir}/IS/${{SAMPLE_B}}/${{SAMPLE_B}}_IS.tsv"
 
-        mkdir -p "{params.outdir}/meltron/$COMPARISON"
+        mkdir -p "{params.scale_root}/meltron/$COMPARISON"
 
         # Step 1: prepare Meltron intervals from knn_enriched.tsv
         python {params.script_prepare} \
             --enriched {input.knn_enriched} \
             --out {output.intervals} \
             --min-significant {params.min_significant} \
-            --fdr-threshold 0.05 \
+            --raw-pvalue-threshold 0.05 \
             --log-file "{log}" \
             >> "{log}" 2>&1
 
