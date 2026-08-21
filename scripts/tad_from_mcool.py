@@ -1,4 +1,4 @@
-from argparse import ArgumentParser
+from argparse import ArgumentError, ArgumentParser
 import json
 from pathlib import Path
 import sys
@@ -11,6 +11,85 @@ from tad_errors import TadError
 
 
 VALID_SIGNALS = {"raw", "balanced"}
+
+
+class TadArgumentError(ValueError):
+    pass
+
+
+class TadArgumentParser(ArgumentParser):
+    def error(self, message):
+        raise TadArgumentError(message)
+
+
+def configuration_context(sample=None, signal=None, resolution=None, run_dir=None):
+    return {
+        "sample": sample,
+        "signal": signal,
+        "resolution": resolution,
+        "path": Path(run_dir).resolve() if run_dir else None,
+    }
+
+
+def configuration_context_from_argv(argv):
+    options = {
+        "--sample": "sample",
+        "--signal": "signal",
+        "--resolution": "resolution",
+        "--run-dir": "run_dir",
+    }
+    values = {}
+    for index, argument in enumerate(argv):
+        for option, key in options.items():
+            if argument == option and index + 1 < len(argv):
+                values[key] = argv[index + 1]
+            elif argument.startswith(f"{option}="):
+                values[key] = argument.split("=", 1)[1]
+    return configuration_context(**values)
+
+
+def configuration_error(context, error):
+    return TadError("TAD_CONFIG_INVALID", **context, error=type(error).__name__)
+
+
+def parse_preparation_config(args):
+    try:
+        d_config = json.loads(args.d_config_json)
+        if not isinstance(d_config, dict):
+            raise ValueError("D configuration must be a JSON object")
+        badregionfilter = parse_boolean(args.badregionfilter)
+        effective = effective_d_config(d_config, args.resolution)
+        for key in (
+            "size_bins",
+            "variance_thresholds",
+            "region_size_bins",
+            "overlap_bins",
+            "logged",
+            "scale",
+            "plateau",
+            "chaosfilter",
+            "chaos_pct",
+            "max_gamma",
+            "num_part",
+            "plots",
+            "pctile_threshold",
+            "pct_value",
+            "final_consistent_domains",
+            "size_threshold_bins",
+            "boundary_buffer_bins",
+        ):
+            effective[key]
+    except (AttributeError, KeyError, TypeError, ValueError) as error:
+        raise configuration_error(
+            configuration_context(
+                sample=args.sample,
+                signal=args.signal,
+                resolution=args.resolution,
+                run_dir=args.run_dir,
+            ),
+            error,
+        ) from error
+    return d_config, badregionfilter
 
 
 def validate_mcool_resolution(mcool_path, resolution, sample, signal):
@@ -51,7 +130,16 @@ def iter_pixels_as_triples(clr, signal):
             continue
         value = count
         if weights is not None:
-            value = count * weights[int(bin1)] * weights[int(bin2)]
+            weight1 = weights[int(bin1)]
+            weight2 = weights[int(bin2)]
+            if (
+                not np.isfinite(weight1)
+                or not np.isfinite(weight2)
+                or weight1 <= 0
+                or weight2 <= 0
+            ):
+                continue
+            value = count * weight1 * weight2
         if np.isfinite(value) and value > 0:
             yield int(bin1) + 1, int(bin2) + 1, float(value)
 
@@ -168,7 +256,7 @@ def parse_boolean(value: str) -> bool:
 
 
 def build_parser() -> ArgumentParser:
-    parser = ArgumentParser()
+    parser = TadArgumentParser(exit_on_error=False)
     parser.add_argument("--mcool", required=True)
     parser.add_argument("--sample", required=True)
     parser.add_argument("--signal", required=True, choices=sorted(VALID_SIGNALS))
@@ -185,10 +273,13 @@ def build_parser() -> ArgumentParser:
 
 def run_from_args(args) -> None:
     mcool_path = Path(args.mcool).resolve()
-    validate_mcool_resolution(mcool_path, args.resolution, args.sample, args.signal)
 
     run_dir = Path(args.run_dir).resolve()
     ready_flag = Path(args.ready_flag).resolve()
+    ready_flag.unlink(missing_ok=True)
+    d_config, badregionfilter = parse_preparation_config(args)
+    validate_mcool_resolution(mcool_path, args.resolution, args.sample, args.signal)
+
     input_dir = run_dir / "input"
     bed_path = input_dir / f"{args.sample}.bed"
     interactions_path = input_dir / f"{args.sample}.{args.signal}.interactions"
@@ -207,9 +298,9 @@ def run_from_args(args) -> None:
         settings_path,
         sample=args.sample,
         resolution=args.resolution,
-        d_config=json.loads(args.d_config_json),
+        d_config=d_config,
         bad_region_bed=args.bad_region_bed,
-        badregionfilter=parse_boolean(args.badregionfilter),
+        badregionfilter=badregionfilter,
         excluded_chromosomes=(
             args.excluded_chromosomes.split(",") if args.excluded_chromosomes else []
         ),
@@ -237,7 +328,15 @@ def run_from_args(args) -> None:
 
 
 def cli(argv=None):
-    args = build_parser().parse_args(argv)
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    try:
+        args = build_parser().parse_args(arguments)
+    except (ArgumentError, TadArgumentError) as error:
+        print(
+            configuration_error(configuration_context_from_argv(arguments), error),
+            file=sys.stderr,
+        )
+        return 1
     try:
         run_from_args(args)
     except TadError as error:

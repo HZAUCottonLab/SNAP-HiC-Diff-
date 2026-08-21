@@ -1,4 +1,5 @@
 import importlib.util
+import json
 from pathlib import Path
 import sys
 
@@ -43,6 +44,52 @@ def tiny_mcool(tmp_path):
     return path
 
 
+@pytest.fixture
+def d_config():
+    return {
+        "size_bins": [2, 4],
+        "variance_thresholds": [20, 30],
+        "region_size_bins": 10,
+        "overlap_bins": 2,
+        "logged": True,
+        "scale": False,
+        "plateau": 0.5,
+        "chaosfilter": False,
+        "chaos_pct": 0.1,
+        "max_gamma": 1.5,
+        "num_part": 2,
+        "plots": False,
+        "pctile_threshold": 0.95,
+        "pct_value": 0.5,
+        "final_consistent_domains": True,
+        "size_threshold_bins": 3,
+        "boundary_buffer_bins": 1,
+    }
+
+
+def cli_args(mcool_path, run_dir, ready_flag, d_config, **overrides):
+    values = {
+        "mcool": str(mcool_path),
+        "sample": "sample-X",
+        "signal": "raw",
+        "resolution": "4000",
+        "run_dir": str(run_dir),
+        "ready_flag": str(ready_flag),
+        "bad_region_bed": str(run_dir / "bad-regions.bed"),
+        "badregionfilter": "true",
+        "excluded_chromosomes": "",
+        "d_config_json": json.dumps(d_config),
+        "processors": "2",
+    }
+    values.update(overrides)
+    arguments = []
+    for key, value in values.items():
+        if key == "excluded_chromosomes" and not value:
+            continue
+        arguments.extend([f"--{key.replace('_', '-')}", value])
+    return arguments
+
+
 def test_raw_values_and_balanced_values_with_nonfinite_weight_filter(tiny_mcool):
     adapter = load_adapter()
     clr = cooler.Cooler(f"{tiny_mcool}::/resolutions/4000")
@@ -55,6 +102,26 @@ def test_raw_values_and_balanced_values_with_nonfinite_weight_filter(tiny_mcool)
         (1, 1, 0.5),
         (1, 2, 0.5),
     ]
+
+
+def test_balanced_values_reject_negative_and_zero_endpoint_weights(tmp_path):
+    adapter = load_adapter()
+    path = tmp_path / "signed-weights.mcool"
+    bins = pd.DataFrame({
+        "chrom": ["A02"] * 4,
+        "start": [0, 4000, 8000, 12000],
+        "end": [4000, 8000, 12000, 16000],
+        "weight": [-0.5, -0.25, 0.0, 0.5],
+    })
+    pixels = pd.DataFrame({
+        "bin1_id": [0, 0, 3],
+        "bin2_id": [1, 2, 3],
+        "count": [8.0, 8.0, 8.0],
+    })
+    cooler.create_cooler(f"{path}::/resolutions/4000", bins, pixels)
+
+    clr = cooler.Cooler(f"{path}::/resolutions/4000")
+    assert list(adapter.iter_pixels_as_triples(clr, "balanced")) == [(4, 4, 2.0)]
 
 
 def test_4kb_override_is_identical_for_both_signal_runs():
@@ -120,3 +187,81 @@ def test_global_bed_ids_are_one_based(tiny_mcool, tmp_path):
         "A02\t4000\t8000\t2\n"
         "A03\t0\t4000\t3\n"
     )
+
+
+def test_cli_creates_signal_artifacts_and_invalidates_stale_ready_before_bad_rerun(
+    tiny_mcool, tmp_path, d_config, capsys
+):
+    adapter = load_adapter()
+    run_dir = tmp_path / "run"
+    ready_flag = run_dir / "ready.txt"
+
+    raw_args = cli_args(tiny_mcool, run_dir, ready_flag, d_config, signal="raw")
+    assert adapter.cli(raw_args) == 0
+    assert capsys.readouterr().err == ""
+
+    input_dir = run_dir / "input"
+    raw_interactions = input_dir / "sample-X.raw.interactions"
+    raw_settings = run_dir / "settings_sample-X.raw.txt"
+    assert raw_interactions.read_text() == "1\t1\t8.0\n1\t2\t4.0\n1\t3\t4.0\n"
+    assert "counts_file_1\tsample-X.raw.interactions\n" in raw_settings.read_text()
+    assert "signal=raw\n" in ready_flag.read_text()
+    assert (input_dir / "sample-X.bed").read_text().endswith("A03\t0\t4000\t3\n")
+
+    balanced_args = cli_args(
+        tiny_mcool, run_dir, ready_flag, d_config, signal="balanced"
+    )
+    assert adapter.cli(balanced_args) == 0
+    assert capsys.readouterr().err == ""
+    assert (input_dir / "sample-X.balanced.interactions").read_text() == (
+        "1\t1\t0.5\n1\t2\t0.5\n"
+    )
+    assert "counts_file_1\tsample-X.balanced.interactions\n" in (
+        run_dir / "settings_sample-X.balanced.txt"
+    ).read_text()
+    assert "signal=balanced\n" in ready_flag.read_text()
+
+    raw_interactions.write_text("previous raw interactions\n")
+    raw_settings.write_text("previous raw settings\n")
+    ready_flag.write_text("stale ready manifest\n")
+    bad_json_args = cli_args(
+        tiny_mcool,
+        run_dir,
+        ready_flag,
+        d_config,
+        d_config_json="{not-valid-json",
+    )
+    assert adapter.cli(bad_json_args) == 1
+    error = capsys.readouterr().err
+    assert error.startswith("ERROR[TAD_CONFIG_INVALID]")
+    assert "sample=sample-X" in error
+    assert "signal=raw" in error
+    assert "resolution=4000" in error
+    assert f"path={run_dir.resolve()}" in error
+    assert not ready_flag.exists()
+    assert raw_interactions.read_text() == "previous raw interactions\n"
+    assert raw_settings.read_text() == "previous raw settings\n"
+
+
+@pytest.mark.parametrize(
+    ("overrides", "expected_context"),
+    [
+        ({"signal": "unsupported"}, "signal=unsupported"),
+        ({"resolution": "not-an-integer"}, "sample=sample-X"),
+        ({"badregionfilter": "not-a-boolean"}, "signal=raw"),
+    ],
+)
+def test_cli_configuration_errors_use_stable_diagnostic(
+    tiny_mcool, tmp_path, d_config, capsys, overrides, expected_context
+):
+    adapter = load_adapter()
+    run_dir = tmp_path / "run"
+    result = adapter.cli(
+        cli_args(tiny_mcool, run_dir, run_dir / "ready.txt", d_config, **overrides)
+    )
+
+    error = capsys.readouterr().err
+    assert result == 1
+    assert error.startswith("ERROR[TAD_CONFIG_INVALID]")
+    assert expected_context in error
+    assert f"path={run_dir.resolve()}" in error
