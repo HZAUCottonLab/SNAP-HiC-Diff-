@@ -22,8 +22,9 @@ convert:
 # Analysis Parameters
 # ============================================================================
 resolution: 4000           # 4kb bins (finest available in mcool)
-window_size: 300000       # 300kb windows
-step_size: 32000          # 32kb step (sliding window)
+window_analysis:
+  window_bins: [25, 50, 75, 100, 125]
+  step_fraction: 0.20
 
 # ============================================================================
 # Samples (loaded dynamically from manifest.tsv - do not hardcode here)
@@ -78,7 +79,12 @@ tracy_widom:
 # KNN Empirical P-Value Parameters
 # ============================================================================
 knn_empirical_pvalue:
-  background_file: "/share/home/xhhuang24/project/PanTE/background_pool/results/window_compare/HiC_window_background.tsv"
+  background_presets:
+    - {resolution_bp: 4000, window_bins: 25, step_bins: 5, file: "/share/home/xhhuang24/project/PanTE/background_pool/results/window_scales/r4000/w25/window_compare/HiC_window_background.tsv"}
+    - {resolution_bp: 4000, window_bins: 50, step_bins: 10, file: "/share/home/xhhuang24/project/PanTE/background_pool/results/window_scales/r4000/w50/window_compare/HiC_window_background.tsv"}
+    - {resolution_bp: 4000, window_bins: 75, step_bins: 15, file: "/share/home/xhhuang24/project/PanTE/background_pool/results/window_scales/r4000/w75/window_compare/HiC_window_background.tsv"}
+    - {resolution_bp: 4000, window_bins: 100, step_bins: 20, file: "/share/home/xhhuang24/project/PanTE/background_pool/results/window_scales/r4000/w100/window_compare/HiC_window_background.tsv"}
+    - {resolution_bp: 4000, window_bins: 125, step_bins: 25, file: "/share/home/xhhuang24/project/PanTE/background_pool/results/window_scales/r4000/w125/window_compare/HiC_window_background.tsv"}
   knn_k: 10000
   knn_metric: "euclidean"
   scaler: "robust"
