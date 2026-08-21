@@ -16,15 +16,20 @@ import sys
 
 sys.path.insert(0, os.path.join(SCRIPT_DIR, "scripts"))
 from cworld_is_config import parse_cworld_is_settings
+from window_analysis_config import parse_window_analysis_settings
 CWORLD_IS = parse_cworld_is_settings(config)
 
 
 # Derived paths
 OUTDIR = config["outdir"]
-RESOLUTION = config["resolution"]
-WINDOW_SIZE = config["window_size"]
+# Mapping completeness is a global preflight check. File existence is left to
+# the scale-specific validation rule so unrelated shared-IS targets remain runnable.
+WINDOW_ANALYSIS = parse_window_analysis_settings(config, check_files=False)
+RESOLUTION = WINDOW_ANALYSIS.resolution_bp
+WINDOW_BINS = [scale.window_bins for scale in WINDOW_ANALYSIS.scales]
+SCALE_ROOT = "{}/window_scales/r{}/w{{window_bins}}".format(OUTDIR, RESOLUTION)
+MULTISCALE_ROOT = "{}/multiscale/r{}".format(OUTDIR, RESOLUTION)
 TMP = config["tmpdir"]
-STEP_SIZE = config.get("step_size", config["window_size"])  # Default: non-overlapping
 
 # ==============================================================================
 # Helper Functions
@@ -59,6 +64,14 @@ def get_sample_pairs():
             if a < b:
                 pairs.append((a, b))
     return pairs
+
+def get_window_scale(window_bins):
+    return WINDOW_ANALYSIS.scale(int(window_bins))
+
+
+def get_background_preset(window_bins):
+    return WINDOW_ANALYSIS.backgrounds_by_window_bins[int(window_bins)]
+
 
 
 # Chromosome list (loaded from config/chroms.yaml)
@@ -150,7 +163,7 @@ rule all:
         # 1. Validated manifest
         OUTDIR + "/validated/manifest.validated.tsv",
         # 2. Windows
-        OUTDIR + "/windows/windows_" + str(RESOLUTION) + ".parquet",
+        expand(SCALE_ROOT + "/windows/windows.parquet", window_bins=WINDOW_BINS),
         # 3. Extract + Balance (one job per sample, for-loop over chroms in shell)
         expand(OUTDIR + "/logs/extract_balance/{sample}.done", sample=SAMPLES),
         # 4. Expected files (checkpoint manifests)
@@ -159,8 +172,16 @@ rule all:
         # 5. O/E matrix (checkpoint manifest)
         expand(OUTDIR + "/logs/oe/{sample}.done", sample=SAMPLES),
         # 6. Gap QC + Sliding window (checkpoint manifests)
-        expand(OUTDIR + "/logs/gap_qc/{sample}.done", sample=SAMPLES),
-        expand(OUTDIR + "/logs/windows/{sample}.done", sample=SAMPLES),
+        expand(
+            SCALE_ROOT + "/logs/gap_qc/{sample}.done",
+            sample=SAMPLES,
+            window_bins=WINDOW_BINS,
+        ),
+        expand(
+            SCALE_ROOT + "/logs/windows/{sample}.done",
+            sample=SAMPLES,
+            window_bins=WINDOW_BINS,
+        ),
         # 7. Window compare — intermediate stage outputs (explicit, so deletion triggers rebuild)
         expand(OUTDIR + "/window_compare/{comparison}/{comparison}_covariates.tsv",
                comparison=get_window_compare_pairs()),
