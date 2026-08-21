@@ -1,6 +1,7 @@
 # SNAP-HiC-Diff Window Comparison Pipeline
 # Main Snakefile entry point
 
+import json
 import os
 import glob
 import pandas as pd
@@ -16,7 +17,15 @@ import sys
 
 sys.path.insert(0, os.path.join(SCRIPT_DIR, "scripts"))
 from cworld_is_config import parse_cworld_is_settings
+from tad_config import parse_tad_settings
+
 CWORLD_IS = parse_cworld_is_settings(config)
+TAD = parse_tad_settings(config)
+TAD_RESOLUTIONS = TAD.resolutions
+TAD_SIGNALS = TAD.signals
+TAD_LABELS = {resolution: f"{resolution // 1000}kb" for resolution in TAD_RESOLUTIONS}
+TAD_RESOLUTION_BY_LABEL = {label: resolution for resolution, label in TAD_LABELS.items()}
+TAD_D_CONFIG_JSON = json.dumps(TAD.d, sort_keys=True)
 
 
 # Derived paths
@@ -25,6 +34,29 @@ RESOLUTION = config["resolution"]
 WINDOW_SIZE = config["window_size"]
 TMP = config["tmpdir"]
 STEP_SIZE = config.get("step_size", config["window_size"])  # Default: non-overlapping
+
+def tad_run_dir(sample, resolution, signal):
+    return f"{TAD.run_root}/{sample}/{signal}/{TAD_LABELS[resolution]}/D"
+
+
+def tad_ready_path(sample, resolution, signal):
+    return f"{OUTDIR}/tad_prepare/{sample}.{TAD_LABELS[resolution]}.{signal}.ready"
+
+
+def tad_bed_path(sample, resolution, signal):
+    return f"{OUTDIR}/tads/{sample}.{TAD_LABELS[resolution]}.{signal}.3dnetmod.bed"
+
+
+def tad_bedpe_path(sample, resolution, signal):
+    return f"{OUTDIR}/tads/{sample}.{TAD_LABELS[resolution]}.{signal}.3dnetmod.bedpe"
+
+
+def tad_boundary_path(sample, resolution, signal):
+    return f"{OUTDIR}/tad_boundaries/{sample}.{TAD_LABELS[resolution]}.{signal}.boundaries.bed"
+
+
+def tad_merged_boundary_path(sample, signal):
+    return f"{OUTDIR}/tad_boundaries/{sample}.multires.{signal}.boundaries.bed"
 
 # ==============================================================================
 # Helper Functions
@@ -138,10 +170,27 @@ include: "rules/knn_significant_heatmap.smk"
 include: "rules/compute_IS.smk"
 include: "rules/meltron.smk"
 include: "rules/is_change.smk"
+include: "rules/tad.smk"
 
 # ==============================================================================
 # Default Rules
 # ==============================================================================
+
+TAD_ALL_OUTPUTS = [
+    output
+    for sample in SAMPLES
+    for resolution in TAD_RESOLUTIONS
+    for signal in TAD_SIGNALS
+    for output in (
+        tad_bed_path(sample, resolution, signal),
+        tad_bedpe_path(sample, resolution, signal),
+        tad_boundary_path(sample, resolution, signal),
+    )
+] + [
+    tad_merged_boundary_path(sample, signal)
+    for sample in SAMPLES
+    for signal in TAD_SIGNALS
+]
 
 rule all:
     input:
@@ -200,6 +249,7 @@ rule all:
             OUTDIR + "/figures/is_change/{comparison}/manifest.tsv",
             comparison=get_window_compare_pairs()
         ),
+        TAD_ALL_OUTPUTS,
 
 
 rule clean:

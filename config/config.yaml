@@ -179,6 +179,42 @@ is_change:
   diagnostic_plot_top_n: 50
 
 # ============================================================================
+# TAD Parameters
+# ============================================================================
+tad:
+  resolutions: [4000, 8000, 20000]
+  signals: [raw, balanced]
+  threads: 20
+  parameter_set: D
+  run_root: results/tad_runs
+  code_dir: scripts/python3_3dnetmod
+  badregionfilter: false
+  bad_region_bed: null
+  excluded_chromosomes: []
+  d:
+    region_size_bins: 150
+    overlap_bins: 100
+    logged: true
+    scale: genomewide
+    plateau: 3
+    chaosfilter: true
+    chaos_pct: 0.9
+    max_gamma: 3.2
+    num_part: 20
+    plots: false
+    pctile_threshold: 0
+    pct_value: 0
+    final_consistent_domains: true
+    size_threshold_bins: 4
+    boundary_buffer_bins: 8
+    size_bins: [100, 200, 400, 750, 3000]
+    variance_thresholds: [45, 45, 60, 45, 45]
+    resolution_overrides:
+      4000:
+        size_threshold_bins: 10
+        variance_thresholds: [20, 20, 30, 20, 20]
+
+# ============================================================================
 # Dsub Parameters
 # ============================================================================
 # Note: memory/disk are auto-allocated by queue (arm: 5GB/core)
