@@ -1,5 +1,6 @@
 import importlib.util
 from pathlib import Path
+import re
 import subprocess
 import sys
 import types
@@ -20,6 +21,24 @@ SCALE_COLUMNS = [
     "step_bins",
     "step_size_bp",
 ]
+
+
+def rule_declarations(rule_text, rule_name):
+    start = rule_text.index(f"rule {rule_name}:")
+    next_rule = rule_text.find("\nrule ", start + 1)
+    rule_block = rule_text[start : next_rule if next_rule != -1 else None]
+    declarations = {}
+    for match in re.finditer(
+        r"(?ms)^    (?P<name>input|output|log|benchmark):\n"
+        r"(?P<body>.*?)(?=^    [a-z_]+:|\Z)",
+        rule_block,
+    ):
+        declarations[match["name"]] = [
+            line.strip()
+            for line in match["body"].splitlines()
+            if line.strip()
+        ]
+    return declarations
 
 
 def metric_row(window_id, window_start, window_end):
@@ -144,13 +163,46 @@ def test_knn_cli_rejects_duplicate_scale_coordinate_identity(tmp_path):
     assert "duplicate query resolution/window/chrom/window coordinates" in result.stderr
 
 
-def test_knn_rule_uses_scale_specific_background_audit_without_legacy_key():
+def test_knn_rule_declarations_are_scale_qualified_and_consume_audited_preset():
     rule_text = (REPO / "rules" / "knn_empirical_pvalue.smk").read_text()
 
-    assert "rule validate_knn_background:" in rule_text
-    assert "background_validation.json" in rule_text
-    assert "audit = rules.validate_knn_background.output.audit" in rule_text
-    assert "get_background_preset(w.window_bins).file" in rule_text
+    declarations = {
+        name: rule_declarations(rule_text, name)
+        for name in ("validate_knn_background", "knn_empirical_pvalue")
+    }
+
+    assert declarations == {
+        "validate_knn_background": {
+            "input": [
+                'script = SCRIPT_DIR + "/scripts/validate_knn_background.py",',
+                "background = lambda w: str(get_background_preset(w.window_bins).file),",
+            ],
+            "output": [
+                'audit = SCALE_ROOT + "/logs/knn_background/background_validation.json",',
+            ],
+            "log": [
+                'SCALE_ROOT + "/logs/knn_background/background_validation.log",',
+            ],
+        },
+        "knn_empirical_pvalue": {
+            "input": [
+                'script = SCRIPT_DIR + "/scripts/compute_knn_empirical_pvalue.py",',
+                'merged = SCALE_ROOT + "/window_compare/{comparison}/{comparison}_window_pair_metrics.tsv",',
+                "background = lambda w: str(get_background_preset(w.window_bins).file),",
+                "audit = rules.validate_knn_background.output.audit,",
+            ],
+            "output": [
+                'enriched = SCALE_ROOT + "/knn_empirical_pvalue/{comparison}/{comparison}_knn_enriched.tsv",',
+            ],
+            "log": [
+                'SCALE_ROOT + "/logs/knn_empirical_pvalue/{comparison}/knn_empirical_pvalue.log"',
+            ],
+            "benchmark": [
+                'SCALE_ROOT + "/benchmark/knn_empirical_pvalue/{comparison}/knn_empirical_pvalue.tsv"',
+            ],
+        },
+    }
+
     assert "background_file" not in rule_text
 
 
