@@ -15,8 +15,8 @@ tmpdir: "tmp"
 # Convert .cool to .mcool (hictk zoomify)
 # ============================================================================
 convert:
-  resolutions: [4000, 20000, 100000]   # base + pyramid levels (space-separated in shell)
-  threads: 20                          # Threads per hictk zoomify job
+  resolutions: [4000, 8000, 10000, 20000, 100000]
+  threads: 20
 
 # ============================================================================
 # Analysis Parameters
