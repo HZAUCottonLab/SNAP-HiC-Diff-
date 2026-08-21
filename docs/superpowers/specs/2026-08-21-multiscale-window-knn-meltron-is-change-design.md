@@ -139,15 +139,19 @@ interface is explicit and testable.
 Before a KNN job can use a preset, one validation job per window scale checks:
 
 - the declared file exists, is readable, and is non-empty;
-- coordinate columns `chrom`, `window_start`, and `window_end` exist;
+- provenance/coordinate columns `comparison`, `chrom`, `window_start`, and
+  `window_end` exist;
 - KNN feature/score columns `EC`, `IB`, `SP`, `MSE`, `SSIM`, `Spearman`,
   `tw_pvalue`, and `NCC` exist;
 - numeric cleaning leaves at least `knn_k` valid rows;
 - every complete window has `window_end - window_start == resolution_bp *
   window_bins`;
-- positive within-chromosome start differences are integer multiples of the
-  expected `step_size_bp`, allowing windows removed by upstream QC; and
-- the table has no duplicate coordinate rows.
+- positive start differences within each `comparison x chrom` group are
+  integer multiples of the expected `step_size_bp`, allowing windows removed
+  by upstream QC; and
+- the table has no duplicate `(comparison, chrom, window_start, window_end)`
+  rows. Reuse of the same genomic coordinates by different background
+  comparisons is valid and expected.
 
 Validation writes a small scale-qualified audit artifact containing the
 preset path, expected tuple, row counts, and observed coordinate properties.
@@ -222,8 +226,11 @@ The stable cross-stage window identity is:
 
 `window_id` may remain as a readable per-scale field, but it is not globally
 unique and must not be used alone when joining or aggregating scales. Meltron
-and KNN joins require equality of the full scale-qualified identity and retain
-the current coordinate-consistency audit.
+preparation and results carry the source `window_start` and `window_end`
+separately from Meltron's algorithm-facing `start` and `end`. KNN and Meltron
+join on the full scale-qualified source identity. Their algorithm-facing
+intervals retain the current start-consistency and end-delta audit rather than
+silently redefining the source window.
 
 Old unqualified output paths are not compatibility aliases. They are left on
 disk for provenance but are not dependencies of the new DAG, preventing stale
@@ -329,8 +336,9 @@ Focused automated tests cover:
 3. arbitrary valid integer resolutions without code changes;
 4. rejection of invalid, duplicate, or legacy-only window configuration;
 5. exact background preset selection for every configured tuple;
-6. missing, duplicate, undersized, malformed, wrong-span, and off-grid
-   background fixtures;
+6. missing, duplicate-logical-row, undersized, malformed, wrong-span, and
+   off-grid background fixtures, including valid coordinate reuse by separate
+   background comparisons;
 7. collision-free scale-qualified paths and stable identities;
 8. preservation of the current five KNN P-value and Meltron score thresholds;
 9. scale-specific KNN/Meltron joins and zero-candidate behavior;
