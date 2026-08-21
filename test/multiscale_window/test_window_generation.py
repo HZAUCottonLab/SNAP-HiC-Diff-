@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import sys
 
 
@@ -57,3 +58,45 @@ def test_window_preprocessing_paths_are_scale_qualified_without_moving_shared_in
     assert "shared_outdir = OUTDIR" in sliding_rule
     assert "{params.shared_outdir}/oe/" in sliding_rule
     assert "window_bins=w.window_bins" in sliding_rule
+
+
+def test_all_window_rule_declarations_are_scale_qualified():
+    expected_paths = {
+        "build_windows.smk": [
+            ("output", "/windows/windows.parquet"),
+            ("log", "/logs/build_windows.log"),
+            ("benchmark", "/benchmark/build_windows/build_windows.tsv"),
+        ],
+        "compute_gap_qc.smk": [
+            ("output", "/logs/gap_qc/{sample}.done"),
+            ("output", "/windows/{{sample}}/{{sample}}__{chrom}_gaps.tsv"),
+            ("output", "/windows/{{sample}}/{{sample}}__{chrom}_window_qc.tsv"),
+            ("log", "/logs/gap_qc/{sample}.log"),
+            ("benchmark", "/benchmark/gap_qc/{sample}.tsv"),
+        ],
+        "sliding_window.smk": [
+            ("output", "/logs/windows/{sample}.done"),
+            ("log", "/logs/windows/{sample}.log"),
+            ("benchmark", "/benchmark/windows/{sample}.tsv"),
+            ("output", "/windows/{{sample}}/{{sample}}__{{chrom}}_{{stage}}.h5"),
+        ],
+    }
+
+    declaration_blocks = re.compile(
+        r"(?ms)^    (output|log|benchmark):\n(.*?)(?=^    [a-z_]+:|\Z)"
+    )
+    path_literals = re.compile(r'"([^"]*/[^"]*)"')
+
+    for filename, expected in expected_paths.items():
+        rule_text = (REPO / "rules" / filename).read_text()
+        actual = []
+        for declaration, body in declaration_blocks.findall(rule_text):
+            for path_match in path_literals.finditer(body):
+                prefix = body[:path_match.start()].rstrip()
+                assert prefix.endswith("SCALE_ROOT +"), (
+                    f"{filename} {declaration} path is not scale-qualified: "
+                    f"{path_match.group(1)}"
+                )
+                actual.append((declaration, path_match.group(1)))
+
+        assert actual == expected
