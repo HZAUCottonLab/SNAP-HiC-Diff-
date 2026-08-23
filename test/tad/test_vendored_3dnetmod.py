@@ -105,6 +105,22 @@ def test_gps_skips_regions_without_counts_or_bed_files():
     assert "skipping region without counts or bed file:" in source
 
 
+def test_gps_uses_only_superregions_with_paired_pvalue_counts(tmp_path, monkeypatch):
+    monkeypatch.syspath_prepend(str(CODE_DIR))
+    gps = runpy.run_path(str(CODE_DIR / "3DNetMod_GPS_MMCP.py"))
+
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    sample = "S"
+    tag = "tag"
+    (input_dir / f"A01.1_{sample}_{tag}final.bed").write_text("bed\n")
+    (input_dir / f"A01.2_{sample}_{tag}final.bed").write_text("bed\n")
+    (input_dir / f"A01.2_{sample}_{tag}finalpvalues.counts").write_text("counts\n")
+
+    assert "discover_preprocessed_superregions" in gps
+    assert gps["discover_preprocessed_superregions"](input_dir, sample, tag) == ["A01.2"]
+
+
 def test_hsvm_writes_empty_merged_output_without_bin_size():
     source = (CODE_DIR / "hierarchical_spatial_variance_minimization.py").read_text()
     assert "if total_thresholded_communities:" in source

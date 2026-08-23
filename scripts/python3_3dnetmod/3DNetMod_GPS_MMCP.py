@@ -89,8 +89,9 @@ def main():
      key_name = settings['sample_1']
      # 支持任意染色体前缀；用 RUN_DIR 保证集群上也能找到 input/
      input_dir = os.path.join(RUN_DIR, 'input')
-     pattern = os.path.join(input_dir, '*.*' + str(key_name) + '*' + tags_preprocess + '*final.bed')
-     values = glob.glob(pattern)
+     pre_chromosomes = discover_preprocessed_superregions(
+          input_dir, key_name, tags_preprocess
+     )
 
 
      settings['scale'] = settings['scale'].strip("'")
@@ -119,29 +120,16 @@ def main():
           return 0
      if settings['scale'] == 'genomewide':
           print('scale is genomewide')
-          for lines in values:
-               pre = lines.strip().split(os.sep)
-               fname = pre[-1]  # 支持绝对路径时取文件名，如 HC04_A01.100_H1398_150_100_Truefinal.bed
-               # 染色体.区域 在 _sample_ 前：xxx.H1398_... -> chr=xxx
-               parts = fname.split('_' + str(key_name) + '_')
-               chr = parts[0] if len(parts) >= 2 else fname.split('_')[0]
-               if '.' not in chr:  #not a superregion.  Skip to next element in list
-                   continue
+          for chr in pre_chromosomes:
                chr_main = chr.split('.')[0]  #actual main chr
-               if chr not in pre_chromosomes: #only store one occurence of super region name from all samples
-                    if chr != 'allchr':
-                        pre_chromosomes.append(chr)
                if chr_main not in chrom_o:
                     chrom_o.append(chr_main)
      else:
           chromosomes[settings['scale']] = []
           chrom_o.append(settings['scale'])
-          findchr = glob.glob(os.path.join(input_dir, settings['scale'] + '.*' + str(key_name) + '_' + tags_preprocess + '*final.bed'))
+          findchr = [chrom for chrom in pre_chromosomes if chrom.split('.')[0] == settings['scale']]
           print('findchr: ', findchr)
-          for element in findchr:
-               chrom = element.split('/')[-1].split('_')[0]
-               if '.' not in chrom:  #not a superregion.  Skip to next element in list
-                    continue
+          for chrom in findchr:
                chromosomes[settings['scale']].append(chrom)
 
      print("chromosomes = ", chrom_o)
@@ -212,5 +200,29 @@ def wrapper(args):
      return collective(*args)
 
 
+def discover_preprocessed_superregions(input_dir, sample, tag):
+     """Return only superregions whose BED and counts inputs are both present."""
+     input_dir = str(input_dir)
+     suffix = '_' + str(sample) + '_' + str(tag) + 'final.bed'
+     pattern = os.path.join(input_dir, '*.*' + suffix)
+     superregions = []
+     for bed_path in sorted(glob.glob(pattern)):
+          filename = os.path.basename(bed_path)
+          if not filename.endswith(suffix):
+               continue
+          superregion = filename[:-len(suffix)]
+          counts_path = os.path.join(
+               input_dir,
+               superregion + '_' + str(sample) + '_' + str(tag)
+               + 'finalpvalues.counts',
+          )
+          if not os.path.isfile(counts_path):
+               print(
+                    'WARNING: skipping superregion without paired p-value counts: '
+                    + superregion
+               )
+               continue
+          superregions.append(superregion)
+     return superregions
 if __name__ == "__main__":
      main()
