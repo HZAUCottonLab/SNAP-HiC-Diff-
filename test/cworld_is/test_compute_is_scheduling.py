@@ -133,12 +133,43 @@ def test_meltron_schedules_per_sample_is_merges_without_compute_is_checkpoint(tm
     assert f"{output_root}/IS/L134/L134_IS.tsv" in plan
 
 
+def test_meltron_declarations_keep_scale_artifacts_and_shared_is_inputs_separate():
+    rule = MELTRON_RULE.read_text()
+    input_start = rule.index("    input:\n")
+    output_start = rule.index("    output:\n")
+    input_section = rule[input_start:output_start]
+
+    assert (
+        'is_a=lambda w: OUTDIR + "/IS/{}/{}_IS.tsv".format(\n'
+        '            w.comparison.split("_vs_")[0],\n'
+        '            w.comparison.split("_vs_")[0],\n'
+        "        ),"
+    ) in input_section
+    assert (
+        'is_b=lambda w: OUTDIR + "/IS/{}/{}_IS.tsv".format(\n'
+        '            w.comparison.split("_vs_")[1],\n'
+        '            w.comparison.split("_vs_")[1],\n'
+        "        ),"
+    ) in input_section
+    assert input_section.count("SCALE_ROOT") == 1
+
+    scale_declarations = (
+        'knn_enriched = SCALE_ROOT + "/knn_empirical_pvalue/{comparison}/{comparison}_knn_enriched.tsv"',
+        'manifest = SCALE_ROOT + "/logs/meltron/{comparison}.done"',
+        'intervals = SCALE_ROOT + "/meltron/{comparison}/{comparison}_intervals.tsv"',
+        'interval_map = SCALE_ROOT + "/meltron/{comparison}/{comparison}_interval_map.tsv"',
+        'decond = SCALE_ROOT + "/meltron/{comparison}/{comparison}_decondensation.tsv"',
+        'condens = SCALE_ROOT + "/meltron/{comparison}/{comparison}_condensation.tsv"',
+        'merged = SCALE_ROOT + "/meltron/{comparison}/{comparison}_meltron_merged.tsv"',
+        'SCALE_ROOT + "/logs/meltron/{comparison}.log"',
+        'SCALE_ROOT + "/benchmark/meltron/{comparison}.tsv"',
+    )
+    for declaration in scale_declarations:
+        assert rule.count(declaration) == 1
+
+
 def test_meltron_cpu_request_and_cli_cores_share_one_config_value():
     rule = MELTRON_RULE.read_text()
-    assert 'knn_enriched = SCALE_ROOT + "/knn_empirical_pvalue/{comparison}/{comparison}_knn_enriched.tsv"' in rule
-    assert 'merged = SCALE_ROOT + "/meltron/{comparison}/{comparison}_meltron_merged.tsv"' in rule
-    assert 'SCALE_ROOT + "/logs/meltron/{comparison}.log"' in rule
-    assert 'SCALE_ROOT + "/benchmark/meltron/{comparison}.tsv"' in rule
     assert "--raw-pvalue-threshold 0.05" in rule
     assert "--fdr-threshold" not in rule
     config_text = (REPO / "config" / "config.yaml").read_text()

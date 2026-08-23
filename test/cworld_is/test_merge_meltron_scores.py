@@ -417,3 +417,33 @@ def test_merge_writes_full_stable_schema_when_both_directions_are_empty(tmp_path
     merged = pd.read_csv(output, sep="\t")
     assert list(merged.columns) == MERGED_COLUMNS
     assert merged.empty
+
+
+def test_merge_rejects_duplicate_interval_map_ids_with_one_to_one_validation(tmp_path):
+    decondensation = tmp_path / "decondensation.tsv"
+    condensation = tmp_path / "condensation.tsv"
+    interval_map = tmp_path / "interval_map.tsv"
+    output = tmp_path / "merged.tsv"
+    write_tsv(decondensation, [], columns=[*KEY_COLUMNS, "melting_score"])
+    write_tsv(
+        condensation,
+        [
+            {
+                "chrom": "HC04_A01",
+                "start": 4000,
+                "end": 8000,
+                "ID": "HC04_A01_17",
+                "compaction_score": 8.0,
+            }
+        ],
+    )
+    write_interval_map(interval_map)
+    duplicated_map = pd.read_csv(interval_map, sep="\t")
+    pd.concat([duplicated_map, duplicated_map], ignore_index=True).to_csv(
+        interval_map, sep="\t", index=False
+    )
+
+    result = run_merge(decondensation, condensation, interval_map, output)
+
+    assert result.returncode != 0
+    assert "not a one-to-one merge" in result.stderr

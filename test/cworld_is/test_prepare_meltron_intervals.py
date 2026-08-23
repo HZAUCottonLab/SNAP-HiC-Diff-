@@ -235,3 +235,45 @@ def test_preparer_requires_exactly_the_canonical_raw_pvalue_columns(tmp_path):
     result = run_preparer(enriched, output)
 
     assert result.returncode != 0
+
+
+def test_preparer_selects_raw_pvalue_candidate_despite_stale_fdr_and_bh_columns(
+    tmp_path,
+):
+    enriched = tmp_path / "knn_enriched.tsv"
+    output = tmp_path / "meltron" / "H1398_vs_L134_intervals.tsv"
+    raw_pvalues = {column: 0.5 for column in P_VALUE_COLUMNS}
+    raw_pvalues["MSE_empirical_pvalue"] = 0.001
+    write_enriched(
+        enriched,
+        window_start=4000,
+        window_end=8000,
+        MSE_pvalue_BH_FDR=1.0,
+        d_SSIM_pvalue_BH_FDR=1.0,
+        stale_fdr=1.0,
+        stale_BH=1.0,
+        **raw_pvalues,
+    )
+
+    result = run_preparer(enriched, output)
+
+    assert result.returncode == 0, result.stderr
+    intervals = pd.read_csv(output, sep="\t")
+    interval_map = pd.read_csv(
+        output.with_name("H1398_vs_L134_interval_map.tsv"), sep="\t"
+    )
+    assert intervals["ID"].tolist() == ["r4000_w25_HC04_A01_17"]
+    assert interval_map["n_significant_metrics"].tolist() == [1]
+
+
+def test_preparer_rejects_input_missing_a_canonical_raw_pvalue_column(tmp_path):
+    enriched = tmp_path / "knn_enriched.tsv"
+    output = tmp_path / "meltron" / "H1398_vs_L134_intervals.tsv"
+    write_enriched(enriched, window_start=4000, window_end=8000)
+    table = pd.read_csv(enriched, sep="\t").drop(columns=["d_NCC_empirical_pvalue"])
+    table.to_csv(enriched, sep="\t", index=False)
+
+    result = run_preparer(enriched, output)
+
+    assert result.returncode != 0
+    assert "input requires exactly the canonical empirical p-value columns" in result.stderr
