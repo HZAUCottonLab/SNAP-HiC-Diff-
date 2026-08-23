@@ -3,6 +3,7 @@ import sys
 from read_settings import read_settings
 from create_tags import create_tags
 import multiprocessing
+from processor_limits import worker_count
 from counts_by_chromosome_parallel_hybrids_to_5c import parallelchr
 import os
 import sys
@@ -61,9 +62,7 @@ def process(bed_name,counts_name,processors,tag):
                 ends[chr] = []
                 region_start_stop.append((chr, min(chromosome_bins[chr]), max(chromosome_bins[chr]),counts_name,tag))
                 ends[chr].append(max(chromosome_bins_adj[chr]))
-
-        os.system("taskset -p 0xff %d" % os.getpid())
-        pool = multiprocessing.Pool(processors) #can specify number of processors if using cluster
+        pool = multiprocessing.Pool(worker_count({"processors": processors}, len(region_start_stop))) #can specify number of processors if using cluster
         results = pool.map(parallelchr,region_start_stop)
         #pool.join()
         #pool.close()
@@ -76,7 +75,7 @@ def main():
         bed_file = settings['bed_file']
         tags = create_tags(sys.argv[1])
         tags_preprocess = tags[0]
-        processors = 23
+        processors = settings["processors"]
         process(bed_file,counts_file,processors,tags_preprocess)
 
 

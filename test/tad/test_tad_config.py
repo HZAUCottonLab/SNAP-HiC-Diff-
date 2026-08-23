@@ -68,3 +68,46 @@ def test_malformed_tad_structures_have_stable_parse_errors(mutate):
     mutate(config)
     with pytest.raises(TadConfigError) as error:
         parse_tad_settings(config)
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("region_size_bins", 0),
+        ("overlap_bins", 150),
+        ("logged", 1),
+        ("scale", ""),
+        ("plateau", 0),
+        ("chaosfilter", "true"),
+        ("chaos_pct", 1.1),
+        ("max_gamma", 0),
+        ("num_part", 1.5),
+        ("plots", 0),
+        ("pctile_threshold", -0.1),
+        ("pct_value", 1.1),
+        ("final_consistent_domains", "true"),
+        ("size_threshold_bins", 0),
+        ("boundary_buffer_bins", -1),
+        ("size_bins", [100, 200, 400, 750]),
+        ("variance_thresholds", [45, 45, 60, 45, -1]),
+    ],
+)
+def test_fixed_d_values_are_validated_before_compute(field, invalid):
+    config = deepcopy(repository_config())
+    config["tad"]["d"][field] = invalid
+    with pytest.raises(TadConfigError, match="TAD_CONFIG_INVALID"):
+        parse_tad_settings(config)
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda d: d.update(resolution_overrides=[]),
+        lambda d: d["resolution_overrides"][4000].update(size_threshold_bins=0),
+        lambda d: d["resolution_overrides"][4000].update(variance_thresholds=[20] * 4),
+    ],
+)
+def test_4kb_d_overrides_are_validated_before_compute(mutate):
+    config = deepcopy(repository_config())
+    mutate(config["tad"]["d"])
+    with pytest.raises(TadConfigError, match="TAD_CONFIG_INVALID"):
+        parse_tad_settings(config)

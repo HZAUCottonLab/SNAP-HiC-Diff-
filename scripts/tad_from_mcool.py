@@ -2,6 +2,7 @@ from argparse import ArgumentError, ArgumentParser
 import json
 from pathlib import Path
 import sys
+from uuid import uuid4
 
 import cooler
 import h5py
@@ -50,6 +51,25 @@ def configuration_context_from_argv(argv):
 
 def configuration_error(context, error):
     return TadError("TAD_CONFIG_INVALID", **context, error=type(error).__name__)
+
+
+
+def archive_previous_workspace(run_dir: Path):
+    """Move old stage state aside so a prepare cannot reuse derived artifacts."""
+    run_dir.mkdir(parents=True, exist_ok=True)
+    archive_root = run_dir / ".previous_attempts"
+    stale_artifacts = [
+        artifact for artifact in run_dir.iterdir()
+        if artifact.name != archive_root.name
+    ]
+    if not stale_artifacts:
+        return None
+    archive_root.mkdir(exist_ok=True)
+    archive_dir = archive_root / f"prepare-{uuid4().hex}"
+    archive_dir.mkdir()
+    for artifact in stale_artifacts:
+        artifact.replace(archive_dir / artifact.name)
+    return archive_dir
 
 
 def parse_preparation_config(args):
@@ -279,6 +299,7 @@ def run_from_args(args) -> None:
     ready_flag.unlink(missing_ok=True)
     d_config, badregionfilter = parse_preparation_config(args)
     validate_mcool_resolution(mcool_path, args.resolution, args.sample, args.signal)
+    archived_workspace = archive_previous_workspace(run_dir)
 
     input_dir = run_dir / "input"
     bed_path = input_dir / f"{args.sample}.bed"
@@ -320,6 +341,7 @@ def run_from_args(args) -> None:
             f"settings={settings_path}",
             f"n_bins={n_bins}",
             f"n_interactions={n_interactions}",
+            f"archived_workspace={archived_workspace or ''}",
         ]
     ) + "\n"
     ready_tmp = ready_flag.with_name(ready_flag.name + ".tmp")

@@ -64,8 +64,6 @@ def process_HiC(element):
         for chr in chromosomes:
                 region_start_stop.append((chr, min(chromosome_bins[chr]), max(chromosome_bins[chr]),counts,tag))
                 ends.append(max(chromosome_bins_adj[chr]))
-
-        #os.system("taskset -p 0xff %d" % os.getpid())
         #pool = multiprocessing.Pool(processors) #can specify number of processors if using cluster
         #results = pool.map(parallelchr,region_start_stop)
         parallelchr(region_start_stop)

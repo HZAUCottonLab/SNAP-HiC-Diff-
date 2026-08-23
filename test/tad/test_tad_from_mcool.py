@@ -243,6 +243,41 @@ def test_cli_creates_signal_artifacts_and_invalidates_stale_ready_before_bad_rer
     assert raw_settings.read_text() == "previous raw settings\n"
 
 
+def test_changed_d_config_archives_old_stage_artifacts_before_new_prepare(
+    tiny_mcool, tmp_path, d_config, capsys
+):
+    adapter = load_adapter()
+    run_dir = tmp_path / "run"
+    ready_flag = tmp_path / "prepare" / "ready.txt"
+
+    assert adapter.cli(cli_args(tiny_mcool, run_dir, ready_flag, d_config)) == 0
+    assert capsys.readouterr().err == ""
+
+    previous_calls = run_dir / "FINAL_DOMAIN_CALLS" / "old_master_consistent_domains.txt"
+    previous_calls.parent.mkdir()
+    previous_calls.write_text("A02\t0\t4000\n")
+    previous_log = run_dir / "GPS" / "stage.log"
+    previous_log.parent.mkdir()
+    previous_log.write_text("failed-stage-diagnostic\n")
+
+    changed_d_config = dict(d_config, size_threshold_bins=99)
+    assert adapter.cli(
+        cli_args(tiny_mcool, run_dir, ready_flag, changed_d_config)
+    ) == 0
+    assert capsys.readouterr().err == ""
+
+    archives = sorted((run_dir / ".previous_attempts").iterdir())
+    assert len(archives) == 1
+    assert (archives[0] / "FINAL_DOMAIN_CALLS" / previous_calls.name).read_text() == (
+        "A02\t0\t4000\n"
+    )
+    assert (archives[0] / "GPS" / "stage.log").read_text() == (
+        "failed-stage-diagnostic\n"
+    )
+    assert not (run_dir / "FINAL_DOMAIN_CALLS").exists()
+    assert not (run_dir / "GPS").exists()
+
+
 @pytest.mark.parametrize(
     ("overrides", "expected_context"),
     [

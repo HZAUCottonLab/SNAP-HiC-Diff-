@@ -32,6 +32,30 @@ def test_vendored_code_has_no_runtime_reference_to_source_checkout():
     assert "PanTE/compare_mtx" not in source
 
 
+def test_vendored_stages_use_settings_processor_limits_without_taskset_affinity():
+    source_by_name = {
+        path.name: path.read_text(errors="replace")
+        for path in CODE_DIR.glob("*.py")
+    }
+    source = "\n".join(source_by_name.values())
+
+    assert "taskset" not in source
+    assert "multiprocessing.Pool(4)" not in source
+    assert "Pool(processes=5)" not in source
+    assert "processors = 23" not in source
+    assert "def worker_count(settings, work_items):" in source_by_name[
+        "processor_limits.py"
+    ]
+    for name in (
+        "3DNetMod_preprocess.py",
+        "3DNetMod_GPS_MMCP.py",
+        "3DNetMod_GPS_MMCP_perchr.py",
+        "find_max_gamma.py",
+        "write_consistent_communities.py",
+    ):
+        assert "worker_count(settings," in source_by_name[name]
+
+
 def test_consensus_filename_is_deterministic_and_filesystem_safe():
     helper = runpy.run_path(str(CODE_DIR / "outdir_helper.py"))
     name = helper["consensus_filtered_filename"](

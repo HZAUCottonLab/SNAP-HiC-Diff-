@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from tad_d_config import validate_d_config
+
 
 class TadConfigError(ValueError):
     pass
@@ -65,8 +67,7 @@ def _parse_tad_settings(config):
         raise TadConfigError(
             "ERROR[TAD_CONFIG_INVALID] tad.d missing=" + ",".join(sorted(missing))
         )
-    if len(d["size_bins"]) != 5 or len(d["variance_thresholds"]) != 5:
-        raise TadConfigError("ERROR[TAD_CONFIG_INVALID] D arrays must contain five values")
+    validate_d_config(d)
     excluded = section.get("excluded_chromosomes", [])
     if not isinstance(excluded, list):
         raise TadConfigError("ERROR[TAD_CONFIG_INVALID] excluded_chromosomes must be a list")

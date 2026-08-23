@@ -4,6 +4,7 @@ from split_counts_by_chromosome import process_HiC
 #from demo_quantile_normalization_genomewide import process3
 from slice_genomic_coordinates_genomewide_majregv import process4
 from create_tags import create_tags
+from processor_limits import worker_count
 from read_settings import read_settings
 import glob
 import sys
@@ -71,9 +72,7 @@ def prelim_genomewide(settings,tag,scale):
     collection_prelim = []
     for i in range(len(counts)):
          collection_prelim.append([bed,counts[i],int(settings['processors']),tag])
-
-    os.system("taskset -p 0xff %d" % os.getpid())
-    pool = multiprocessing.Pool(len(counts)+1)
+    pool = multiprocessing.Pool(worker_count(settings, len(collection_prelim)))
     results_1 = pool.map(process_HiC, collection_prelim)
     #for i in range(len(counts)): #iterate through all celltypes with corresponding counts
     #     results_1 = process_HiC([bed,counts[i],int(settings['processors']),tag])  #phase 1
@@ -111,10 +110,7 @@ def prelim_genomewide(settings,tag,scale):
             for j in range(0,len(chr)):
                  if chr[j] == settings['scale']:
                      complete.append((chr[j],bed,counts[i],samples[i],overlap,stride,logged,ends[j],'False',tag))
-
-
-    os.system("taskset -p 0xff %d" % os.getpid())
-    pool = multiprocessing.Pool(4) #hardcode to prevent memory excessive memory
+    pool = multiprocessing.Pool(worker_count(settings, len(complete)))
     results = pool.map(process4, complete)
     #for i in range(0,len(complete)):
     #    process4(complete[i])

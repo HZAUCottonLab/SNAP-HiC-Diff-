@@ -3,6 +3,7 @@ Heidi Norton
 
 """
 from multiprocessing import Pool
+from processor_limits import worker_count
 import os
 import numpy as np
 import sys
@@ -127,8 +128,7 @@ def write_consistent_communities(settings, tags_preprocessing, tags_HSVM):
         print('chromosomes: ', chromosomes)
 
         print('loaded communities into lists')
-        os.system("taskset -p 0xff %d" % os.getpid())
-        pool = Pool(processes=5)
+        pool = Pool(processes=worker_count(settings, len(community_superdict["sample_1"])))
         consistency1_comp = []
         consistency2_comp = []
 

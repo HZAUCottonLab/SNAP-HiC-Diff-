@@ -3,6 +3,7 @@ from outdir_helper import OUTDIR
 import glob
 import numpy as np
 import multiprocessing
+from processor_limits import worker_count
 from load_good_regions_per_chrom import load_good_regions
 from determine_max_gamma_per_region import determine_max_gamma_per_region
 from convert_tag_genomewide import convert_tag_genomewide
@@ -83,9 +84,7 @@ def find_max_gamma(settings, tags_GPS, tags_preprocessing, samples,chrom):
         max_gamma_input = list(zip(settings_superlist, chr_superlist, region_superlist, tags_preprocess_superlist, tags_GPS_superlist, cell_type_superlist))
         print('max_gamma_input: ')
         print(max_gamma_input)
-
-        os.system("taskset -p 0xff %d" % os.getpid())
-        pool = multiprocessing.Pool(int(settings['processors']))
+        pool = multiprocessing.Pool(worker_count(settings, len(max_gamma_input)))
         max_gamma_dict_list  = pool.map(determine_max_gamma_per_region, max_gamma_input)
         #for i in range(len(cell_type_superlist)):
                 #max_gamma_dict = determine_max_gamma_per_region((settings_superlist[i], chr_superlist[i], region_superlist[i], tags_preprocess_superlist[i], tags_GPS_superlist[i], cell_type_superlist[i]))

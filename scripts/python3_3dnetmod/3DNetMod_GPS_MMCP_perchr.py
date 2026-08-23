@@ -6,6 +6,7 @@ from counts_to_array import counts_to_array
 from ThreeDNetMod_GPS_MMCP_per_chr_simplified_per_chrom import collective
 from create_tags import create_tags
 import multiprocessing
+from processor_limits import worker_count
 from read_settings import read_settings
 from outdir_helper import OUTDIR
 import glob
@@ -118,9 +119,7 @@ def main():
              print('max_gamma: ', max_gamma)
              #collective((chromosomes[j], settings,samples[i],tags_GPS,tags_MMCP,tags_preprocess, max_gamma))
              input.append((chromosomes[j], settings,samples[i],tags_GPS,tags_MMCP,tags_preprocess, max_gamma,chrom_o))
-
-     os.system("taskset -p 0xff %d" % os.getpid())
-     pool = multiprocessing.Pool(int(settings['processors']))
+     pool = multiprocessing.Pool(worker_count(settings, len(input)))
 
      print('entering MMCP')
 
