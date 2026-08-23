@@ -47,12 +47,12 @@ def tiny_mcool(tmp_path):
 @pytest.fixture
 def d_config():
     return {
-        "size_bins": [2, 4],
-        "variance_thresholds": [20, 30],
+        "size_bins": [2, 4, 6, 8, 10],
+        "variance_thresholds": [20, 30, 40, 50, 60],
         "region_size_bins": 10,
         "overlap_bins": 2,
         "logged": True,
-        "scale": False,
+        "scale": "genomewide",
         "plateau": 0.5,
         "chaosfilter": False,
         "chaos_pct": 0.1,
@@ -64,6 +64,12 @@ def d_config():
         "final_consistent_domains": True,
         "size_threshold_bins": 3,
         "boundary_buffer_bins": 1,
+        "resolution_overrides": {
+            "4000": {
+                "size_threshold_bins": 3,
+                "variance_thresholds": [20, 20, 30, 20, 20],
+            }
+        },
     }
 
 
@@ -300,3 +306,20 @@ def test_cli_configuration_errors_use_stable_diagnostic(
     assert error.startswith("ERROR[TAD_CONFIG_INVALID]")
     assert expected_context in error
     assert f"path={run_dir.resolve()}" in error
+
+
+def test_cli_reuses_d_config_validator_for_json_overrides(
+    tiny_mcool, tmp_path, d_config, capsys
+):
+    adapter = load_adapter()
+    invalid_d_config = dict(d_config, resolution_overrides={})
+    result = adapter.cli(
+        cli_args(tiny_mcool, tmp_path / "run", tmp_path / "ready.txt", invalid_d_config)
+    )
+
+    error = capsys.readouterr().err
+    assert result == 1
+    assert error.startswith("ERROR[TAD_CONFIG_INVALID]")
+    assert "sample=sample-X" in error
+    assert "signal=raw" in error
+    assert not (tmp_path / "ready.txt").exists()

@@ -111,3 +111,34 @@ def test_4kb_d_overrides_are_validated_before_compute(mutate):
     mutate(config["tad"]["d"])
     with pytest.raises(TadConfigError, match="TAD_CONFIG_INVALID"):
         parse_tad_settings(config)
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda d: d.pop("resolution_overrides"),
+        lambda d: d.update(resolution_overrides={}),
+        lambda d: d.update(
+            resolution_overrides={8000: d["resolution_overrides"][4000]}
+        ),
+        lambda d: d.update(
+            resolution_overrides={
+                4000: d["resolution_overrides"][4000],
+                8000: d["resolution_overrides"][4000],
+            }
+        ),
+        lambda d: d["resolution_overrides"][4000].update(unexpected=True),
+    ],
+)
+def test_d_overrides_require_exactly_one_4kb_schema(mutate):
+    config = deepcopy(repository_config())
+    mutate(config["tad"]["d"])
+    with pytest.raises(TadConfigError, match="TAD_CONFIG_INVALID"):
+        parse_tad_settings(config)
+
+
+def test_d_overrides_accept_json_normalized_4kb_key():
+    config = deepcopy(repository_config())
+    override = config["tad"]["d"]["resolution_overrides"].pop(4000)
+    config["tad"]["d"]["resolution_overrides"] = {"4000": override}
+    parse_tad_settings(config)

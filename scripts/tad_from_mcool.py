@@ -8,6 +8,7 @@ import cooler
 import h5py
 import numpy as np
 
+from tad_d_config import validate_d_config
 from tad_errors import TadError
 
 
@@ -77,6 +78,7 @@ def parse_preparation_config(args):
         d_config = json.loads(args.d_config_json)
         if not isinstance(d_config, dict):
             raise ValueError("D configuration must be a JSON object")
+        validate_d_config(d_config)
         badregionfilter = parse_boolean(args.badregionfilter)
         effective = effective_d_config(d_config, args.resolution)
         for key in (

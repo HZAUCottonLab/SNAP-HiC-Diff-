@@ -64,12 +64,12 @@ def validate_d_config(values):
     _five_numbers(values, "size_bins", 1, integers=True)
     _five_numbers(values, "variance_thresholds", 0)
     overrides = values["resolution_overrides"]
-    if not isinstance(overrides, dict):
+    if not isinstance(overrides, dict) or len(overrides) != 1:
         _invalid("resolution_overrides")
-    for resolution, override in overrides.items():
-        if str(resolution) != "4000" or not isinstance(override, dict):
-            _invalid("resolution_overrides")
-        if set(override) != {"size_threshold_bins", "variance_thresholds"}:
-            _invalid("resolution_overrides")
-        _integer(override, "size_threshold_bins", 1)
-        _five_numbers(override, "variance_thresholds", 0)
+    resolution, override = next(iter(overrides.items()))
+    if resolution not in (4000, "4000") or not isinstance(override, dict):
+        _invalid("resolution_overrides")
+    if set(override) != {"size_threshold_bins", "variance_thresholds"}:
+        _invalid("resolution_overrides")
+    _integer(override, "size_threshold_bins", 1)
+    _five_numbers(override, "variance_thresholds", 0)
