@@ -79,3 +79,20 @@ def test_consensus_filename_is_deterministic_and_filesystem_safe():
         "sample", "long_parameter_tag_" * 20, 0.4050000000000002
     )
     assert len(name.encode()) <= 255
+
+
+def test_variance_thresholds_handle_empty_communities():
+    module = runpy.run_path(str(CODE_DIR / "get_variance_distribution_and_threshold.py"))
+    threshold = module["get_variance_distribution_and_threshold"]
+
+    distributions, thresholds, selected = threshold(
+        {200: [], 400: [{"left_var": "0.1", "right_var": "0.2"}]},
+        [200, 400],
+        [45, 45],
+    )
+
+    assert distributions[200] == []
+    assert thresholds[200] == 0
+    assert selected[200] == []
+    assert thresholds[400] == 0.2
+    assert selected[400] == [{"left_var": "0.1", "right_var": "0.2"}]

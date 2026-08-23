@@ -32,8 +32,8 @@ def get_variance_distribution_and_threshold(final_communities, sizes, variance_s
                         for k in range(0, len(final_communities[size])):
                                 if max(float(final_communities[size][k]['left_var']), float(final_communities[size][k]['right_var'])) <= variance_threshold:
                                         thresholded_communities[size].append(final_communities[size][k])
-                variance_thresholds[size] = variance_threshold
 
 
 
+                        variance_thresholds[size] = variance_threshold
         return variance_distribution, variance_thresholds, thresholded_communities
