@@ -1,6 +1,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import runpy
 import sys
 
 import cooler
@@ -147,6 +148,41 @@ def test_4kb_override_is_identical_for_both_signal_runs():
     assert raw_effective == balanced_effective
     assert raw_effective["size_threshold_bins"] == 10
     assert raw_effective["variance_thresholds"] == [20, 20, 30, 20, 20]
+
+
+def test_rendered_empty_excluded_chromosomes_is_accepted_by_vendored_parser(
+    tmp_path, d_config
+):
+    adapter = load_adapter()
+    settings_path = tmp_path / "settings_sample-X.raw.txt"
+    adapter.render_settings(
+        settings_path,
+        sample="sample-X",
+        resolution=4000,
+        d_config=d_config,
+        bad_region_bed="bad-regions.bed",
+        badregionfilter=True,
+        excluded_chromosomes=[],
+        processors=2,
+    )
+    parser = runpy.run_path(
+        str(REPO / "scripts" / "python3_3dnetmod" / "read_settings.py")
+    )["read_settings"]
+    assert parser(settings_path)["excluded_chromosomes"] == ""
+
+
+@pytest.mark.parametrize(
+    "record", ["processors\n", "\t2\n", "processors\t2\textra\n"]
+)
+def test_vendored_settings_parser_rejects_malformed_nonempty_records(tmp_path, record):
+    settings_path = tmp_path / "malformed-settings.txt"
+    settings_path.write_text(record)
+    parser = runpy.run_path(
+        str(REPO / "scripts" / "python3_3dnetmod" / "read_settings.py")
+    )["read_settings"]
+
+    with pytest.raises(ValueError, match=r"malformed setting on line 1"):
+        parser(settings_path)
 
 
 def test_balanced_mode_reports_dynamic_missing_weight_context(tmp_path):

@@ -16,13 +16,19 @@ def read_settings(filename):
         var_dict = {}
 
         with open(filename, 'r') as input:
-                for line in input:
-                        if line.startswith('#') or not line.strip():
+                for line_number, line in enumerate(input, start=1):
+                        record = line.rstrip('\r\n')
+                        if not record.strip() or record.lstrip().startswith('#'):
                                 continue # ignore empty lines and comments
-                        pair = line.strip().split('\t')
-                        if len(pair) == 1: #test to see if user put space separatation
-                                a = line.strip().split(' ')
-                                pair = list([x for x in a if x!= ''])
+                        if '\t' in record:
+                                pair = record.split('\t')
+                        else:
+                                pair = record.split()
+                        if len(pair) != 2 or not pair[0].strip():
+                                raise ValueError(
+                                        f"malformed setting on line {line_number} in {filename}: "
+                                        "expected a key and a value"
+                                )
                         var_dict[pair[0].strip()] = pair[1].strip() # key = category, value = stored string
 
         return var_dict
