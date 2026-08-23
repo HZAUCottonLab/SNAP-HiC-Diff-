@@ -96,3 +96,10 @@ def test_variance_thresholds_handle_empty_communities():
     assert selected[200] == []
     assert thresholds[400] == 0.2
     assert selected[400] == [{"left_var": "0.1", "right_var": "0.2"}]
+
+
+def test_gps_skips_regions_without_counts_or_bed_files():
+    source = (CODE_DIR / "heatmap_removal.py").read_text()
+    guard = "if not os.path.isfile(counts_file) or not os.path.isfile(bed_file):"
+    assert source.count(guard) == 3
+    assert "skipping region without counts or bed file:" in source

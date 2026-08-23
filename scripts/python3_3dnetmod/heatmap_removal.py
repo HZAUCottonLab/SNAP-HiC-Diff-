@@ -132,6 +132,9 @@ def heatmap_removal(sample, chromosomes, tag_preprocess, tags_GPS, settings):
                         counts_file = 'input/' + chr + '_' + sample  + '_' + tag_preprocess + 'finalpvalues.counts'
                         bed_file = 'input/' + counts_file.split('/')[-1][:-14] + '.bed'
 
+                        if not os.path.isfile(counts_file) or not os.path.isfile(bed_file):
+                                print("skipping region without counts or bed file:", counts_file)
+                                continue
                         counts_as_arrays,bin_location = counts_to_array(counts_file, bed_file)
                         for region in counts_as_arrays:
                                 region_dict = {}
@@ -188,6 +191,9 @@ def heatmap_removal(sample, chromosomes, tag_preprocess, tags_GPS, settings):
                         bad_idx_dict[chr] = {}
                         counts_file = 'input/' + chr + '_' + sample  + '_' + tag_preprocess + 'finalpvalues.counts'
                         bed_file = 'input/' + counts_file.split('/')[-1][:-14] + '.bed'
+                        if not os.path.isfile(counts_file) or not os.path.isfile(bed_file):
+                                print("skipping region without counts or bed file:", counts_file)
+                                continue
                         counts_as_arrays,bin_location = counts_to_array(counts_file, bed_file)
                         region_dict = {}
                         for region in counts_as_arrays:
@@ -238,6 +244,9 @@ def heatmap_removal(sample, chromosomes, tag_preprocess, tags_GPS, settings):
                 for chr in chromosomes:
                         counts_file = 'input/' + chr + '_' + sample  + '_' + tag_preprocess + 'finalpvalues.counts'
                         bed_file = 'input/' + counts_file.split('/')[-1][:-14] + '.bed'
+                        if not os.path.isfile(counts_file) or not os.path.isfile(bed_file):
+                                print("skipping region without counts or bed file:", counts_file)
+                                continue
                         counts_as_arrays,bin_location = counts_to_array(counts_file, bed_file)
                         for region in counts_as_arrays:
                                 region_dict = {}
