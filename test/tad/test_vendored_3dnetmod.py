@@ -37,6 +37,15 @@ def test_vendored_preprocessor_does_not_hard_filter_chrM():
     assert "if chr == 'chrM':" not in source
 
 
+def test_vendored_preprocessor_defaults_to_no_chromosome_exclusions(monkeypatch):
+    monkeypatch.syspath_prepend(str(CODE_DIR))
+    preprocess = runpy.run_path(str(CODE_DIR / "3DNetMod_preprocess.py"))
+    configured = preprocess["configured_excluded_chromosomes"]
+
+    assert configured({}) == set()
+    assert configured({"excluded_chromosomes": "chrM, chrY"}) == {"chrM", "chrY"}
+
+
 def test_vendored_stages_use_settings_processor_limits_without_taskset_affinity():
     source_by_name = {
         path.name: path.read_text(errors="replace")

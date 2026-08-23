@@ -18,7 +18,7 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(script_dir)
 
 def configured_excluded_chromosomes(settings):
-    raw = settings.get("excluded_chromosomes", "chrM,chrY")
+    raw = settings.get("excluded_chromosomes", "")
     return {value.strip() for value in raw.split(",") if value.strip()}
 
 def prelim_genomewide(settings,tag,scale):
