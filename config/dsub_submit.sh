@@ -45,7 +45,7 @@ msg=$(dsub \
     --cwd "${PROJECT_ROOT}" \
     -n "${_rulename}" \
     -aa \
-    -q arm \
+    -q "${DSUB_QUEUE:-arm}" \
     -R "cpu=${_threads}" \
     -o "logs/cluster/${_rulename}_%J.out" \
     -e "logs/cluster/${_rulename}_%J.err" \
