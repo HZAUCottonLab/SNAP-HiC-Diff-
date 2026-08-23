@@ -82,15 +82,17 @@ def select_final_windows(knn, meltron, settings, return_audit=False):
         knn[p_columns] < settings.raw_knn_pvalue_threshold
     ).any(axis=1)
 
-    missing_keys = meltron[SOURCE_IDENTITY_KEYS].merge(
-        knn[SOURCE_IDENTITY_KEYS],
+    source_identities = knn[SOURCE_IDENTITY_KEYS].merge(
+        meltron[SOURCE_IDENTITY_KEYS],
         on=SOURCE_IDENTITY_KEYS,
-        how="left",
+        how="outer",
         indicator=True,
         validate="one_to_one",
     )
-    if missing_keys["_merge"].eq("left_only").any():
+    if source_identities["_merge"].eq("right_only").any():
         raise ValueError("Meltron windows missing KNN scale-qualified source identities")
+    if source_identities["_merge"].eq("left_only").any():
+        raise ValueError("KNN windows missing Meltron scale-qualified source identities")
 
     merged = knn.merge(
         meltron,

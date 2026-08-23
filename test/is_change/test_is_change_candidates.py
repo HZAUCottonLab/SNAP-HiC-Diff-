@@ -9,6 +9,7 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts"))
 
+import build_is_change_candidates as candidate_builder
 from is_change_candidates import select_final_windows
 
 
@@ -122,6 +123,19 @@ def test_rejects_meltron_source_identity_absent_from_knn(settings):
         select_final_windows(knn, meltron, settings)
 
 
+def test_rejects_knn_source_identity_absent_from_meltron(settings):
+    knn = pd.DataFrame(
+        [
+            knn_row(1, 0, 300000),
+            knn_row(2, 300000, 600000),
+        ]
+    )
+    meltron = pd.DataFrame([meltron_row(1, 0, 304000, 6.0)])
+
+    with pytest.raises(ValueError, match="KNN windows missing Meltron"):
+        select_final_windows(knn, meltron, settings)
+
+
 def test_rejects_shifted_meltron_algorithm_interval_start(settings):
     knn = pd.DataFrame([knn_row(1, 0, 300000)])
     meltron = pd.DataFrame([meltron_row(1, 4000, 304000, 6.0)])
@@ -130,3 +144,53 @@ def test_rejects_shifted_meltron_algorithm_interval_start(settings):
 
     with pytest.raises(ValueError, match="start coordinates disagree"):
         select_final_windows(knn, meltron, settings)
+
+
+def test_output_publication_restores_every_existing_file_after_third_promotion_fails(
+    monkeypatch, tmp_path
+):
+    outputs = [
+        tmp_path / "all.tsv",
+        tmp_path / "regions.tsv",
+        tmp_path / "regions.bed",
+    ]
+    original_bytes = [
+        b"old all candidates\n",
+        b"old union regions\n",
+        b"old bed intervals\n",
+    ]
+    for output, content in zip(outputs, original_bytes):
+        output.write_bytes(content)
+
+    real_replace = candidate_builder.os.replace
+    promotions = []
+
+    def fail_third_promotion(source, destination):
+        source = Path(source)
+        destination = Path(destination)
+        if destination in outputs and source.suffix == ".tmp":
+            promotions.append((source, destination))
+            if len(promotions) == 3:
+                raise OSError("injected third promotion failure")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(candidate_builder.os, "replace", fail_third_promotion)
+    all_candidates = pd.DataFrame({"candidate": ["new"]})
+    regions = pd.DataFrame(
+        {
+            "chrom": ["chr1"],
+            "region_start": [0],
+            "region_end": [4000],
+            "region_id": [1],
+        }
+    )
+
+    with pytest.raises(OSError, match="injected third promotion failure"):
+        candidate_builder.write_outputs_atomically(
+            all_candidates, regions, *outputs
+        )
+
+    assert len(promotions) == 3
+    assert [output.read_bytes() for output in outputs] == original_bytes
+    assert not list(tmp_path.glob(".*.tmp"))
+    assert not list(tmp_path.glob(".*.bak"))

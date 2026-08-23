@@ -4,6 +4,7 @@
 import argparse
 import os
 from pathlib import Path
+import shutil
 import tempfile
 
 import pandas as pd
@@ -123,13 +124,13 @@ def build_candidates(knn_frames, meltron_frames, settings):
     return all_candidates, regions, audits
 
 
-def _temporary_sibling(path):
+def _temporary_sibling(path, suffix=".tmp"):
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(
         dir=destination.parent,
         prefix=f".{destination.name}.",
-        suffix=".tmp",
+        suffix=suffix,
     )
     os.close(descriptor)
     return Path(temporary)
@@ -141,18 +142,41 @@ def write_outputs_atomically(all_candidates, regions, out_all, out_regions, out_
         raise ValueError("all three output paths must be distinct")
 
     temporaries = [_temporary_sibling(destination) for destination in destinations]
+    backups = {}
+    promoted = set()
     try:
         all_candidates.to_csv(temporaries[0], sep="\t", index=False)
         regions.to_csv(temporaries[1], sep="\t", index=False)
         regions.loc[:, BED_COLUMNS].to_csv(
             temporaries[2], sep="\t", index=False, header=False
         )
+        for destination in destinations:
+            if destination.exists():
+                backup = _temporary_sibling(destination, suffix=".bak")
+                shutil.copyfile(destination, backup)
+                backups[destination] = backup
         for temporary, destination in zip(temporaries, destinations):
             os.replace(temporary, destination)
-    except BaseException:
+            promoted.add(destination)
+    except BaseException as original_error:
+        rollback_errors = []
+        for destination in destinations:
+            backup = backups.get(destination)
+            try:
+                if backup is not None:
+                    os.replace(backup, destination)
+                elif destination in promoted:
+                    destination.unlink(missing_ok=True)
+            except BaseException as rollback_error:
+                rollback_errors.append(rollback_error)
+        if rollback_errors:
+            raise RuntimeError("failed to restore atomic candidate outputs") from original_error
+        raise
+    finally:
         for temporary in temporaries:
             temporary.unlink(missing_ok=True)
-        raise
+        for backup in backups.values():
+            backup.unlink(missing_ok=True)
 
 
 def main():
