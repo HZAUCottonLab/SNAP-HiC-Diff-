@@ -103,3 +103,9 @@ def test_gps_skips_regions_without_counts_or_bed_files():
     guard = "if not os.path.isfile(counts_file) or not os.path.isfile(bed_file):"
     assert source.count(guard) == 3
     assert "skipping region without counts or bed file:" in source
+
+
+def test_hsvm_writes_empty_merged_output_without_bin_size():
+    source = (CODE_DIR / "hierarchical_spatial_variance_minimization.py").read_text()
+    assert "if total_thresholded_communities:" in source
+    assert "else:\n                total_merged_communities = []" in source

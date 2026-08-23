@@ -174,7 +174,10 @@ def HSVM(settings,community_dict,sample, tag_HSVM, tag_preprocess, chr):
         community_output_thresholded.close()
 
 
-        total_merged_communities = merge_communities(total_thresholded_communities, bin_size, int(settings['boundary_buffer']))
+        if total_thresholded_communities:
+                total_merged_communities = merge_communities(total_thresholded_communities, bin_size, int(settings['boundary_buffer']))
+        else:
+                total_merged_communities = []
         dir = OUTDIR + '/HSVM/variance_thresholded_communities/merged/'
         if not os.path.isdir(dir): os.makedirs(dir)
         final_output = 'Merged_' + 'Communities_' + chr + sample  + '_' + tag_HSVM + '.txt' # HOW DOES CHROMOSOME FIT IN HERE?
