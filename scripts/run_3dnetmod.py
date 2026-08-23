@@ -115,14 +115,6 @@ def collect_final_calls(
                     line=line,
                 )
             calls.append((chrom, start, end))
-    if not calls:
-        raise TadError(
-            "TAD_EMPTY_CALLS",
-            sample=sample,
-            signal=signal,
-            resolution=resolution,
-            path=final_dir,
-        )
     calls.sort(key=lambda row: (chrom_order[row[0]], row[1], row[2]))
     bed_text = "".join(f"{chrom}\t{start}\t{end}\n" for chrom, start, end in calls)
     bedpe_text = "".join(

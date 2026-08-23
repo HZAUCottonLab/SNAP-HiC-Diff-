@@ -97,7 +97,6 @@ def test_stage_failure_names_real_context(tmp_path):
 @pytest.mark.parametrize(
     "line,code",
     [
-        ("# no domains\n", "TAD_EMPTY_CALLS"),
         ("A02\t-1\t4000\n", "TAD_INVALID_COORDINATE"),
         ("A02\t4000\t24000\n", "TAD_INVALID_COORDINATE"),
         ("unknown\t0\t4000\n", "TAD_INVALID_COORDINATE"),
@@ -117,3 +116,20 @@ def test_invalid_or_empty_calls_publish_nothing(tmp_path, line, code):
         )
     assert not bed.exists()
     assert not bedpe.exists()
+
+
+def test_empty_calls_publish_empty_outputs(tmp_path):
+    runner = load_runner()
+    final = tmp_path / "FINAL_DOMAIN_CALLS"
+    final.mkdir()
+    (final / "calls_master_consistent_domains.txt").write_text("# no domains\n")
+    bed = tmp_path / "calls.bed"
+    bedpe = tmp_path / "calls.bedpe"
+
+    runner.collect_final_calls(
+        tmp_path, bed, bedpe, {"A02": 20000},
+        sample="S", signal="raw", resolution=4000,
+    )
+
+    assert bed.read_text() == ""
+    assert bedpe.read_text() == ""
