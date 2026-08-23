@@ -23,8 +23,12 @@ CWORLD_IS = parse_cworld_is_settings(config)
 TAD = parse_tad_settings(config)
 TAD_RESOLUTIONS = TAD.resolutions
 TAD_SIGNALS = TAD.signals
-TAD_LABELS = {resolution: f"{resolution // 1000}kb" for resolution in TAD_RESOLUTIONS}
+TAD_LABELS = {resolution: "{}kb".format(resolution // 1000) for resolution in TAD_RESOLUTIONS}
 TAD_RESOLUTION_BY_LABEL = {label: resolution for resolution, label in TAD_LABELS.items()}
+TAD_RESOLUTION_MAP = ",".join(
+    "{}={}".format(label, resolution)
+    for label, resolution in sorted(TAD_RESOLUTION_BY_LABEL.items())
+)
 TAD_D_CONFIG_JSON = json.dumps(TAD.d, sort_keys=True)
 
 
@@ -36,27 +40,27 @@ TMP = config["tmpdir"]
 STEP_SIZE = config.get("step_size", config["window_size"])  # Default: non-overlapping
 
 def tad_run_dir(sample, resolution, signal):
-    return f"{TAD.run_root}/{sample}/{signal}/{TAD_LABELS[resolution]}/D"
+    return "{}/{}/{}/{}/D".format(TAD.run_root, sample, signal, TAD_LABELS[resolution])
 
 
 def tad_ready_path(sample, resolution, signal):
-    return f"{OUTDIR}/tad_prepare/{sample}.{TAD_LABELS[resolution]}.{signal}.ready"
+    return "{}/tad_prepare/{}.{}.{}.ready".format(OUTDIR, sample, TAD_LABELS[resolution], signal)
 
 
 def tad_bed_path(sample, resolution, signal):
-    return f"{OUTDIR}/tads/{sample}.{TAD_LABELS[resolution]}.{signal}.3dnetmod.bed"
+    return "{}/tads/{}.{}.{}.3dnetmod.bed".format(OUTDIR, sample, TAD_LABELS[resolution], signal)
 
 
 def tad_bedpe_path(sample, resolution, signal):
-    return f"{OUTDIR}/tads/{sample}.{TAD_LABELS[resolution]}.{signal}.3dnetmod.bedpe"
+    return "{}/tads/{}.{}.{}.3dnetmod.bedpe".format(OUTDIR, sample, TAD_LABELS[resolution], signal)
 
 
 def tad_boundary_path(sample, resolution, signal):
-    return f"{OUTDIR}/tad_boundaries/{sample}.{TAD_LABELS[resolution]}.{signal}.boundaries.bed"
+    return "{}/tad_boundaries/{}.{}.{}.boundaries.bed".format(OUTDIR, sample, TAD_LABELS[resolution], signal)
 
 
 def tad_merged_boundary_path(sample, signal):
-    return f"{OUTDIR}/tad_boundaries/{sample}.multires.{signal}.boundaries.bed"
+    return "{}/tad_boundaries/{}.multires.{}.boundaries.bed".format(OUTDIR, sample, signal)
 
 # ==============================================================================
 # Helper Functions
@@ -147,7 +151,7 @@ def knn_heatmap_chrom_done_by_comp(wildcards):
     df = pd.read_csv(manifest, sep="\t")
     chroms = sorted(df["chrom"].unique())
     return [
-        f"{OUTDIR}/logs/knn_significant_heatmap/{wildcards.comparison}/{chrom}.done"
+        "{}/logs/knn_significant_heatmap/{}/{}.done".format(OUTDIR, wildcards.comparison, chrom)
         for chrom in chroms
     ]
 

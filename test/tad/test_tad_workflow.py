@@ -26,6 +26,22 @@ def test_rule_contract_contains_all_signal_resolution_stages():
         assert token in snakefile
 
 
+def test_tad_rules_follow_wildcard_shell_standard():
+    rules = (REPO / "rules" / "tad.smk").read_text()
+    snakefile = (REPO / "Snakefile").read_text()
+
+    assert 'f"' not in rules
+    assert "f'" not in rules
+    assert 'f"' not in snakefile
+    assert "f'" not in snakefile
+    for parameter in ("resolution", "run_dir", "settings"):
+        assert f"{parameter}=lambda wc:" not in rules
+
+    assert rules.count('SAMPLE="{wildcards.sample}"') == 4
+    assert rules.count('SIGNAL="{wildcards.signal}"') == 4
+    assert rules.count('RESOLUTION_LABEL="{wildcards.resolution_label}"') == 3
+
+
 def test_two_signal_three_resolution_dag_builds():
     completed = subprocess.run(
         [

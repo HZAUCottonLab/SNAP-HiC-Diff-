@@ -16,10 +16,8 @@ rule prepare_tad:
     threads:
         TAD.threads
     params:
-        resolution=lambda wc: TAD_RESOLUTION_BY_LABEL[wc.resolution_label],
-        run_dir=lambda wc: tad_run_dir(
-            wc.sample, TAD_RESOLUTION_BY_LABEL[wc.resolution_label], wc.signal
-        ),
+        resolution_map=TAD_RESOLUTION_MAP,
+        run_root=TAD.run_root,
         d_config_json=TAD_D_CONFIG_JSON,
         excluded_chromosomes=",".join(TAD.excluded_chromosomes),
         bad_region_bed=TAD.bad_region_bed or "None",
@@ -29,19 +27,41 @@ rule prepare_tad:
     shell:
         r"""
         set -euo pipefail
-        mkdir -p "$(dirname {output.ready})" "$(dirname {log})" "$(dirname {output.ready})/../benchmark/tad_prepare"
+
+        SAMPLE="{wildcards.sample}"
+        RESOLUTION_LABEL="{wildcards.resolution_label}"
+        SIGNAL="{wildcards.signal}"
+        MCOOL={input.mcool:q}
+        READY_FLAG={output.ready:q}
+        LOG_FILE={log:q}
+        D_CONFIG_JSON={params.d_config_json:q}
+        EXCLUDED_CHROMOSOMES={params.excluded_chromosomes:q}
+        BAD_REGION_BED={params.bad_region_bed:q}
+        BADREGIONFILTER={params.badregionfilter:q}
+        TAD_RESOLUTION_MAP={params.resolution_map:q}
+        RUN_ROOT={params.run_root:q}
+        THREADS="{threads}"
+        RESOLUTION="$(printf '%s\n' "$TAD_RESOLUTION_MAP" | tr ',' '\n' | grep -F "$RESOLUTION_LABEL=" | cut -d= -f2 || true)"
+        if [ -z "$RESOLUTION" ]; then
+            printf 'ERROR: unknown TAD resolution label %s\n' "$RESOLUTION_LABEL" >&2
+            exit 1
+        fi
+        RUN_DIR="$RUN_ROOT/$SAMPLE/$SIGNAL/$RESOLUTION_LABEL/D"
+        READY_DIR="$(dirname "$READY_FLAG")"
+        LOG_DIR="$(dirname "$LOG_FILE")"
+        mkdir -p "$READY_DIR" "$LOG_DIR" "$READY_DIR/../benchmark/tad_prepare"
         python scripts/tad_from_mcool.py \
-            --mcool {input.mcool:q} \
-            --sample {wildcards.sample:q} \
-            --signal {wildcards.signal:q} \
-            --resolution {params.resolution} \
-            --run-dir {params.run_dir:q} \
-            --ready-flag {output.ready:q} \
-            --processors {threads} \
-            --badregionfilter {params.badregionfilter:q} \
-            --bad-region-bed {params.bad_region_bed:q} \
-            --excluded-chromosomes {params.excluded_chromosomes:q} \
-            --d-config-json {params.d_config_json:q} > {log:q} 2>&1
+            --mcool "$MCOOL" \
+            --sample "$SAMPLE" \
+            --signal "$SIGNAL" \
+            --resolution "$RESOLUTION" \
+            --run-dir "$RUN_DIR" \
+            --ready-flag "$READY_FLAG" \
+            --processors "$THREADS" \
+            --badregionfilter "$BADREGIONFILTER" \
+            --bad-region-bed "$BAD_REGION_BED" \
+            --excluded-chromosomes "$EXCLUDED_CHROMOSOMES" \
+            --d-config-json "$D_CONFIG_JSON" > "$LOG_FILE" 2>&1
         """
 
 
@@ -61,27 +81,45 @@ rule call_tad:
     threads:
         TAD.threads
     params:
-        resolution=lambda wc: TAD_RESOLUTION_BY_LABEL[wc.resolution_label],
-        settings=lambda wc: (
-            f"{tad_run_dir(wc.sample, TAD_RESOLUTION_BY_LABEL[wc.resolution_label], wc.signal)}"
-            f"/settings_{wc.sample}.{wc.signal}.txt"
-        ),
+        resolution_map=TAD_RESOLUTION_MAP,
+        run_root=TAD.run_root,
         code_dir=TAD.code_dir,
     conda:
         "../env/tad.yaml"
     shell:
         r"""
         set -euo pipefail
-        mkdir -p "$(dirname {output.bed})" "$(dirname {log})" "$(dirname {output.bed})/../benchmark/tad_call"
+
+        SAMPLE="{wildcards.sample}"
+        RESOLUTION_LABEL="{wildcards.resolution_label}"
+        SIGNAL="{wildcards.signal}"
+        CODE_DIR={params.code_dir:q}
+        MCOOL={input.mcool:q}
+        BED_OUTPUT={output.bed:q}
+        BEDPE_OUTPUT={output.bedpe:q}
+        LOG_FILE={log:q}
+        TAD_RESOLUTION_MAP={params.resolution_map:q}
+        RUN_ROOT={params.run_root:q}
+        THREADS="{threads}"
+        RESOLUTION="$(printf '%s\n' "$TAD_RESOLUTION_MAP" | tr ',' '\n' | grep -F "$RESOLUTION_LABEL=" | cut -d= -f2 || true)"
+        if [ -z "$RESOLUTION" ]; then
+            printf 'ERROR: unknown TAD resolution label %s\n' "$RESOLUTION_LABEL" >&2
+            exit 1
+        fi
+        RUN_DIR="$RUN_ROOT/$SAMPLE/$SIGNAL/$RESOLUTION_LABEL/D"
+        SETTINGS="$RUN_DIR/settings_${{SAMPLE}}.${{SIGNAL}}.txt"
+        OUTPUT_DIR="$(dirname "$BED_OUTPUT")"
+        LOG_DIR="$(dirname "$LOG_FILE")"
+        mkdir -p "$OUTPUT_DIR" "$LOG_DIR" "$OUTPUT_DIR/../benchmark/tad_call"
         python scripts/run_3dnetmod.py \
-            --settings {params.settings:q} \
-            --code-dir {params.code_dir:q} \
-            --mcool {input.mcool:q} \
-            --sample {wildcards.sample:q} \
-            --signal {wildcards.signal:q} \
-            --resolution {params.resolution} \
-            --bed-output {output.bed:q} \
-            --bedpe-output {output.bedpe:q} > {log:q} 2>&1
+            --settings "$SETTINGS" \
+            --code-dir "$CODE_DIR" \
+            --mcool "$MCOOL" \
+            --sample "$SAMPLE" \
+            --signal "$SIGNAL" \
+            --resolution "$RESOLUTION" \
+            --bed-output "$BED_OUTPUT" \
+            --bedpe-output "$BEDPE_OUTPUT" > "$LOG_FILE" 2>&1
         """
 
 
@@ -97,18 +135,34 @@ rule extract_tad_boundaries:
         OUTDIR + "/benchmark/tad_boundaries/{sample}.{resolution_label}.{signal}.tsv"
     threads: 1
     params:
-        resolution=lambda wc: TAD_RESOLUTION_BY_LABEL[wc.resolution_label],
+        resolution_map=TAD_RESOLUTION_MAP,
     conda:
         "../env/tad.yaml"
     shell:
         r"""
         set -euo pipefail
-        mkdir -p "$(dirname {output.bed})" "$(dirname {log})" "$(dirname {output.bed})/../benchmark/tad_boundaries"
+
+        SAMPLE="{wildcards.sample}"
+        RESOLUTION_LABEL="{wildcards.resolution_label}"
+        SIGNAL="{wildcards.signal}"
+        TAD_INPUT={input.tad:q}
+        MCOOL={input.mcool:q}
+        BED_OUTPUT={output.bed:q}
+        LOG_FILE={log:q}
+        TAD_RESOLUTION_MAP={params.resolution_map:q}
+        RESOLUTION="$(printf '%s\n' "$TAD_RESOLUTION_MAP" | tr ',' '\n' | grep -F "$RESOLUTION_LABEL=" | cut -d= -f2 || true)"
+        if [ -z "$RESOLUTION" ]; then
+            printf 'ERROR: unknown TAD resolution label %s\n' "$RESOLUTION_LABEL" >&2
+            exit 1
+        fi
+        OUTPUT_DIR="$(dirname "$BED_OUTPUT")"
+        LOG_DIR="$(dirname "$LOG_FILE")"
+        mkdir -p "$OUTPUT_DIR" "$LOG_DIR" "$OUTPUT_DIR/../benchmark/tad_boundaries"
         python scripts/tad_boundaries.py extract \
-            --tad {input.tad:q} --mcool {input.mcool:q} \
-            --resolution {params.resolution} \
-            --sample {wildcards.sample:q} --signal {wildcards.signal:q} \
-            --output {output.bed:q} > {log:q} 2>&1
+            --tad "$TAD_INPUT" --mcool "$MCOOL" \
+            --resolution "$RESOLUTION" \
+            --sample "$SAMPLE" --signal "$SIGNAL" \
+            --output "$BED_OUTPUT" > "$LOG_FILE" 2>&1
         """
 
 
@@ -126,15 +180,27 @@ rule merge_tad_boundaries:
     benchmark:
         OUTDIR + "/benchmark/tad_boundaries/{sample}.multires.{signal}.tsv"
     threads: 1
+    params:
+        chrom_resolution=min(TAD_RESOLUTIONS),
     conda:
         "../env/tad.yaml"
     shell:
         r"""
         set -euo pipefail
-        mkdir -p "$(dirname {output.bed})" "$(dirname {log})" "$(dirname {output.bed})/../benchmark/tad_boundaries"
+
+        SAMPLE="{wildcards.sample}"
+        SIGNAL="{wildcards.signal}"
+        BOUNDARIES=({input.boundaries:q})
+        MCOOL={input.mcool:q}
+        BED_OUTPUT={output.bed:q}
+        LOG_FILE={log:q}
+        CHROM_RESOLUTION="{params.chrom_resolution}"
+        OUTPUT_DIR="$(dirname "$BED_OUTPUT")"
+        LOG_DIR="$(dirname "$LOG_FILE")"
+        mkdir -p "$OUTPUT_DIR" "$LOG_DIR" "$OUTPUT_DIR/../benchmark/tad_boundaries"
         python scripts/tad_boundaries.py merge \
-            --inputs {input.boundaries:q} --mcool {input.mcool:q} \
-            --chrom-resolution 4000 \
-            --sample {wildcards.sample:q} --signal {wildcards.signal:q} \
-            --output {output.bed:q} > {log:q} 2>&1
+            --inputs "${{BOUNDARIES[@]}}" --mcool "$MCOOL" \
+            --chrom-resolution "$CHROM_RESOLUTION" \
+            --sample "$SAMPLE" --signal "$SIGNAL" \
+            --output "$BED_OUTPUT" > "$LOG_FILE" 2>&1
         """
