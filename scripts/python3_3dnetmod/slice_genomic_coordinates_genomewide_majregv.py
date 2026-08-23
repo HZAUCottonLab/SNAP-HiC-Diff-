@@ -220,9 +220,6 @@ def process4(element):
      copies = int(np.floor((size-(overlap +1))/stride))
      extension = (size - (overlap+1)) % stride
 
-     if chr == 'chrM':
-         return (chr,1)
-
      name='HiC'+ str(chr) # region name shared across replicates, appended to bin inside output counts and bed file
      file=str(chr) + "_" + tag + "_" + str(sample)# Update 'NAME' to be incorporated into output file name
      if eval(qnorm):

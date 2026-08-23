@@ -47,6 +47,11 @@ def test_two_signal_three_resolution_dag_builds():
         [
             "snakemake", "-n", "-p",
             "--configfile", "config/config.yaml",
+            "--forcerun",
+            "prepare_tad",
+            "call_tad",
+            "extract_tad_boundaries",
+            "merge_tad_boundaries",
             "--",
             "results/tad_boundaries/H1394.multires.raw.boundaries.bed",
             "results/tad_boundaries/H1394.multires.balanced.boundaries.bed",

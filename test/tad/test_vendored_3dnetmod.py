@@ -32,6 +32,11 @@ def test_vendored_code_has_no_runtime_reference_to_source_checkout():
     assert "PanTE/compare_mtx" not in source
 
 
+def test_vendored_preprocessor_does_not_hard_filter_chrM():
+    source = (CODE_DIR / "slice_genomic_coordinates_genomewide_majregv.py").read_text()
+    assert "if chr == 'chrM':" not in source
+
+
 def test_vendored_stages_use_settings_processor_limits_without_taskset_affinity():
     source_by_name = {
         path.name: path.read_text(errors="replace")
