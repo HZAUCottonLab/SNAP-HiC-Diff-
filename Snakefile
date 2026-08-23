@@ -186,44 +186,59 @@ rule all:
             sample=SAMPLES,
             window_bins=WINDOW_BINS,
         ),
-        # 7. Window compare — intermediate stage outputs (explicit, so deletion triggers rebuild)
-        expand(OUTDIR + "/window_compare/{comparison}/{comparison}_covariates.tsv",
-               comparison=get_window_compare_pairs()),
-        expand(OUTDIR + "/window_compare/{comparison}/{comparison}_gaussian_metrics.tsv",
-               comparison=get_window_compare_pairs()),
-        expand(OUTDIR + "/window_compare/{comparison}/{comparison}_tw.tsv",
-               comparison=get_window_compare_pairs()),
-        # 8. Window compare — final merged output
+        # 7. Window compare — every intermediate and final metric is scale-qualified.
         expand(
-            OUTDIR + "/window_compare/{comparison}/{comparison}_window_pair_metrics.tsv",
-            comparison=get_window_compare_pairs()
+            SCALE_ROOT + "/window_compare/{comparison}/{comparison}_covariates.tsv",
+            comparison=get_window_compare_pairs(),
+            window_bins=WINDOW_BINS,
         ),
-        # 9. KNN empirical P-values (per comparison pair)
         expand(
-            OUTDIR + "/knn_empirical_pvalue/{comparison}/{comparison}_knn_enriched.tsv",
-            comparison=get_window_compare_pairs()
+            SCALE_ROOT + "/window_compare/{comparison}/{comparison}_gaussian_metrics.tsv",
+            comparison=get_window_compare_pairs(),
+            window_bins=WINDOW_BINS,
         ),
-        # 10. KNN significant window heatmaps (per-chrom done markers)
         expand(
-            OUTDIR + "/logs/knn_significant_heatmap/{comparison}/{chrom}.done",
+            SCALE_ROOT + "/window_compare/{comparison}/{comparison}_tw.tsv",
+            comparison=get_window_compare_pairs(),
+            window_bins=WINDOW_BINS,
+        ),
+        expand(
+            SCALE_ROOT + "/window_compare/{comparison}/{comparison}_window_pair_metrics.tsv",
+            comparison=get_window_compare_pairs(),
+            window_bins=WINDOW_BINS,
+        ),
+        # 8. KNN calibration and its diagnostic heatmaps run once per scale.
+        expand(
+            SCALE_ROOT + "/knn_empirical_pvalue/{comparison}/{comparison}_knn_enriched.tsv",
+            comparison=get_window_compare_pairs(),
+            window_bins=WINDOW_BINS,
+        ),
+        expand(
+            SCALE_ROOT + "/logs/knn_significant_heatmap/{comparison}/{chrom}.done",
             comparison=get_window_compare_pairs(),
             chrom=get_chroms(),
+            window_bins=WINDOW_BINS,
         ),
-        # 11. Compute IS per sample (checkpoint → per-chrom jobs → merge)
+        # 9. CWorld IS is shared by all five genomic-window branches.
         expand(OUTDIR + "/IS/{sample}/{sample}_IS.tsv", sample=SAMPLES),
-        # 12. Meltron per comparison (both directions, merged)
+        # 10. Meltron is evaluated independently for every genomic window scale.
         expand(
-            OUTDIR + "/meltron/{comparison}/{comparison}_meltron_merged.tsv",
-            comparison=get_window_compare_pairs()
+            SCALE_ROOT + "/meltron/{comparison}/{comparison}_meltron_merged.tsv",
+            comparison=get_window_compare_pairs(),
+            window_bins=WINDOW_BINS,
         ),
-        # 13. IS-change loci and diagnostic plot manifests
+        # 11. Publish only aggregate multiscale candidate and IS-change products.
         expand(
-            OUTDIR + "/is_change/{comparison}/{comparison}_is_change_loci.tsv",
-            comparison=get_window_compare_pairs()
+            MULTISCALE_ROOT + "/{comparison}/candidate_union.tsv",
+            comparison=get_window_compare_pairs(),
         ),
         expand(
-            OUTDIR + "/figures/is_change/{comparison}/manifest.tsv",
-            comparison=get_window_compare_pairs()
+            MULTISCALE_ROOT + "/{comparison}/is_change/{comparison}_is_change_loci.tsv",
+            comparison=get_window_compare_pairs(),
+        ),
+        expand(
+            MULTISCALE_ROOT + "/{comparison}/is_change/figures/manifest.tsv",
+            comparison=get_window_compare_pairs(),
         ),
 
 
