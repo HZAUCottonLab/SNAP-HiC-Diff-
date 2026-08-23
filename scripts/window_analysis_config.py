@@ -94,17 +94,21 @@ def parse_window_analysis_settings(
         )
         if key[0] != resolution:
             continue
-        if key in expected_keys:
-            if key[1] in active:
-                raise WindowAnalysisConfigError(
-                    f"duplicate background preset for r{resolution}/w{key[1]}"
-                )
-            path = Path(record.get("file", ""))
-            if check_files and not path.is_file():
-                raise WindowAnalysisConfigError(
-                    f"background file missing for r{resolution}/w{key[1]}: {path}"
-                )
-            active[key[1]] = BackgroundPreset(*key, path)
+        if key not in expected_keys:
+            raise WindowAnalysisConfigError(
+                f"unexpected background preset for r{resolution}/w{key[1]} "
+                f"step_bins={key[2]}"
+            )
+        if key[1] in active:
+            raise WindowAnalysisConfigError(
+                f"duplicate background preset for r{resolution}/w{key[1]}"
+            )
+        path = Path(record.get("file", ""))
+        if check_files and not path.is_file():
+            raise WindowAnalysisConfigError(
+                f"background file missing for r{resolution}/w{key[1]}: {path}"
+            )
+        active[key[1]] = BackgroundPreset(*key, path)
     for scale in scales:
         if scale.window_bins not in active:
             raise WindowAnalysisConfigError(

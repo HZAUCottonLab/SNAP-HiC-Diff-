@@ -18,6 +18,17 @@ sys.path.insert(0, os.path.join(SCRIPT_DIR, "scripts"))
 from cworld_is_config import parse_cworld_is_settings
 from window_analysis_config import parse_window_analysis_settings
 CWORLD_IS = parse_cworld_is_settings(config)
+# Scripts that read configuration must receive the CLI-selected configuration
+# when one is supplied. Snakemake initializes ``configfiles`` with CLI paths
+# before it evaluates ``configfile:`` statements in this Snakefile, so the
+# default configuration files would otherwise become the last entries. Without
+# an explicit CLI file, the first declared configuration is the pipeline's
+# complete configuration (the following chroms file is only an overlay).
+_CLI_CONFIGFILES = tuple(workflow.overwrite_configfiles)
+ACTIVE_CONFIGFILE = str(
+    _CLI_CONFIGFILES[-1] if _CLI_CONFIGFILES else workflow.configfiles[0]
+)
+
 
 
 # Derived paths

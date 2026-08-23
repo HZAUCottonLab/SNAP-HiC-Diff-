@@ -183,3 +183,109 @@ def test_rule_all_only_publishes_scale_qualified_and_multiscale_final_targets():
     assert 'MULTISCALE_ROOT + "/{comparison}/candidate_union.tsv"' in rule_all
     assert 'MULTISCALE_ROOT + "/{comparison}/is_change/{comparison}_is_change_loci.tsv"' in rule_all
     assert 'MULTISCALE_ROOT + "/{comparison}/is_change/figures/manifest.tsv"' in rule_all
+
+
+def test_scripts_receive_the_active_configfile_not_the_repository_default():
+    knn_rules = (REPO / "rules" / "knn_empirical_pvalue.smk").read_text()
+    is_change_rules = (REPO / "rules" / "is_change.smk").read_text()
+
+    assert 'config = ACTIVE_CONFIGFILE,' in knn_rules
+    assert '--config "{params.config}"' in knn_rules
+    assert is_change_rules.count("config=ACTIVE_CONFIGFILE,") == 3
+    assert is_change_rules.count('--config "{params.config}"') == 3
+    assert "config/config.yaml" not in knn_rules
+    assert "config/config.yaml" not in is_change_rules
+
+def test_knn_execution_honors_active_10kb_configfile(tmp_path):
+    """A real KNN rule execution must pass the CLI-selected config to its script."""
+    config_path, outdir = make_config(tmp_path, 10000)
+    config = yaml.safe_load(config_path.read_text())
+    config["knn_empirical_pvalue"]["knn_k"] = 2
+    config["knn_empirical_pvalue"]["n_jobs"] = 1
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+
+    background = tmp_path / "background_r10000_w25.tsv"
+    with background.open("a") as handle:
+        handle.write(
+            "background_a_vs_background_b\tchr1\t50000\t300000\t"
+            "1.1\t1.1\t1.1\t1.1\t0.8\t0.7\t0.2\t0.6\n"
+        )
+
+    merged = outdir / (
+        "window_scales/r10000/w25/window_compare/H1398_vs_L134/"
+        "H1398_vs_L134_window_pair_metrics.tsv"
+    )
+    merged.parent.mkdir(parents=True)
+    merged.write_text(
+        "chrom\twindow_id\twindow_start\twindow_end\tcomparison\tEC\tIB\tSP\t"
+        "MSE\tSSIM\tSpearman\ttw_pvalue\tNCC\n"
+        "chr1\t1\t0\t250000\tH1398_vs_L134\t1.0\t1.0\t1.0\t1.0\t0.9\t0.8\t0.1\t0.7\n"
+        "chr1\t2\t50000\t300000\tH1398_vs_L134\t1.2\t1.2\t1.2\t1.2\t0.8\t0.7\t0.2\t0.6\n"
+    )
+    target = outdir / (
+        "window_scales/r10000/w25/knn_empirical_pvalue/H1398_vs_L134/"
+        "H1398_vs_L134_knn_enriched.tsv"
+    )
+
+
+    snakefile = tmp_path / "knn_execution.smk"
+    snakefile.write_text(
+        f"""import sys
+configfile: {str(REPO / "config" / "config.yaml")!r}
+configfile: {str(REPO / "config" / "chroms.yaml")!r}
+
+SCRIPT_DIR = {str(REPO)!r}
+sys.path.insert(0, SCRIPT_DIR + "/scripts")
+from window_analysis_config import parse_window_analysis_settings
+
+WINDOW_ANALYSIS = parse_window_analysis_settings(config, check_files=False)
+OUTDIR = config["outdir"]
+RESOLUTION = WINDOW_ANALYSIS.resolution_bp
+SCALE_ROOT = OUTDIR + "/window_scales/r{{}}".format(RESOLUTION) + "/w{{window_bins}}"
+_CLI_CONFIGFILES = tuple(workflow.overwrite_configfiles)
+ACTIVE_CONFIGFILE = str(
+    _CLI_CONFIGFILES[-1] if _CLI_CONFIGFILES else workflow.configfiles[0]
+)
+
+def get_window_scale(window_bins):
+    return WINDOW_ANALYSIS.scale(int(window_bins))
+
+def get_background_preset(window_bins):
+    return WINDOW_ANALYSIS.backgrounds_by_window_bins[int(window_bins)]
+
+include: {str(REPO / "rules" / "knn_empirical_pvalue.smk")!r}
+
+rule all:
+    input:
+        {str(target)!r},
+"""
+    )
+
+    result = subprocess.run(
+        [
+            "snakemake",
+            "--snakefile",
+            str(snakefile),
+            "--cores",
+            "1",
+            "--configfile",
+            str(config_path),
+            "--",
+            str(target),
+        ],
+        cwd=REPO,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    report = result.stdout + result.stderr
+
+    assert result.returncode == 0, report
+    assert target.exists()
+    log = outdir / (
+        "window_scales/r10000/w25/logs/knn_empirical_pvalue/H1398_vs_L134/"
+        "knn_empirical_pvalue.log"
+    )
+    assert "KNN k: 2" in log.read_text()
+    assert "resolution_bp\twindow_bins" in target.read_text()
+    assert "10000\t25" in target.read_text()

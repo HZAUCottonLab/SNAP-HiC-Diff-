@@ -19,6 +19,7 @@ rule build_is_change_candidates:
     log:
         MULTISCALE_ROOT + "/{comparison}/is_change/logs/candidates.log"
     params:
+        config=ACTIVE_CONFIGFILE,
         expected_window_bins=" ".join(map(str, WINDOW_BINS)),
         script=SCRIPT_DIR + "/scripts/build_is_change_candidates.py",
     conda:
@@ -31,7 +32,7 @@ rule build_is_change_candidates:
             --knn-enriched {input.knn_enriched} \
             --meltron-merged {input.meltron_merged} \
             --expected-window-bins {params.expected_window_bins} \
-            --config config/config.yaml \
+            --config "{params.config}" \
             --out-all "{output.all_candidates}" \
             --out-regions "{output.regions}" \
             --out-bed "{output.bed}" \
@@ -63,6 +64,7 @@ rule call_is_change_loci:
         MULTISCALE_ROOT + "/{comparison}/is_change/logs/caller.log"
     params:
         script=SCRIPT_DIR + "/scripts/call_is_change_loci.py",
+        config=ACTIVE_CONFIGFILE,
     conda:
         "../env/SNAP-HiC-Diff.yaml"
     shell:
@@ -75,7 +77,7 @@ rule call_is_change_loci:
             --is-b "{input.is_b}" \
             --cool-a {input.cool_a} \
             --cool-b {input.cool_b} \
-            --config config/config.yaml \
+            --config "{params.config}" \
             --out-primary "{output.primary}" \
             --out-preliminary "{output.preliminary}" \
             --out-masked "{output.masked}" \
@@ -107,6 +109,7 @@ rule plot_is_change_loci:
     params:
         figure_dir=MULTISCALE_ROOT + "/{comparison}/is_change/figures",
         script=SCRIPT_DIR + "/scripts/plot_is_change_loci.py",
+        config=ACTIVE_CONFIGFILE,
     conda:
         "../env/SNAP-HiC-Diff.yaml"
     shell:
@@ -118,7 +121,7 @@ rule plot_is_change_loci:
             --candidate-regions "{input.regions}" \
             --is-a "{input.is_a}" \
             --is-b "{input.is_b}" \
-            --config config/config.yaml \
+            --config "{params.config}" \
             --outdir "{params.figure_dir}" \
             --cool-a {input.cool_a} \
             --cool-b {input.cool_b} \

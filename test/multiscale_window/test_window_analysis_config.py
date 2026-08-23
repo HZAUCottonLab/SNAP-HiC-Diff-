@@ -56,3 +56,22 @@ def test_missing_exact_preset_names_expected_tuple(tmp_path):
 def test_legacy_only_window_config_is_rejected():
     with pytest.raises(WindowAnalysisConfigError, match="window_analysis"):
         parse_window_analysis_settings({"resolution": 4000, "window_size": 300000, "step_size": 32000})
+
+def test_rejects_extra_active_resolution_preset_with_unenabled_exact_tuple(tmp_path):
+    config = make_config(tmp_path, bins=(25,))
+    extra = tmp_path / "r4000_w25_step6.tsv"
+    extra.write_text("comparison\tchrom\twindow_start\twindow_end\n")
+    config["knn_empirical_pvalue"]["background_presets"].append(
+        {
+            "resolution_bp": 4000,
+            "window_bins": 25,
+            "step_bins": 6,
+            "file": str(extra),
+        }
+    )
+
+    with pytest.raises(
+        WindowAnalysisConfigError,
+        match=r"unexpected background preset for r4000/w25 step_bins=6",
+    ):
+        parse_window_analysis_settings(config)

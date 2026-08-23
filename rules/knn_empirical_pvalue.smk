@@ -52,7 +52,7 @@ rule knn_empirical_pvalue:
         SCALE_ROOT + "/benchmark/knn_empirical_pvalue/{comparison}/knn_empirical_pvalue.tsv"
     threads: config["parallel"]["threads_per_job"]
     params:
-        config = SCRIPT_DIR + "/config/config.yaml",
+        config = ACTIVE_CONFIGFILE,
         resolution_bp = RESOLUTION,
         window_bins = lambda w: int(w.window_bins),
         window_size_bp = lambda w: get_window_scale(w.window_bins).window_size_bp,
