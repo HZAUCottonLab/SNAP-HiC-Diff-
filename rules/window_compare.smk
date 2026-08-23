@@ -21,18 +21,20 @@
 # Compute_window_pair_covariates
 # ==============================================================================
 
+def get_pair_gap_qc_files(wildcards, sample_index):
+    """Resolve one comparison member's QC files through its producing checkpoint."""
+    sample = get_pair_samples(wildcards.comparison)[sample_index]
+    return checkpoints.compute_gap_qc.get(
+        sample=sample,
+        window_bins=wildcards.window_bins,
+    ).output.qc
+
 rule compute_window_pair_covariates:
     """Compute EC, IB, SP, weighted features for all window pairs of a comparison."""
     input:
         script = SCRIPT_DIR + "/scripts/compute_window_pair_covariates.py",
-        qc_a = lambda w: expand(
-            SCALE_ROOT + "/windows/{sample}/{sample}__{chrom}_window_qc.tsv",
-            sample=get_pair_samples(w.comparison)[0], chrom=CHROMS, window_bins=w.window_bins
-        ),
-        qc_b = lambda w: expand(
-            SCALE_ROOT + "/windows/{sample}/{sample}__{chrom}_window_qc.tsv",
-            sample=get_pair_samples(w.comparison)[1], chrom=CHROMS, window_bins=w.window_bins
-        ),
+        qc_a = lambda w: get_pair_gap_qc_files(w, 0),
+        qc_b = lambda w: get_pair_gap_qc_files(w, 1),
     output:
         covariates = SCALE_ROOT + "/window_compare/{comparison}/{comparison}_covariates.tsv",
     log:

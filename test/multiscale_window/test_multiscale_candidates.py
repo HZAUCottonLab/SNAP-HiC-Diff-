@@ -1,9 +1,11 @@
 from pathlib import Path
 from types import SimpleNamespace
+import re
 import subprocess
 import sys
 
 import pandas as pd
+import pytest
 
 
 REPO = Path(__file__).resolve().parents[2]
@@ -69,6 +71,72 @@ def test_cross_scale_candidate_contract_is_exercised_through_public_module():
     assert SOURCE_IDENTITY_KEYS == [
         "resolution_bp", "window_bins", "chrom", "window_start", "window_end",
     ]
+
+
+def write_config_with_temporary_backgrounds(tmp_path, resolution=4000):
+    """Create a portable multiscale config whose external KNN backgrounds exist."""
+    output_root = tmp_path / "results"
+    scratch_root = tmp_path / "tmp"
+    config_text = (REPO / "config" / "config.yaml").read_text()
+    config_text = config_text.replace('outdir: "results"', f'outdir: "{output_root}"')
+    config_text = config_text.replace('tmpdir: "tmp"', f'tmpdir: "{scratch_root}"')
+    config_text = config_text.replace("resolution: 4000", f"resolution: {resolution}", 1)
+    config_text = config_text.replace(
+        "source_resolution_bp: 4000", f"source_resolution_bp: {resolution}", 1
+    )
+    config_text = config_text.replace("resolution_bp: 4000", f"resolution_bp: {resolution}")
+    default_is_distances = (
+        "is_distances_bp: [32000, 60000, 92000, 120000, 152000,\n"
+        "                      180000, 212000, 240000, 272000, 300000]"
+    )
+    replacement_is_distances = ", ".join(
+        str(resolution * multiple) for multiple in range(2, 22, 2)
+    )
+    assert default_is_distances in config_text
+    config_text = config_text.replace(
+        default_is_distances, f"is_distances_bp: [{replacement_is_distances}]"
+    )
+    config_text = config_text.replace("window_scales/r4000/", f"window_scales/r{resolution}/")
+    for window_bins in (25, 50, 75, 100, 125):
+        configured = (
+            "/share/home/xhhuang24/project/PanTE/background_pool/results/"
+            f"window_scales/r{resolution}/w{window_bins}/window_compare/HiC_window_background.tsv"
+        )
+        background = tmp_path / f"background_r{resolution}_w{window_bins}.tsv"
+        background.write_text("comparison\tchrom\twindow_start\twindow_end\n")
+        assert configured in config_text
+        config_text = config_text.replace(configured, str(background))
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(config_text)
+    return config_path, output_root
+
+
+@pytest.mark.parametrize("resolution", [4000, 10000])
+def test_candidate_union_dryrun_resolves_scale_qc_through_checkpoint(tmp_path, resolution):
+    """The final multiscale target must schedule QC checkpoints, not missing QC files."""
+    config_path, output_root = write_config_with_temporary_backgrounds(tmp_path, resolution)
+    target = output_root / f"multiscale/r{resolution}/H1398_vs_L134/candidate_union.tsv"
+
+    result = subprocess.run(
+        [
+            "snakemake",
+            "-n",
+            "-p",
+            "--configfile",
+            str(config_path),
+            "--",
+            str(target),
+        ],
+        cwd=REPO,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    plan = result.stdout + result.stderr
+
+    assert result.returncode == 0, plan
+    assert "MissingInputException" not in plan
+    assert re.search(r"^\s*compute_gap_qc\s+10\s*$", plan, re.MULTILINE), plan
 
 
 def test_cross_scale_selection_and_bed_adjacency_union_preserve_scale_evidence():
