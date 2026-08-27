@@ -1,5 +1,8 @@
 import csv
+import json
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -74,3 +77,111 @@ def test_validate_background_rejects_missing_columns(tmp_path):
     write_table(path, [row()], columns=["chrom", "window_start", "window_end"])
     with pytest.raises(ValueError, match="background missing columns"):
         validate_background(path, SCALE, knn_k=1)
+
+
+def test_cli_rejects_zero_step_bins_before_validating_rows(tmp_path):
+    background = tmp_path / "background.tsv"
+    audit = tmp_path / "audit.json"
+    write_table(background, [row()])
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/validate_knn_background.py",
+            "--background",
+            str(background),
+            "--resolution-bp",
+            "4000",
+            "--window-bins",
+            "25",
+            "--step-bins",
+            "0",
+            "--knn-k",
+            "1",
+            "--out",
+            str(audit),
+        ],
+        capture_output=True,
+        cwd=Path(__file__).parents[2],
+        text=True,
+    )
+
+    assert result.returncode == 2
+    assert "argument --step-bins: must be a positive integer" in result.stderr
+    assert "ZeroDivisionError" not in result.stderr
+    assert not audit.exists()
+
+
+def test_cli_writes_the_scale_audit(tmp_path):
+    background = tmp_path / "background.tsv"
+    audit = tmp_path / "audit.json"
+    write_table(background, [row()])
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/validate_knn_background.py",
+            "--background",
+            str(background),
+            "--resolution-bp",
+            "4000",
+            "--window-bins",
+            "25",
+            "--step-bins",
+            "5",
+            "--knn-k",
+            "1",
+            "--out",
+            str(audit),
+        ],
+        capture_output=True,
+        cwd=Path(__file__).parents[2],
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert json.loads(audit.read_text()) == {
+        "background_file": str(background.resolve()),
+        "observed_window_lengths_bp": [100000],
+        "resolution_bp": 4000,
+        "row_count": 1,
+        "step_bins": 5,
+        "step_size_bp": 20000,
+        "valid_knn_rows": 1,
+        "window_bins": 25,
+        "window_size_bp": 100000,
+    }
+
+
+def test_cli_preserves_an_existing_audit_after_validation_failure(tmp_path):
+    background = tmp_path / "background.tsv"
+    audit = tmp_path / "audit.json"
+    previous_audit = '{"previous": true}\n'
+    write_table(background, [row(0, 40000)])
+    audit.write_text(previous_audit)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/validate_knn_background.py",
+            "--background",
+            str(background),
+            "--resolution-bp",
+            "4000",
+            "--window-bins",
+            "25",
+            "--step-bins",
+            "5",
+            "--knn-k",
+            "1",
+            "--out",
+            str(audit),
+        ],
+        capture_output=True,
+        cwd=Path(__file__).parents[2],
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "window length 40000 is outside" in result.stderr
+    assert audit.read_text() == previous_audit

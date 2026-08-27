@@ -15,6 +15,16 @@ NUMERIC_COLUMNS = ("EC", "IB", "SP", "MSE", "SSIM", "Spearman", "tw_pvalue", "NC
 REQUIRED_COLUMNS = (*IDENTITY_COLUMNS, *NUMERIC_COLUMNS)
 
 
+def positive_integer(value: str) -> int:
+    try:
+        integer = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("must be a positive integer") from error
+    if integer <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return integer
+
+
 def validate_background(path: Path, scale, knn_k: int) -> dict:
     if type(knn_k) is not int or knn_k <= 0:
         raise ValueError("knn_k must be a positive integer")
@@ -113,9 +123,9 @@ def atomic_json(data, output: Path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--background", required=True, type=Path)
-    parser.add_argument("--resolution-bp", required=True, type=int)
-    parser.add_argument("--window-bins", required=True, type=int)
-    parser.add_argument("--step-bins", required=True, type=int)
+    parser.add_argument("--resolution-bp", required=True, type=positive_integer)
+    parser.add_argument("--window-bins", required=True, type=positive_integer)
+    parser.add_argument("--step-bins", required=True, type=positive_integer)
     parser.add_argument("--knn-k", required=True, type=int)
     parser.add_argument("--out", required=True, type=Path)
     args = parser.parse_args()
