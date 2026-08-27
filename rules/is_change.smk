@@ -1,27 +1,38 @@
-# IS-change candidate construction, locus calling, and diagnostic plots.
+# Aggregate all scale evidence once before calling and plotting IS-change loci.
 
 rule build_is_change_candidates:
     input:
-        knn_enriched=OUTDIR + "/knn_empirical_pvalue/{comparison}/{comparison}_knn_enriched.tsv",
-        meltron_merged=OUTDIR + "/meltron/{comparison}/{comparison}_meltron_merged.tsv",
+        knn_enriched=lambda w: expand(
+            SCALE_ROOT + "/{scale}/knn_empirical_pvalue/{comparison}/{comparison}_knn_enriched.tsv",
+            scale=SCALE_LABELS,
+            comparison=w.comparison,
+        ),
+        meltron_merged=lambda w: expand(
+            SCALE_ROOT + "/{scale}/meltron/{comparison}/{comparison}_meltron_merged.tsv",
+            scale=SCALE_LABELS,
+            comparison=w.comparison,
+        ),
     output:
-        regions=OUTDIR + "/is_change/{comparison}/{comparison}_candidate_regions.tsv",
+        candidates=MULTISCALE_ROOT + "/{comparison}/all_scale_candidates.tsv",
+        union_tsv=MULTISCALE_ROOT + "/{comparison}/candidate_union.tsv",
+        union_bed=MULTISCALE_ROOT + "/{comparison}/candidate_union.bed",
     log:
-        "{}/logs/is_change/{{comparison}}/candidates.log".format(OUTDIR)
+        MULTISCALE_ROOT + "/{comparison}/logs/is_change/candidates.log",
     params:
-        outdir=OUTDIR,
         script=SCRIPT_DIR + "/scripts/build_is_change_candidates.py",
     conda:
         "../env/SNAP-HiC-Diff.yaml"
     shell:
         r"""
         set -euo pipefail
-        mkdir -p "{params.outdir}/is_change/{wildcards.comparison}" "{params.outdir}/logs/is_change/{wildcards.comparison}"
+        mkdir -p "$(dirname "{output.candidates}")" "$(dirname "{log}")"
         python "{params.script}" \
-            --knn-enriched "{input.knn_enriched}" \
-            --meltron-merged "{input.meltron_merged}" \
+            --knn-enriched {input.knn_enriched} \
+            --meltron-merged {input.meltron_merged} \
             --config config/config.yaml \
-            --out "{output.regions}" \
+            --out-candidates "{output.candidates}" \
+            --out-union-tsv "{output.union_tsv}" \
+            --out-union-bed "{output.union_bed}" \
             --log "{log}" \
             >> "{log}" 2>&1
         """
@@ -29,7 +40,7 @@ rule build_is_change_candidates:
 
 rule call_is_change_loci:
     input:
-        regions=OUTDIR + "/is_change/{comparison}/{comparison}_candidate_regions.tsv",
+        regions=MULTISCALE_ROOT + "/{comparison}/candidate_union.tsv",
         is_a=lambda w: get_comparison_is_file(w.comparison, 0),
         is_b=lambda w: get_comparison_is_file(w.comparison, 1),
         cool_a=lambda w: expand(
@@ -43,20 +54,19 @@ rule call_is_change_loci:
             chrom=CHROMS,
         ),
     output:
-        primary=OUTDIR + "/is_change/{comparison}/{comparison}_is_change_loci.tsv",
-        preliminary=OUTDIR + "/is_change/{comparison}/{comparison}_is_change_loci_preliminary.tsv",
-        masked=OUTDIR + "/is_change/{comparison}/{comparison}_is_change_masked.bed",
+        primary=MULTISCALE_ROOT + "/{comparison}/is_change/{comparison}_is_change_loci.tsv",
+        preliminary=MULTISCALE_ROOT + "/{comparison}/is_change/{comparison}_is_change_loci_preliminary.tsv",
+        masked=MULTISCALE_ROOT + "/{comparison}/is_change/{comparison}_is_change_masked.bed",
     log:
-        "{}/logs/is_change/{{comparison}}/caller.log".format(OUTDIR)
+        MULTISCALE_ROOT + "/{comparison}/logs/is_change/caller.log",
     params:
-        outdir=OUTDIR,
         script=SCRIPT_DIR + "/scripts/call_is_change_loci.py",
     conda:
         "../env/SNAP-HiC-Diff.yaml"
     shell:
         r"""
         set -euo pipefail
-        mkdir -p "{params.outdir}/is_change/{wildcards.comparison}" "{params.outdir}/logs/is_change/{wildcards.comparison}"
+        mkdir -p "$(dirname "{output.primary}")" "$(dirname "{log}")"
         python "{params.script}" \
             --candidate-regions "{input.regions}" \
             --is-a "{input.is_a}" \
@@ -74,8 +84,8 @@ rule call_is_change_loci:
 
 rule plot_is_change_loci:
     input:
-        primary=OUTDIR + "/is_change/{comparison}/{comparison}_is_change_loci.tsv",
-        regions=OUTDIR + "/is_change/{comparison}/{comparison}_candidate_regions.tsv",
+        primary=MULTISCALE_ROOT + "/{comparison}/is_change/{comparison}_is_change_loci.tsv",
+        regions=MULTISCALE_ROOT + "/{comparison}/candidate_union.tsv",
         is_a=lambda w: get_comparison_is_file(w.comparison, 0),
         is_b=lambda w: get_comparison_is_file(w.comparison, 1),
         cool_a=lambda w: expand(
@@ -89,25 +99,24 @@ rule plot_is_change_loci:
             chrom=CHROMS,
         ),
     output:
-        manifest=OUTDIR + "/figures/is_change/{comparison}/manifest.tsv",
+        manifest=MULTISCALE_ROOT + "/{comparison}/is_change/figures/manifest.tsv",
     log:
-        "{}/logs/is_change/{{comparison}}/plot.log".format(OUTDIR)
+        MULTISCALE_ROOT + "/{comparison}/logs/is_change/plot.log",
     params:
-        outdir=OUTDIR,
         script=SCRIPT_DIR + "/scripts/plot_is_change_loci.py",
     conda:
         "../env/SNAP-HiC-Diff.yaml"
     shell:
         r"""
         set -euo pipefail
-        mkdir -p "{params.outdir}/figures/is_change/{wildcards.comparison}" "{params.outdir}/logs/is_change/{wildcards.comparison}"
+        mkdir -p "$(dirname "{output.manifest}")" "$(dirname "{log}")"
         python "{params.script}" \
             --primary "{input.primary}" \
             --candidate-regions "{input.regions}" \
             --is-a "{input.is_a}" \
             --is-b "{input.is_b}" \
             --config config/config.yaml \
-            --outdir "{params.outdir}/figures/is_change/{wildcards.comparison}" \
+            --outdir "$(dirname "{output.manifest}")" \
             --cool-a {input.cool_a} \
             --cool-b {input.cool_b} \
             --manifest "{output.manifest}" \

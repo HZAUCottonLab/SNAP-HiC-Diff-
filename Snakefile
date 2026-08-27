@@ -3,7 +3,6 @@
 
 import json
 import os
-import glob
 import pandas as pd
 import yaml
 
@@ -18,6 +17,7 @@ import sys
 sys.path.insert(0, os.path.join(SCRIPT_DIR, "scripts"))
 from cworld_is_config import parse_cworld_is_settings
 from tad_config import parse_tad_settings
+from window_scale_config import build_window_scales
 
 CWORLD_IS = parse_cworld_is_settings(config)
 TAD = parse_tad_settings(config)
@@ -35,9 +35,23 @@ TAD_D_CONFIG_JSON = json.dumps(TAD.d, sort_keys=True)
 # Derived paths
 OUTDIR = config["outdir"]
 RESOLUTION = config["resolution"]
-WINDOW_SIZE = config["window_size"]
 TMP = config["tmpdir"]
-STEP_SIZE = config.get("step_size", config["window_size"])  # Default: non-overlapping
+WINDOW_SCALES = build_window_scales(config)
+SCALE_LABELS = tuple(WINDOW_SCALES)
+SCALE_ROOT = "{}/window_scales/r{}".format(config["outdir"], config["resolution"])
+MULTISCALE_ROOT = "{}/multiscale/r{}".format(config["outdir"], config["resolution"])
+
+
+def get_scale_value(wildcards, key):
+    return WINDOW_SCALES[wildcards.scale][key]
+
+
+def get_scale_outdir(wildcards):
+    return "{}/{}".format(SCALE_ROOT, wildcards.scale)
+
+
+wildcard_constraints:
+    scale="w25|w50|w75|w100|w125"
 
 def tad_run_dir(sample, resolution, signal):
     return "{}/{}/{}/{}/D".format(TAD.run_root, sample, signal, TAD_LABELS[resolution])
@@ -141,28 +155,12 @@ def get_comparison_is_file(comparison, member_index):
     return OUTDIR + "/IS/{0}/{0}_IS.tsv".format(sample)
 
 
-def knn_heatmap_chrom_done_by_comp(wildcards):
-    """Return per-chrom done markers for a comparison.
-
-    Uses checkpoint output so dry-run schedules checkpoint job.
-    """
-    ck = checkpoints.plot_knn_significant_heatmap.get(comparison=wildcards.comparison)
-    manifest = ck.output.manifest
-    df = pd.read_csv(manifest, sep="\t")
-    chroms = sorted(df["chrom"].unique())
-    return [
-        "{}/logs/knn_significant_heatmap/{}/{}.done".format(OUTDIR, wildcards.comparison, chrom)
-        for chrom in chroms
-    ]
-
-
 # ==============================================================================
 # Include Rule Files
 # ==============================================================================
 
 include: "rules/convert_to_mcool.smk"
 include: "rules/validate_inputs.smk"
-include: "rules/build_windows.smk"
 include: "rules/extract_chrom.smk"
 include: "rules/extract_expected.smk"
 include: "rules/compute_oe_matrix.smk"
@@ -179,6 +177,92 @@ include: "rules/tad.smk"
 # ==============================================================================
 # Default Rules
 # ==============================================================================
+
+COMMON_ALL_OUTPUTS = [
+    "data/manifest_mcool.tsv",
+    OUTDIR + "/validated/manifest.validated.tsv",
+] + expand(
+    OUTDIR + "/logs/extract_balance/{sample}.done", sample=SAMPLES
+) + expand(
+    OUTDIR + "/logs/expected/{sample}_{stage}.done",
+    sample=SAMPLES, stage=["cooltools", "to_npz"],
+) + expand(
+    OUTDIR + "/logs/oe/{sample}.done", sample=SAMPLES
+) + expand(
+    OUTDIR + "/IS/{sample}/{sample}_IS.tsv", sample=SAMPLES
+)
+
+SCALE_ALL_OUTPUTS = (
+    expand(
+        SCALE_ROOT + "/{scale}/audits/knn_background.json",
+        scale=SCALE_LABELS,
+    )
+    + expand(
+        SCALE_ROOT + "/{scale}/logs/{stage}/{sample}.done",
+        scale=SCALE_LABELS,
+        stage=["gap_qc", "windows"],
+        sample=SAMPLES,
+    )
+    + expand(
+        SCALE_ROOT + "/{scale}/window_compare/{comparison}/{comparison}_covariates.tsv",
+        scale=SCALE_LABELS,
+        comparison=get_window_compare_pairs(),
+    )
+    + expand(
+        SCALE_ROOT + "/{scale}/window_compare/{comparison}/{comparison}_gaussian_metrics.tsv",
+        scale=SCALE_LABELS,
+        comparison=get_window_compare_pairs(),
+    )
+    + expand(
+        SCALE_ROOT + "/{scale}/window_compare/{comparison}/{comparison}_tw.tsv",
+        scale=SCALE_LABELS,
+        comparison=get_window_compare_pairs(),
+    )
+    + expand(
+        SCALE_ROOT + "/{scale}/window_compare/{comparison}/{comparison}_window_pair_metrics.tsv",
+        scale=SCALE_LABELS,
+        comparison=get_window_compare_pairs(),
+    )
+    + expand(
+        SCALE_ROOT + "/{scale}/knn_empirical_pvalue/{comparison}/{comparison}_knn_enriched.tsv",
+        scale=SCALE_LABELS,
+        comparison=get_window_compare_pairs(),
+    )
+    + expand(
+        SCALE_ROOT + "/{scale}/logs/knn_significant_heatmap/{comparison}/{chrom}.done",
+        scale=SCALE_LABELS,
+        comparison=get_window_compare_pairs(),
+        chrom=get_chroms(),
+    )
+    + expand(
+        SCALE_ROOT + "/{scale}/meltron/{comparison}/{comparison}_meltron_merged.tsv",
+        scale=SCALE_LABELS,
+        comparison=get_window_compare_pairs(),
+    )
+)
+
+MULTISCALE_ALL_OUTPUTS = (
+    expand(
+        MULTISCALE_ROOT + "/{comparison}/all_scale_candidates.tsv",
+        comparison=get_window_compare_pairs(),
+    )
+    + expand(
+        MULTISCALE_ROOT + "/{comparison}/candidate_union.tsv",
+        comparison=get_window_compare_pairs(),
+    )
+    + expand(
+        MULTISCALE_ROOT + "/{comparison}/candidate_union.bed",
+        comparison=get_window_compare_pairs(),
+    )
+    + expand(
+        MULTISCALE_ROOT + "/{comparison}/is_change/{comparison}_is_change_loci.tsv",
+        comparison=get_window_compare_pairs(),
+    )
+    + expand(
+        MULTISCALE_ROOT + "/{comparison}/is_change/figures/manifest.tsv",
+        comparison=get_window_compare_pairs(),
+    )
+)
 
 TAD_ALL_OUTPUTS = [
     output
@@ -198,62 +282,11 @@ TAD_ALL_OUTPUTS = [
 
 rule all:
     input:
-        # 0. Convert .cool to .mcool (if needed) → data/manifest_mcool.tsv
-        "data/manifest_mcool.tsv",
-        # 1. Validated manifest
-        OUTDIR + "/validated/manifest.validated.tsv",
-        # 2. Windows
-        OUTDIR + "/windows/windows_" + str(RESOLUTION) + ".parquet",
-        # 3. Extract + Balance (one job per sample, for-loop over chroms in shell)
-        expand(OUTDIR + "/logs/extract_balance/{sample}.done", sample=SAMPLES),
-        # 4. Expected files (checkpoint manifests)
-        expand(OUTDIR + "/logs/expected/{sample}_cooltools.done", sample=SAMPLES),
-        expand(OUTDIR + "/logs/expected/{sample}_to_npz.done", sample=SAMPLES),
-        # 5. O/E matrix (checkpoint manifest)
-        expand(OUTDIR + "/logs/oe/{sample}.done", sample=SAMPLES),
-        # 6. Gap QC + Sliding window (checkpoint manifests)
-        expand(OUTDIR + "/logs/gap_qc/{sample}.done", sample=SAMPLES),
-        expand(OUTDIR + "/logs/windows/{sample}.done", sample=SAMPLES),
-        # 7. Window compare — intermediate stage outputs (explicit, so deletion triggers rebuild)
-        expand(OUTDIR + "/window_compare/{comparison}/{comparison}_covariates.tsv",
-               comparison=get_window_compare_pairs()),
-        expand(OUTDIR + "/window_compare/{comparison}/{comparison}_gaussian_metrics.tsv",
-               comparison=get_window_compare_pairs()),
-        expand(OUTDIR + "/window_compare/{comparison}/{comparison}_tw.tsv",
-               comparison=get_window_compare_pairs()),
-        # 8. Window compare — final merged output
-        expand(
-            OUTDIR + "/window_compare/{comparison}/{comparison}_window_pair_metrics.tsv",
-            comparison=get_window_compare_pairs()
-        ),
-        # 9. KNN empirical P-values (per comparison pair)
-        expand(
-            OUTDIR + "/knn_empirical_pvalue/{comparison}/{comparison}_knn_enriched.tsv",
-            comparison=get_window_compare_pairs()
-        ),
-        # 10. KNN significant window heatmaps (per-chrom done markers)
-        expand(
-            OUTDIR + "/logs/knn_significant_heatmap/{comparison}/{chrom}.done",
-            comparison=get_window_compare_pairs(),
-            chrom=get_chroms(),
-        ),
-        # 11. Compute IS per sample (checkpoint → per-chrom jobs → merge)
-        expand(OUTDIR + "/IS/{sample}/{sample}_IS.tsv", sample=SAMPLES),
-        # 12. Meltron per comparison (both directions, merged)
-        expand(
-            OUTDIR + "/meltron/{comparison}/{comparison}_meltron_merged.tsv",
-            comparison=get_window_compare_pairs()
-        ),
-        # 13. IS-change loci and diagnostic plot manifests
-        expand(
-            OUTDIR + "/is_change/{comparison}/{comparison}_is_change_loci.tsv",
-            comparison=get_window_compare_pairs()
-        ),
-        expand(
-            OUTDIR + "/figures/is_change/{comparison}/manifest.tsv",
-            comparison=get_window_compare_pairs()
-        ),
+        COMMON_ALL_OUTPUTS,
+        SCALE_ALL_OUTPUTS,
+        MULTISCALE_ALL_OUTPUTS,
         TAD_ALL_OUTPUTS,
+    default_target: True
 
 
 rule clean:
