@@ -3,8 +3,13 @@
 import pandas as pd
 
 
-IDENTITY_KEYS = ["chrom", "window_id"]
-KNN_COORDS = ["chrom", "window_start", "window_end"]
+SCALE_COLUMNS = [
+    "resolution_bp", "window_bins", "window_size_bp", "step_bins", "step_size_bp",
+]
+IDENTITY_KEYS = [
+    "resolution_bp", "window_bins", "chrom", "window_start", "window_end",
+]
+KNN_COORDS = ["chrom", "window_start", "window_end", "window_bins"]
 
 
 def _require_columns(frame, required, label):
@@ -15,17 +20,31 @@ def _require_columns(frame, required, label):
 
 def _require_unique_identity(frame, label):
     if frame[IDENTITY_KEYS].isna().any().any():
-        raise ValueError(f"{label} has missing chrom/window_id keys")
+        raise ValueError(f"{label} has missing full source identity keys")
     if frame.duplicated(IDENTITY_KEYS).any():
-        raise ValueError(f"{label} has duplicate chrom/window_id keys")
+        raise ValueError(f"{label} has duplicate full source identity keys")
 
 
 def select_final_windows(knn, meltron, settings, return_audit=False):
     """Return threshold-passing windows, optionally with matching audit data."""
-    _require_columns(knn, IDENTITY_KEYS + ["window_start", "window_end"], "KNN")
+    _require_columns(
+        knn,
+        [*SCALE_COLUMNS, "chrom", "window_id", "window_start", "window_end"],
+        "KNN",
+    )
     _require_columns(
         meltron,
-        IDENTITY_KEYS + ["start", "end", "ID", "meltron_best_score"],
+        [
+            *SCALE_COLUMNS,
+            "chrom",
+            "window_id",
+            "window_start",
+            "window_end",
+            "start",
+            "end",
+            "ID",
+            "meltron_best_score",
+        ],
         "Meltron",
     )
     _require_unique_identity(knn, "KNN")
@@ -47,7 +66,7 @@ def select_final_windows(knn, meltron, settings, return_audit=False):
         validate="one_to_one",
     )
     if missing_keys["_merge"].eq("left_only").any():
-        raise ValueError("Meltron windows missing KNN chrom/window_id keys")
+        raise ValueError("Meltron windows missing KNN full source identity keys")
 
     merged = knn.merge(
         meltron,
@@ -86,8 +105,9 @@ def merge_candidate_windows(selected, settings):
     p_columns = sorted(c for c in selected.columns if c.endswith("_empirical_pvalue"))
     columns = [
         "region_id", "chrom", "region_start", "region_end",
-        "member_window_ids", "member_ids", "n_candidate_windows",
-        "max_meltron_best_score", *[f"min_{column}" for column in p_columns],
+        "support_window_bins", "support_scale_count", "source_window_count",
+        "member_window_ids", "member_ids", "best_meltron_score",
+        *[f"min_{column}" for column in p_columns],
     ]
     regions = []
     region_id = 1
@@ -106,29 +126,39 @@ def merge_candidate_windows(selected, settings):
                     "chrom": chrom,
                     "region_start": window["window_start"],
                     "region_end": window["window_end"],
+                    "_window_bins": set(),
                     "member_window_ids": [],
                     "member_ids": [],
-                    "n_candidate_windows": 0,
-                    "max_meltron_best_score": window["meltron_best_score"],
+                    "source_window_count": 0,
+                    "best_meltron_score": window["meltron_best_score"],
                     **{f"min_{column}": window[column] for column in p_columns},
                 }
             else:
                 current["region_end"] = max(current["region_end"], window["window_end"])
-                current["max_meltron_best_score"] = max(
-                    current["max_meltron_best_score"], window["meltron_best_score"]
+                current["best_meltron_score"] = max(
+                    current["best_meltron_score"], window["meltron_best_score"]
                 )
                 for column in p_columns:
                     current[f"min_{column}"] = min(
                         current[f"min_{column}"], window[column]
                     )
-            current["member_window_ids"].append(str(window["window_id"]))
+            member_window_id = (
+                f"r{int(window['resolution_bp'])}_w{int(window['window_bins'])}:"
+                f"{window['chrom']}:{window['window_id']}"
+            )
+            current["_window_bins"].add(int(window["window_bins"]))
+            current["member_window_ids"].append(member_window_id)
             current["member_ids"].append(str(window["ID"]))
-            current["n_candidate_windows"] += 1
+            current["source_window_count"] += 1
         if current is not None:
             regions.append(current)
             region_id += 1
 
     for region in regions:
+        region["support_window_bins"] = ",".join(
+            str(value) for value in sorted(region.pop("_window_bins"))
+        )
+        region["support_scale_count"] = len(region["support_window_bins"].split(","))
         region["member_window_ids"] = ",".join(region["member_window_ids"])
         region["member_ids"] = ",".join(region["member_ids"])
     return pd.DataFrame(regions, columns=columns)
