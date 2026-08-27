@@ -158,3 +158,25 @@ def test_preparer_rejects_partial_coordinate_schema(tmp_path):
         "input coordinate schema requires either start/end or "
         "window_start/window_end" in result.stderr
     )
+
+
+def test_preparer_writes_header_only_outputs_when_no_window_passes(tmp_path):
+    enriched = tmp_path / "knn_enriched.tsv"
+    output = tmp_path / "meltron" / "H1398_vs_L134_intervals.tsv"
+    write_enriched(
+        enriched,
+        window_start=4000,
+        window_end=8000,
+        **{column: 1.0 for column in P_VALUE_COLUMNS},
+    )
+
+    result = run_preparer(enriched, output)
+
+    assert result.returncode == 0, result.stderr
+    assert output.read_text().splitlines() == ["chrom\tstart\tend\tID"]
+    interval_map = output.with_name("H1398_vs_L134_interval_map.tsv")
+    assert interval_map.read_text().splitlines() == [
+        "resolution_bp\twindow_bins\twindow_size_bp\tstep_bins\tstep_size_bp"
+        "\tchrom\tinterval_start\tinterval_end\twindow_start\twindow_end"
+        "\twindow_id\tID\tn_significant"
+    ]

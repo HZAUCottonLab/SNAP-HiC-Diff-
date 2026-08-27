@@ -10,6 +10,26 @@ REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "scripts" / "merge_meltron_scores.py"
 KEY_COLUMNS = ["chrom", "start", "end", "ID"]
 MELTRON_ID = "r4000_w25_HC04_A01_17"
+SOURCE_COLUMNS = [
+    "resolution_bp",
+    "window_bins",
+    "window_size_bp",
+    "step_bins",
+    "step_size_bp",
+    "window_start",
+    "window_end",
+    "window_id",
+]
+EMPTY_OUTPUT_COLUMNS = [
+    *KEY_COLUMNS,
+    *SOURCE_COLUMNS,
+    "meltron_melting_score",
+    "meltron_compaction_score",
+    "meltron_best_score",
+    "meltron_best_direction",
+    "meltron_is_significant",
+    "n_significant_metrics",
+]
 
 
 def write_tsv(path, records, columns=None):
@@ -64,6 +84,11 @@ def interval_map_record(
 
 def write_interval_map(path):
     write_tsv(path, [interval_map_record()])
+
+
+def write_empty_directional_results(decondensation, condensation):
+    write_tsv(decondensation, [], columns=[*KEY_COLUMNS, "melting_score"])
+    write_tsv(condensation, [], columns=[*KEY_COLUMNS, "compaction_score"])
 
 
 def test_merge_normalizes_direction_specific_meltron_scores(tmp_path):
@@ -158,6 +183,87 @@ def test_merge_restores_full_source_window_identity(tmp_path):
         "resolution_bp", "window_bins", "window_size_bp",
         "step_bins", "step_size_bp", "window_start", "window_end", "window_id",
     ]].tolist() == [4000, 25, 100000, 5, 20000, 4000, 8000, 17]
+
+
+def test_merge_writes_header_only_output_for_empty_directional_results(tmp_path):
+    decondensation = tmp_path / "decondensation.tsv"
+    condensation = tmp_path / "condensation.tsv"
+    interval_map = tmp_path / "interval_map.tsv"
+    output = tmp_path / "merged.tsv"
+    write_empty_directional_results(decondensation, condensation)
+    write_tsv(interval_map, [], columns=["ID", *SOURCE_COLUMNS, "n_significant"])
+
+    result = run_merge(decondensation, condensation, interval_map, output)
+
+    assert result.returncode == 0, result.stderr
+    assert output.read_text().splitlines() == ["\t".join(EMPTY_OUTPUT_COLUMNS)]
+
+
+@pytest.mark.parametrize(
+    ("direction", "score_column"),
+    [("decondensation", "melting_score"), ("condensation", "compaction_score")],
+)
+def test_merge_rejects_directional_ids_missing_from_interval_map(
+    tmp_path, direction, score_column
+):
+    decondensation = tmp_path / "decondensation.tsv"
+    condensation = tmp_path / "condensation.tsv"
+    interval_map = tmp_path / "interval_map.tsv"
+    output = tmp_path / "merged.tsv"
+    unmatched_id = "r4000_w25_HC04_A01_18"
+    directional_record = {
+        "chrom": "HC04_A01",
+        "start": 4000,
+        "end": 8000,
+        "ID": unmatched_id,
+        score_column: 8.0,
+    }
+    if direction == "decondensation":
+        write_tsv(decondensation, [directional_record])
+        write_tsv(condensation, [], columns=[*KEY_COLUMNS, "compaction_score"])
+    else:
+        write_tsv(decondensation, [], columns=[*KEY_COLUMNS, "melting_score"])
+        write_tsv(condensation, [directional_record])
+    write_interval_map(interval_map)
+
+    result = run_merge(decondensation, condensation, interval_map, output)
+
+    assert result.returncode != 0
+    assert (
+        f"interval map missing source identity for Meltron IDs: {unmatched_id}"
+        in result.stderr
+    )
+
+
+def test_merge_rejects_interval_map_with_missing_id(tmp_path):
+    decondensation = tmp_path / "decondensation.tsv"
+    condensation = tmp_path / "condensation.tsv"
+    interval_map = tmp_path / "interval_map.tsv"
+    output = tmp_path / "merged.tsv"
+    write_empty_directional_results(decondensation, condensation)
+    record = interval_map_record()
+    record["ID"] = None
+    write_tsv(interval_map, [record])
+
+    result = run_merge(decondensation, condensation, interval_map, output)
+
+    assert result.returncode != 0
+    assert "interval map ID must be non-missing and unique" in result.stderr
+
+
+def test_merge_rejects_interval_map_with_duplicate_id(tmp_path):
+    decondensation = tmp_path / "decondensation.tsv"
+    condensation = tmp_path / "condensation.tsv"
+    interval_map = tmp_path / "interval_map.tsv"
+    output = tmp_path / "merged.tsv"
+    write_empty_directional_results(decondensation, condensation)
+    record = interval_map_record()
+    write_tsv(interval_map, [record, record.copy()])
+
+    result = run_merge(decondensation, condensation, interval_map, output)
+
+    assert result.returncode != 0
+    assert "interval map ID must be non-missing and unique" in result.stderr
 
 
 def test_merge_uses_compaction_score_when_only_condensation_is_available(tmp_path):

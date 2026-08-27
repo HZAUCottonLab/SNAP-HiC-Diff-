@@ -184,6 +184,13 @@ def run():
     merged = merged.merge(
         interval_map, on="ID", how="left", validate="one_to_one"
     )
+    missing_source_identity = merged[SOURCE_COLUMNS].isna().any(axis=1)
+    if missing_source_identity.any():
+        missing_ids = merged.loc[missing_source_identity, "ID"].astype(str).unique()
+        parser.error(
+            "interval map missing source identity for Meltron IDs: "
+            + ", ".join(missing_ids)
+        )
 
     # Rename perc_na columns for clarity in output
     for suffix, direction in [("_decond", "decondensation"), ("_condens", "condensation")]:
