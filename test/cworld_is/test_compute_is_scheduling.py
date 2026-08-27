@@ -20,10 +20,12 @@ SAMPLES = [
 ]
 TARGETS = [f"results/IS/{sample}/{sample}_IS.tsv" for sample in SAMPLES]
 MELTRON_COMPARISON = "H1398_vs_L134"
-MELTRON_TARGET = (
-    f"results/meltron/{MELTRON_COMPARISON}/"
+SCALES = ("w25", "w50", "w75", "w100", "w125")
+MELTRON_TARGETS = [
+    f"results/window_scales/r4000/{scale}/meltron/{MELTRON_COMPARISON}/"
     f"{MELTRON_COMPARISON}_meltron_merged.tsv"
-)
+    for scale in SCALES
+]
 
 
 def test_compute_is_schedules_one_cworld_job_per_sample_chromosome():
@@ -87,7 +89,7 @@ def test_meltron_schedules_per_sample_is_merges_without_compute_is_checkpoint():
             "--configfile",
             "config/config.yaml",
             "--",
-            MELTRON_TARGET,
+            *MELTRON_TARGETS,
         ],
         cwd=REPO,
         text=True,
@@ -99,7 +101,7 @@ def test_meltron_schedules_per_sample_is_merges_without_compute_is_checkpoint():
     assert result.returncode == 0, plan
     assert re.search(r"^\s*compute_IS_chrom\s+52\s*$", plan, re.MULTILINE), plan
     assert re.search(r"^\s*merge_IS\s+2\s*$", plan, re.MULTILINE), plan
-    assert re.search(r"^\s*meltron_per_comparison\s+1\s*$", plan, re.MULTILINE), plan
+    assert re.search(r"^\s*meltron_per_comparison\s+5\s*$", plan, re.MULTILINE), plan
     assert "results/IS/H1398/H1398_IS.tsv" in plan
     assert "results/IS/L134/L134_IS.tsv" in plan
 
@@ -113,12 +115,13 @@ def test_meltron_cpu_request_and_cli_cores_share_one_config_value():
     conda_start = rule.index("    conda:\n")
     core_expression = 'config["meltron"]["cores"]'
     assert rule.index(core_expression, threads_start, params_start) > threads_start
-    assert f"        meltron_cores = {core_expression},\n" in rule
+    params = rule[params_start:conda_start]
+    assert re.search(
+        rf"\bmeltron_cores\s*=\s*{re.escape(core_expression)}\s*,?",
+        params,
+    )
     assert "    chrom_job_threads: 2" in config_text
     assert "    merge_job_threads: 2" in config_text
-
-    core_param = rule.index(f"        meltron_cores = {core_expression},\n")
-    assert params_start < core_param < conda_start
 
     for direction in ("decondensation", "condensation"):
         run_start = rule.index(f"--comparison-direction {direction}")
@@ -129,6 +132,12 @@ def test_meltron_cpu_request_and_cli_cores_share_one_config_value():
 
 def test_rule_all_uses_final_is_tsv_without_removed_done_markers():
     snakefile = (REPO / "Snakefile").read_text()
+    common_start = snakefile.index("COMMON_ALL_OUTPUTS =")
+    common_end = snakefile.index("\n\nSCALE_ALL_OUTPUTS", common_start)
+    common_outputs = snakefile[common_start:common_end]
+    rule_all = snakefile[snakefile.index("rule all:"):]
 
-    assert 'expand(OUTDIR + "/logs/compute_IS/{sample}.done", sample=SAMPLES),' not in snakefile
-    assert 'expand(OUTDIR + "/IS/{sample}/{sample}_IS.tsv", sample=SAMPLES),' in snakefile
+    assert "/logs/compute_IS/{sample}.done" not in snakefile
+    assert 'OUTDIR + "/IS/{sample}/{sample}_IS.tsv"' in common_outputs
+    assert "COMMON_ALL_OUTPUTS" in rule_all
+    assert "TAD_ALL_OUTPUTS" in rule_all
