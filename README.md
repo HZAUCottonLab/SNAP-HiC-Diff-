@@ -47,9 +47,10 @@ manifest: data/manifest.tsv
 # Resolution (bp)
 resolution: 4000
 
-# Window size & step (bp)
-window_size: 300000
-step_size: 30000
+# Multiscale window settings
+window_analysis:
+  window_bins: [25, 50, 75, 100, 125]
+  step_fraction: 0.2
 
 # Smoothing sigma
 smoothing:
@@ -63,6 +64,31 @@ Meltron rejects lower resolutions. The converter writes each
 bedGraph bin start as Meltron `viewpoint` and verifies that every complete
 bedGraph bin has exactly that width, so Meltron infers the configured
 resolution rather than a midpoint-derived half-resolution.
+
+### Multiscale window-analysis contract
+
+At the 4 kb production resolution, the configured window scales are:
+
+| Label | Window bins | Window bp | Step bins | Step bp |
+| --- | ---: | ---: | ---: | ---: |
+| `w25` | 25 | 100,000 | 5 | 20,000 |
+| `w50` | 50 | 200,000 | 10 | 40,000 |
+| `w75` | 75 | 300,000 | 15 | 60,000 |
+| `w100` | 100 | 400,000 | 20 | 80,000 |
+| `w125` | 125 | 500,000 | 25 | 100,000 |
+
+The five production absolute background paths live only in
+`config/config.yaml` and are read in place; the workflow does not copy, link,
+regenerate, or edit these backgrounds. The scale root
+`results/window_scales/r4000/w*/` holds the scale-dependent windows,
+comparisons, KNN results, diagnostics, and Meltron outputs.
+
+For each comparison, `results/multiscale/r4000/<comparison>/all_scale_candidates.tsv`
+is the evidence ledger. `candidate_union.tsv` and `candidate_union.bed` are the
+any-scale union and retain support columns that show the contributing scales
+and windows. Primary IS-change calls still require support from at least two
+CWorld IS scale bands. A valid header-only empty result is a successful result,
+not a failed workflow.
 
 Edit `data/manifest.tsv` with your sample paths.
 
@@ -78,6 +104,9 @@ CONDA_OFFLINE=true snakemake -n --use-conda --conda-prefix "$PWD/.snakemake/cond
 # Submit only after the login-node bootstrap and offline verification succeed.
 dsub -s run_snakemake.sh
 ```
+
+One manual `dsub -s run_snakemake.sh` starts one full DAG; every scale branch
+whose dependencies are ready is eligible to run concurrently.
 
 See [docs/dsub_hpc_standard.md](docs/dsub_hpc_standard.md) for HPC setup details.
 
