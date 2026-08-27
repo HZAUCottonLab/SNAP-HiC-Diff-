@@ -26,6 +26,16 @@ import numpy as np
 import pandas as pd
 
 
+SCALE_COLUMNS = [
+    "resolution_bp",
+    "window_bins",
+    "window_size_bp",
+    "step_bins",
+    "step_size_bp",
+]
+SOURCE_COLUMNS = [*SCALE_COLUMNS, "window_start", "window_end", "window_id"]
+
+
 def log(msg, log_file):
     print(msg)
     if log_file:
@@ -93,13 +103,37 @@ def run():
     decond = pd.read_csv(args.decondensation, sep="\t") if os.path.exists(args.decondensation) else pd.DataFrame()
     condens = pd.read_csv(args.condensation, sep="\t") if os.path.exists(args.condensation) else pd.DataFrame()
 
+    if not args.interval_map or not os.path.exists(args.interval_map):
+        parser.error("interval map is required")
+    interval_map = pd.read_csv(args.interval_map, sep="\t")
+    metric_count_column = next(
+        (
+            column
+            for column in ("n_significant", "n_significant_metrics")
+            if column in interval_map.columns
+        ),
+        None,
+    )
+    required = {"ID", *SOURCE_COLUMNS}
+    missing = sorted(required.difference(interval_map.columns))
+    if missing:
+        parser.error(f"interval map missing columns: {', '.join(missing)}")
+    if metric_count_column is None:
+        parser.error("interval map requires n_significant or n_significant_metrics")
+    if interval_map["ID"].isna().any() or interval_map["ID"].duplicated().any():
+        parser.error("interval map ID must be non-missing and unique")
+    interval_map = interval_map[
+        ["ID", *SOURCE_COLUMNS, metric_count_column]
+    ].rename(columns={metric_count_column: "n_significant_metrics"})
+
     if decond.empty and condens.empty:
         log("[WARN] Both Meltron results are empty — writing empty output", args.log_file)
         pd.DataFrame(columns=[
             "chrom", "start", "end", "ID",
+            *SOURCE_COLUMNS,
             "meltron_melting_score", "meltron_compaction_score",
             "meltron_best_score", "meltron_best_direction", "meltron_is_significant",
-            "window_id", "n_significant_metrics"
+            "n_significant_metrics"
         ]).to_csv(args.out, sep="\t", index=False)
         sys.exit(0)
 
@@ -147,34 +181,9 @@ def run():
     # Advisory significance flag
     merged["meltron_is_significant"] = (merged["meltron_best_score"] >= args.score_threshold).astype(int)
 
-    # Join with interval_map to bring back window_id and n_significant_metrics
-    if args.interval_map and os.path.exists(args.interval_map):
-        interval_map = pd.read_csv(args.interval_map, sep="\t")
-        metric_count_column = next(
-            (
-                column
-                for column in ("n_significant", "n_significant_metrics")
-                if column in interval_map.columns
-            ),
-            None,
-        )
-        if metric_count_column is None:
-            parser.error(
-                "interval map requires n_significant or n_significant_metrics"
-            )
-        interval_map = interval_map[
-            ["ID", "window_id", metric_count_column]
-        ].rename(
-            columns={metric_count_column: "n_significant_metrics"}
-        )
-        merged = merged.merge(
-            interval_map,
-            on="ID",
-            how="left"
-        )
-    else:
-        merged["window_id"] = np.nan
-        merged["n_significant_metrics"] = np.nan
+    merged = merged.merge(
+        interval_map, on="ID", how="left", validate="one_to_one"
+    )
 
     # Rename perc_na columns for clarity in output
     for suffix, direction in [("_decond", "decondensation"), ("_condens", "condensation")]:
@@ -187,11 +196,12 @@ def run():
     # Select and order output columns
     out_cols = [
         "chrom", "start", "end", "ID",
+        *SOURCE_COLUMNS,
         "meltron_melting_score", "meltron_compaction_score",
         "meltron_best_score", "meltron_best_direction", "meltron_is_significant",
         "perc_na_or_missing_ref_decondensation", "perc_na_or_missing_inp_decondensation",
         "perc_na_or_missing_ref_condensation", "perc_na_or_missing_inp_condensation",
-        "window_id", "n_significant_metrics"
+        "n_significant_metrics"
     ]
     # Keep only columns that exist
     out_cols = [c for c in out_cols if c in merged.columns]

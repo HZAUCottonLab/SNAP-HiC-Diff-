@@ -26,6 +26,15 @@ import numpy as np
 import pandas as pd
 
 
+SCALE_COLUMNS = [
+    "resolution_bp",
+    "window_bins",
+    "window_size_bp",
+    "step_bins",
+    "step_size_bp",
+]
+
+
 def log(msg, log_file):
     print(msg)
     if log_file:
@@ -110,11 +119,16 @@ def run():
             "input coordinate schema requires either start/end or window_start/window_end"
         )
     if has_canonical_coordinates:
-        df["window_start"] = df["start"]
-        df["window_end"] = df["end"]
+        if not has_window_coordinates:
+            df["window_start"] = df["start"]
+            df["window_end"] = df["end"]
     else:
         df["start"] = df["window_start"]
         df["end"] = df["window_end"]
+
+    missing_scale = sorted(set(SCALE_COLUMNS).difference(df.columns))
+    if missing_scale:
+        parser.error(f"input missing scale columns: {', '.join(missing_scale)}")
 
     # Identify p-value columns (empirical p-values from KNN comparison)
     pval_cols = [c for c in df.columns if "_empirical_pvalue" in c]
@@ -148,23 +162,35 @@ def run():
         interval_cols = ["chrom", "start", "end", "ID"]
         pd.DataFrame(columns=interval_cols).to_csv(args.out, sep="\t", index=False)
         map_out = args.out.replace("_intervals.tsv", "_interval_map.tsv")
-        pd.DataFrame(columns=["ID", "chrom", "start", "end", "window_id", "n_significant"]).to_csv(
+        empty_map_columns = [
+            *SCALE_COLUMNS,
+            "chrom", "interval_start", "interval_end",
+            "window_start", "window_end", "window_id", "ID", "n_significant",
+        ]
+        pd.DataFrame(columns=empty_map_columns).to_csv(
             map_out, sep="\t", index=False
         )
         sys.exit(0)
 
-    # Assign ID = {chrom}_{window_id}
-    df_filtered["ID"] = df_filtered["chrom"] + "_" + df_filtered["window_id"].astype(str)
+    df_filtered["ID"] = (
+        "r" + df_filtered["resolution_bp"].astype(str)
+        + "_w" + df_filtered["window_bins"].astype(str)
+        + "_" + df_filtered["chrom"].astype(str)
+        + "_" + df_filtered["window_id"].astype(str)
+    )
 
     # Prepare interval_map: for joining meltron scores back to original windows
-    interval_map = df_filtered[["chrom", "start", "end", "window_start", "window_end",
-                                 "window_id", "ID", "n_significant"]].copy()
-    interval_map.columns = ["chrom", "interval_start", "interval_end",
-                             "window_start", "window_end", "window_id", "ID", "n_significant"]
+    interval_map_columns = [
+        *SCALE_COLUMNS,
+        "chrom", "start", "end", "window_start", "window_end",
+        "window_id", "ID", "n_significant",
+    ]
+    interval_map = df_filtered[interval_map_columns].rename(
+        columns={"start": "interval_start", "end": "interval_end"}
+    )
 
     # Prepare strict 4-col Meltron interval output
-    intervals_out = df_filtered[["chrom", "window_start", "window_end", "ID"]].copy()
-    intervals_out.columns = ["chrom", "start", "end", "ID"]
+    intervals_out = df_filtered[["chrom", "start", "end", "ID"]].copy()
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     intervals_out.to_csv(args.out, sep="\t", index=False)

@@ -22,6 +22,11 @@ def write_enriched(path, **coordinates):
         "window_id": 17,
         "comparison": "H1398_vs_L134",
         "knn_valid_k": 5,
+        "resolution_bp": 4000,
+        "window_bins": 25,
+        "window_size_bp": 100000,
+        "step_bins": 5,
+        "step_size_bp": 20000,
         **{column: 0.001 for column in P_VALUE_COLUMNS},
         **coordinates,
     }
@@ -63,8 +68,20 @@ def test_preparer_maps_knn_window_coordinates_to_canonical_intervals(tmp_path):
     intervals = pd.read_csv(output, sep="\t")
     assert list(intervals.columns) == ["chrom", "start", "end", "ID"]
     assert intervals.to_dict("records") == [
-        {"chrom": "HC04_A01", "start": 4000, "end": 8000, "ID": "HC04_A01_17"}
+        {
+            "chrom": "HC04_A01",
+            "start": 4000,
+            "end": 8000,
+            "ID": "r4000_w25_HC04_A01_17",
+        }
     ]
+    interval_map = pd.read_csv(
+        output.with_name("H1398_vs_L134_interval_map.tsv"), sep="\t"
+    )
+    assert interval_map.loc[0, [
+        "resolution_bp", "window_bins", "window_size_bp",
+        "step_bins", "step_size_bp", "window_start", "window_end",
+    ]].tolist() == [4000, 25, 100000, 5, 20000, 4000, 8000]
 
 
 def test_preparer_preserves_legacy_canonical_coordinates(tmp_path):
@@ -120,7 +137,12 @@ def test_preparer_accepts_legacy_canonical_coordinates_without_window_columns(tm
     assert result.returncode == 0, result.stderr
     intervals = pd.read_csv(output, sep="\t")
     assert intervals.to_dict("records") == [
-        {"chrom": "HC04_A01", "start": 4000, "end": 8000, "ID": "HC04_A01_17"}
+        {
+            "chrom": "HC04_A01",
+            "start": 4000,
+            "end": 8000,
+            "ID": "r4000_w25_HC04_A01_17",
+        }
     ]
 
 
