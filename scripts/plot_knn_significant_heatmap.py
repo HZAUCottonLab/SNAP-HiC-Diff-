@@ -152,7 +152,7 @@ def build_summary_table(df, pvalue_threshold=0.05, metrics=None):
         pass_mask = raw_pvals < pvalue_threshold
         n_pass = int(np.sum(pass_mask))
         n_total = len(raw_pvals)
-        pct_pass = n_pass / n_total * 100
+        pct_pass = n_pass / n_total * 100 if n_total else float("nan")
 
         pass_pvals = raw_pvals[pass_mask]
         fail_pvals = raw_pvals[~pass_mask]
