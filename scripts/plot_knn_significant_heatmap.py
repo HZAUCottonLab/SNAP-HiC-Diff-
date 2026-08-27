@@ -26,6 +26,7 @@ Usage:
 import argparse
 import os
 import sys
+import tempfile
 import warnings
 from pathlib import Path
 
@@ -56,6 +57,38 @@ METRICS = [
 ]
 
 PVALUE_COLS = [f"{m}_empirical_pvalue" for m in METRICS]
+
+SCALE_COLUMNS = [
+    "resolution_bp",
+    "window_bins",
+    "window_size_bp",
+    "step_bins",
+    "step_size_bp",
+]
+
+
+def scale_h5_path(scale_outdir, sample, chrom, stage):
+    return (
+        Path(scale_outdir)
+        / "windows"
+        / sample
+        / f"{sample}__{chrom}_{stage}.h5"
+    )
+
+
+def atomic_tsv(frame, output):
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(
+        dir=output.parent, prefix=f".{output.name}.", suffix=".tmp"
+    )
+    os.close(descriptor)
+    try:
+        frame.to_csv(temporary, sep="\t", index=False)
+        os.replace(temporary, output)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
 
 
 def filter_significant_windows(df, pvalue_threshold=0.05, pass_mode="all", metrics=None):
@@ -93,7 +126,8 @@ def build_pval_df(df, pvalue_threshold=0.05, metrics=None):
     if metrics is None:
         metrics = list(METRICS)
 
-    result = df[["chrom", "window_id", "window_start", "window_end", "comparison"]].copy()
+    identity_columns = [*SCALE_COLUMNS, "chrom", "window_id", "window_start", "window_end", "comparison"]
+    result = df[identity_columns].copy()
     for m in metrics:
         col = f"{m}_empirical_pvalue"
         if col not in df.columns:
@@ -161,39 +195,42 @@ def get_pair_samples(comparison):
     return parts[0], parts[1]
 
 
-def load_iced_matrix(sample, chrom, window_start, window_end):
+def load_iced_matrix(sample, chrom, window_start, window_end, common_outdir):
     """Load ICE O/E matrix from per-chrom .cool file."""
-    cool_path = os.path.join(
-        PROJECT_ROOT, "results", "balanced", sample,
-        f"{sample}__{chrom}_iced.cool"
-    )
-    if not os.path.exists(cool_path):
+    cool_path = Path(common_outdir) / "balanced" / sample / f"{sample}__{chrom}_iced.cool"
+    if not cool_path.exists():
         raise FileNotFoundError(f"Cool file not found: {cool_path}")
-    clr = cooler.Cooler(cool_path)
-    chrom_names = list(clr.chromnames)
-    actual_chrom = chrom if chrom in chrom_names else chrom_names[0]
-    mat = (
-        clr.matrix(balance=True, sparse=True)
-        .fetch(f"{actual_chrom}:{window_start}-{window_end}")
-        .toarray()
-    )
+    clr = cooler.Cooler(str(cool_path))
+    actual_chrom = chrom if chrom in clr.chromnames else list(clr.chromnames)[0]
+    mat = clr.matrix(balance=True, sparse=True).fetch(
+        f"{actual_chrom}:{window_start}-{window_end}"
+    ).toarray()
     return (mat + mat.T) / 2.0
 
 
-def load_gaussian_matrix(sample, chrom, window_id):
+def load_ln_oe_matrix(sample, chrom, window_id, scale_outdir):
+    """Load ln(O/E) matrix from per-window HDF5."""
+    return _load_h5_matrix(
+        scale_h5_path(scale_outdir, sample, chrom, "ln_oe"), window_id
+    )
+
+
+def load_gaussian_matrix(sample, chrom, window_id, scale_outdir):
     """Load Gaussian-smoothed matrix from per-chrom HDF5 file."""
-    h5_path = os.path.join(
-        PROJECT_ROOT, "results", "windows", sample,
-        f"{sample}__{chrom}_gaussian.h5"
+    return _load_h5_matrix(
+        scale_h5_path(scale_outdir, sample, chrom, "gaussian"), window_id
     )
-    if not os.path.exists(h5_path):
-        raise FileNotFoundError(f"H5 file not found: {h5_path}")
+
+
+def _load_h5_matrix(path, window_id):
+    if not path.exists():
+        raise FileNotFoundError(f"H5 file not found: {path}")
     key = f"w{window_id:06d}"
-    with h5py.File(h5_path, "r") as f:
-        if key not in f:
-            raise KeyError(f"Key '{key}' not found in {h5_path}")
-        mat = f[key]["matrix"][:]
-    return (mat + mat.T) / 2.0
+    with h5py.File(path, "r") as handle:
+        if key not in handle:
+            raise KeyError(f"Key '{key}' not found in {path}")
+        matrix = handle[key]["matrix"][:]
+    return (matrix + matrix.T) / 2.0
 
 
 def _quantile_vmin_vmax(mats, q_low=0.01, q_high=0.99):
@@ -262,22 +299,26 @@ def run_scan(enriched_path, out_dir, pvalue_threshold=0.05, pass_mode="all", met
     Path(out_dir).mkdir(parents=True, exist_ok=True)
 
     # 1. manifest TSV (significant windows only)
-    manifest_df = sig_df[["chrom", "window_id", "window_start", "window_end"]].copy()
+    manifest_columns = [
+        *SCALE_COLUMNS, "chrom", "window_id", "window_start", "window_end",
+    ]
+    manifest_df = sig_df[manifest_columns].copy()
     manifest_df = manifest_df.sort_values(["chrom", "window_id"]).reset_index(drop=True)
-    manifest_df.to_csv(
-        os.path.join(out_dir, "significant_windows.tsv"), sep="\t", index=False
+    atomic_tsv(
+        manifest_df, os.path.join(out_dir, "significant_windows.tsv")
     )
 
     # 2. p-value full table (all windows)
     pval_df = build_pval_df(df, pvalue_threshold=pvalue_threshold, metrics=metrics)
-    pval_df.sort_values(["chrom", "window_id"]).reset_index(drop=True).to_csv(
-        os.path.join(out_dir, "pval_table.tsv"), sep="\t", index=False
+    atomic_tsv(
+        pval_df.sort_values(["chrom", "window_id"]).reset_index(drop=True),
+        os.path.join(out_dir, "pval_table.tsv"),
     )
 
     # 3. Summary table (per-metric stats)
     summary_df = build_summary_table(df, pvalue_threshold=pvalue_threshold, metrics=metrics)
-    summary_df.to_csv(
-        os.path.join(out_dir, "pval_summary.tsv"), sep="\t", index=False
+    atomic_tsv(
+        summary_df, os.path.join(out_dir, "pval_summary.tsv")
     )
 
     chroms = sorted(sig_df["chrom"].unique())
@@ -297,22 +338,6 @@ def mask_iced_diagonal(mat):
         for j in range(max(0, i - 1), min(n, i + 2)):
             m[i, j] = np.nan
     return m
-
-
-def load_ln_oe_matrix(sample, chrom, window_id):
-    """Load ln(O/E) matrix from per-window HDF5."""
-    h5_path = os.path.join(
-        PROJECT_ROOT, "results", "windows", sample,
-        f"{sample}__{chrom}_ln_oe.h5"
-    )
-    if not os.path.exists(h5_path):
-        raise FileNotFoundError(f"ln_oe h5 not found: {h5_path}")
-    key = f"w{window_id:06d}"
-    with h5py.File(h5_path, "r") as f:
-        if key not in f:
-            raise KeyError(f"Key '{key}' not found in {h5_path}")
-        mat = f[key]["matrix"][:]
-    return (mat + mat.T) / 2.0
 
 
 def plot_2x3_heatmap(
@@ -405,6 +430,8 @@ def run_chrom(
     chrom,
     enriched_path,
     out_dir,
+    common_outdir,
+    scale_outdir,
     manifest_path=None,
     pvalue_threshold=0.05,
     pass_mode="all",
@@ -449,14 +476,14 @@ def run_chrom(
         png_path = os.path.join(out_dir, f"{chrom}_{wid}.png")
         pdf_path = os.path.join(out_dir, f"{chrom}_{wid}.pdf")
 
-        m_ci_raw = load_iced_matrix(control, chrom, ws, we)
-        m_ti_raw = load_iced_matrix(treatment, chrom, ws, we)
+        m_ci_raw = load_iced_matrix(control, chrom, ws, we, common_outdir)
+        m_ti_raw = load_iced_matrix(treatment, chrom, ws, we, common_outdir)
         m_ci = mask_iced_diagonal(m_ci_raw)
         m_ti = mask_iced_diagonal(m_ti_raw)
-        m_cl = load_ln_oe_matrix(control, chrom, wid)
-        m_tl = load_ln_oe_matrix(treatment, chrom, wid)
-        m_cg = load_gaussian_matrix(control, chrom, wid)
-        m_tg = load_gaussian_matrix(treatment, chrom, wid)
+        m_cl = load_ln_oe_matrix(control, chrom, wid, scale_outdir)
+        m_tl = load_ln_oe_matrix(treatment, chrom, wid, scale_outdir)
+        m_cg = load_gaussian_matrix(control, chrom, wid, scale_outdir)
+        m_tg = load_gaussian_matrix(treatment, chrom, wid, scale_outdir)
 
         plot_2x3_heatmap(
             m_ci, m_ti, m_cl, m_tl, m_cg, m_tg,
@@ -501,6 +528,8 @@ def main():
         required=True,
         help="Output directory",
     )
+    parser.add_argument("--common-outdir", required=True)
+    parser.add_argument("--scale-outdir", required=True)
     parser.add_argument(
         "--pvalue-threshold",
         type=float,
@@ -553,6 +582,8 @@ def main():
             args.chrom,
             enriched_path,
             args.out_dir,
+            args.common_outdir,
+            args.scale_outdir,
             manifest_path=manifest_path,
             pvalue_threshold=args.pvalue_threshold,
             pass_mode=args.pass_mode,
