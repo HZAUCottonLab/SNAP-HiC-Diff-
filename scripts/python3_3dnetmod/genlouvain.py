@@ -104,7 +104,7 @@ def genlouvain(B, seed=None):
         q0 = q
         q = np.trace(B) # compute modularity
         dir = 'output'
-        if not os.path.isdir(dir): os.makedirs(dir)
+        os.makedirs(dir, exist_ok=True)
 
         output = open (os.path.join(dir, 'gen_louvain_seed.txt'),'a+')
         print("%i" % (st0[1][0]), file=output)

@@ -48,6 +48,7 @@ snakemake \
     --keep-going \
     --latency-wait 180 \
     --cluster-generic-submit-cmd "bash ${DSUB_SUBMIT_CMD} {threads} {rulename}" \
+    --cluster-generic-status-cmd "bash config/dsub_status.sh" \
     --cluster-generic-cancel-cmd dkill \
     --cluster-generic-cancel-nargs 1 \
     all

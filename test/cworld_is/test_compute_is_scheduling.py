@@ -34,6 +34,7 @@ def test_compute_is_schedules_one_cworld_job_per_sample_chromosome():
             "snakemake",
             "-n",
             "-p",
+            "--forceall",
             "--configfile",
             "config/config.yaml",
             "--",

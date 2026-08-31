@@ -33,7 +33,7 @@ def get_random_Qs(settings, counts_as_arrays, cell_type, region,tag, chr):
             print('already have random network', i)
             print('filename:')
             print(fname)
-            R=np.array(list(csv.reader(open(fname, "rb"),delimiter=','))).astype('float')
+            R=np.array(list(csv.reader(open(fname, "r"),delimiter=','))).astype('float')
         else:
 
             print('counts_as_arrays.keys(): ')
