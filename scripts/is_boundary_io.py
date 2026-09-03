@@ -38,6 +38,21 @@ BOUNDARY_STABILITY_COLUMNS = (
     "comparison", "boundary_event_id", "view", "reference_position_state",
     "sensitivity_position_state", "concordant", "reason",
 )
+STRENGTH_LONG_COLUMNS = (
+    "comparison", "boundary_event_id", "chrom", "position_state",
+    "coordinate_role", "IS_distance", "scale_band", "a_start", "a_end",
+    "b_start", "b_end", "strength_a", "strength_b", "delta_strength",
+    "robust_z", "valley_a_start", "valley_b_start", "detection_a",
+    "detection_b", "valid_fraction_a", "valid_fraction_b", "reference_n",
+    "reference_median", "reference_mad",
+)
+STRENGTH_SUMMARY_COLUMNS = (
+    "comparison", "boundary_event_id", "position_state", "strength_state",
+    "strength_support_bands", "is_consistency_state", "small_band_score",
+    "medium_band_score", "large_band_score", "n_evaluable_bands",
+    "state_at_z1_5", "state_at_z2_0", "state_at_z2_5",
+    "strength_state_stable",
+)
 RESOLUTION_INPUT_COLUMNS = (
     "chrom", "start", "end", "boundary_id", "resolution", "n_source_boundaries",
 )
