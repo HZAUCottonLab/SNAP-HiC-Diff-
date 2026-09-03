@@ -43,6 +43,9 @@ def test_is_change_rules_aggregate_ordered_scale_inputs_to_shared_targets():
 
     assert "rule plot_is_change_loci:" in rules
     assert "_is_change_loci.tsv" in rules
+    assert "boundary_annotated.tsv" in rules
+    assert "IS_BOUNDARY.enabled" in rules
+    assert "--boundary-events" in rules
     assert "plot_is_change_loci.py" in rules
     assert "manifest.tsv" in rules
     assert rules.count('cool_a=lambda w: expand') == 2

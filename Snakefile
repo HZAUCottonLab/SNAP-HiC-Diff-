@@ -16,11 +16,13 @@ import sys
 
 sys.path.insert(0, os.path.join(SCRIPT_DIR, "scripts"))
 from cworld_is_config import parse_cworld_is_settings
+from is_boundary_config import parse_is_boundary_settings
 from tad_config import parse_tad_settings
 from window_scale_config import build_window_scales
 
 CWORLD_IS = parse_cworld_is_settings(config)
 TAD = parse_tad_settings(config)
+IS_BOUNDARY = parse_is_boundary_settings(config, CWORLD_IS, TAD)
 TAD_RESOLUTIONS = TAD.resolutions
 TAD_SIGNALS = TAD.signals
 TAD_LABELS = {resolution: "{}kb".format(resolution // 1000) for resolution in TAD_RESOLUTIONS}
@@ -75,6 +77,26 @@ def tad_boundary_path(sample, resolution, signal):
 
 def tad_merged_boundary_path(sample, signal):
     return "{}/tad_boundaries/{}.multires.{}.boundaries.bed".format(OUTDIR, sample, signal)
+
+
+def unified_boundary_path(sample):
+    return "{}/tad_boundaries/{}.multires.unified.boundaries.tsv".format(OUTDIR, sample)
+
+
+def boundary_jitter_path(sample):
+    return "{}/tad_boundaries/{}.boundary_jitter_offsets.tsv".format(OUTDIR, sample)
+
+
+def boundary_view_path(sample):
+    return "{}/tad_boundaries/{}.annotation_views.tsv".format(OUTDIR, sample)
+
+
+def boundary_event_path(comparison):
+    return "{}/tad_boundary_events/{}.boundary_events.tsv".format(OUTDIR, comparison)
+
+
+def boundary_stability_path(comparison):
+    return "{}/tad_boundary_events/{}.boundary_event_stability.tsv".format(OUTDIR, comparison)
 
 # ==============================================================================
 # Helper Functions
@@ -173,6 +195,7 @@ include: "rules/compute_IS.smk"
 include: "rules/meltron.smk"
 include: "rules/is_change.smk"
 include: "rules/tad.smk"
+include: "rules/is_boundary_annotation.smk"
 
 # ==============================================================================
 # Default Rules
@@ -280,12 +303,80 @@ TAD_ALL_OUTPUTS = [
     for signal in TAD_SIGNALS
 ]
 
+IS_BOUNDARY_ALL_OUTPUTS = (
+    expand(
+        OUTDIR + "/tad_boundaries/{sample}.multires.unified.boundaries.tsv",
+        sample=SAMPLES,
+    )
+    + expand(
+        OUTDIR + "/tad_boundaries/{sample}.boundary_jitter_offsets.tsv",
+        sample=SAMPLES,
+    )
+    + expand(
+        OUTDIR + "/tad_boundaries/{sample}.annotation_views.tsv",
+        sample=SAMPLES,
+    )
+    + expand(
+        OUTDIR + "/tad_boundary_events/{comparison}.boundary_events.tsv",
+        comparison=get_window_compare_pairs(),
+    )
+    + expand(
+        OUTDIR + "/tad_boundary_events/{comparison}.boundary_event_stability.tsv",
+        comparison=get_window_compare_pairs(),
+    )
+    + expand(
+        OUTDIR + "/tad_boundary_events/{comparison}.matching_qc.tsv",
+        comparison=get_window_compare_pairs(),
+    )
+    + expand(
+        OUTDIR + "/tad_boundary_events/{comparison}.boundary_strength_by_scale.tsv",
+        comparison=get_window_compare_pairs(),
+    )
+    + expand(
+        OUTDIR + "/tad_boundary_events/{comparison}.boundary_strength_summary.tsv",
+        comparison=get_window_compare_pairs(),
+    )
+    + expand(
+        OUTDIR + "/tad_boundary_events/{comparison}.annotation_qc.tsv",
+        comparison=get_window_compare_pairs(),
+    )
+    + expand(
+        OUTDIR + "/tad_boundary_events/{comparison}.annotation_summary.tsv",
+        comparison=get_window_compare_pairs(),
+    )
+    + expand(
+        MULTISCALE_ROOT + "/{comparison}/is_change/{comparison}_is_change_loci.boundary_annotated.tsv",
+        comparison=get_window_compare_pairs(),
+    )
+    + expand(
+        MULTISCALE_ROOT + "/{comparison}/is_change/{comparison}_is_change_loci_preliminary.boundary_annotated.tsv",
+        comparison=get_window_compare_pairs(),
+    )
+    + expand(
+        MULTISCALE_ROOT + "/{comparison}/is_change/figures/manifest.tsv",
+        comparison=get_window_compare_pairs(),
+    )
+    if IS_BOUNDARY.enabled
+    else []
+)
+
+PERMUTATION_ALL_OUTPUTS = (
+    expand(
+        OUTDIR + "/tad_boundary_events/{comparison}.permutation.tsv",
+        comparison=get_window_compare_pairs(),
+    )
+    if IS_BOUNDARY.permutation.enabled
+    else []
+)
+
 rule all:
     input:
         COMMON_ALL_OUTPUTS,
         SCALE_ALL_OUTPUTS,
         MULTISCALE_ALL_OUTPUTS,
         TAD_ALL_OUTPUTS,
+        IS_BOUNDARY_ALL_OUTPUTS,
+        PERMUTATION_ALL_OUTPUTS,
     default_target: True
 
 

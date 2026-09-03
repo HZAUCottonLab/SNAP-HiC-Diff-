@@ -84,8 +84,19 @@ rule call_is_change_loci:
 
 rule plot_is_change_loci:
     input:
-        primary=MULTISCALE_ROOT + "/{comparison}/is_change/{comparison}_is_change_loci.tsv",
+        primary=lambda w: (
+            MULTISCALE_ROOT + "/{}/is_change/{}_is_change_loci.boundary_annotated.tsv".format(
+                w.comparison, w.comparison
+            )
+            if IS_BOUNDARY.enabled
+            else MULTISCALE_ROOT + "/{}/is_change/{}_is_change_loci.tsv".format(
+                w.comparison, w.comparison
+            )
+        ),
         regions=MULTISCALE_ROOT + "/{comparison}/candidate_union.tsv",
+        boundary_events=lambda w: (
+            boundary_event_path(w.comparison) if IS_BOUNDARY.enabled else []
+        ),
         is_a=lambda w: get_comparison_is_file(w.comparison, 0),
         is_b=lambda w: get_comparison_is_file(w.comparison, 1),
         cool_a=lambda w: expand(
@@ -104,6 +115,11 @@ rule plot_is_change_loci:
         MULTISCALE_ROOT + "/{comparison}/logs/is_change/plot.log",
     params:
         script=SCRIPT_DIR + "/scripts/plot_is_change_loci.py",
+        boundary_events=lambda w: (
+            "--boundary-events \"{}\"".format(boundary_event_path(w.comparison))
+            if IS_BOUNDARY.enabled
+            else ""
+        ),
     conda:
         "../env/SNAP-HiC-Diff.yaml"
     shell:
@@ -120,5 +136,6 @@ rule plot_is_change_loci:
             --cool-a {input.cool_a} \
             --cool-b {input.cool_b} \
             --manifest "{output.manifest}" \
+            {params.boundary_events} \
             >> "{log}" 2>&1
         """
