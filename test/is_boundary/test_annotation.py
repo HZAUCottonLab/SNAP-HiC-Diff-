@@ -23,6 +23,7 @@ from is_boundary_io import (
     atomic_write_tables,
 )
 from call_is_change_loci import PRIMARY_COLUMNS
+from annotate_is_change_boundaries import _canonicalize_current_locus_comparison
 
 
 def _event(**updates):
@@ -228,6 +229,68 @@ def test_annotation_canonicalizes_only_the_current_legacy_is_comparison(tmp_path
     assert result.returncode == 0, result.stderr
     annotated = pd.read_csv(tmp_path / "annotated.primary.tsv", sep="\t")
     assert annotated.loc[0, "comparison"] == "A_vs_B"
+
+
+def test_annotation_canonicalizes_current_legacy_comparison_without_boundary_events():
+    loci = pd.DataFrame([
+        _locus(comparison="H1398_IS__vs__L134_IS"),
+        _locus(region_id="other", comparison="other_IS__vs__pair_IS"),
+    ])
+
+    observed = _canonicalize_current_locus_comparison(
+        loci, pd.DataFrame(columns=BOUNDARY_EVENT_COLUMNS), "H1398_vs_L134"
+    )
+
+    assert observed["comparison"].tolist() == ["H1398_vs_L134", "other_IS__vs__pair_IS"]
+
+
+def test_colocated_coverage_ambiguity_precedes_simple_boundary_counterpart():
+    coverage = _event(
+        boundary_event_id="coverage", position_state="ambiguous",
+        boundary_a_id="a_coverage", boundary_b_id="", b_start=float("nan"),
+        b_end=float("nan"), ambiguity_reason="unevaluable_boundary_coverage:raw_bad_region",
+    )
+    counterpart = _event(
+        boundary_event_id="counterpart", position_state="gained_in_B",
+        boundary_a_id="", boundary_b_id="b_simple", a_start=float("nan"),
+        a_end=float("nan"), b_start=100000, b_end=104000,
+    )
+
+    result = annotate_loci(
+        pd.DataFrame([_locus()]),
+        pd.DataFrame([coverage, counterpart], columns=BOUNDARY_EVENT_COLUMNS),
+        pd.DataFrame(), _masked(), type("S", (), {"base_bin_bp": 4000})(),
+    ).iloc[0]
+
+    assert result["boundary_event_id"] == "coverage"
+    assert result["n_boundary_candidates"] == 1
+    assert result["position_state"] == "ambiguous"
+    assert result["annotation_reason"] == "unevaluable_boundary_coverage:raw_bad_region"
+
+
+def test_distinct_coverage_and_simple_boundary_events_remain_complex():
+    coverage = _event(
+        boundary_event_id="coverage", position_state="ambiguous",
+        boundary_a_id="a_coverage", boundary_b_id="", b_start=float("nan"),
+        b_end=float("nan"), ambiguity_reason="unevaluable_boundary_coverage:raw_bad_region",
+    )
+    distant = _event(
+        boundary_event_id="distant", position_state="gained_in_B",
+        boundary_a_id="", boundary_b_id="b_simple", a_start=float("nan"),
+        a_end=float("nan"), b_start=200000, b_end=204000, event_span_start=200000,
+        event_span_end=204000,
+    )
+    locus = _locus(is_change_type="broad_shift", event_start=100000, event_end=204000)
+
+    result = annotate_loci(
+        pd.DataFrame([locus]), pd.DataFrame([coverage, distant], columns=BOUNDARY_EVENT_COLUMNS),
+        pd.DataFrame(), _masked(), type("S", (), {"base_bin_bp": 4000})(),
+    ).iloc[0]
+
+    assert result["boundary_event_id"] == "coverage,distant"
+    assert result["n_boundary_candidates"] == 2
+    assert result["position_state"] == "complex"
+    assert result["annotation_reason"] == "multiple_boundary_events"
 
 
 @pytest.mark.parametrize(

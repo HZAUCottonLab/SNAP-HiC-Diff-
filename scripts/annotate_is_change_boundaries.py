@@ -121,9 +121,12 @@ def _validate_events(events, comparison):
 def _canonicalize_current_locus_comparison(loci, events, comparison):
     """Map only this event map's legacy IS comparison name to its canonical key."""
     pairs = events[["sample_a", "sample_b"]].dropna().drop_duplicates()
-    if len(pairs) != 1:
+    if len(pairs) == 1:
+        sample_a, sample_b = pairs.iloc[0]
+    elif pairs.empty and "_vs_" in comparison:
+        sample_a, sample_b = comparison.split("_vs_", 1)
+    else:
         return loci
-    sample_a, sample_b = pairs.iloc[0]
     canonical = f"{sample_a}_vs_{sample_b}"
     if comparison != canonical:
         return loci

@@ -53,6 +53,40 @@ def associated_event_ids(locus, events, base_bin_bp):
     return identifiers
 
 
+def _event_intervals(event):
+    return tuple(
+        (int(start), int(end))
+        for start, end in (
+            (event.a_start, event.a_end), (event.b_start, event.b_end)
+        )
+        if pd.notna(start) and pd.notna(end)
+    )
+
+
+def _events_colocated(left, right):
+    return any(
+        _interval_overlap(left_start, left_end, right_start, right_end)
+        for left_start, left_end in _event_intervals(left)
+        for right_start, right_end in _event_intervals(right)
+    )
+
+
+def _colocated_coverage_ambiguity(ids, event_by_id):
+    """Select one coverage failure over co-located bookkeeping counterparts."""
+    candidates = [event_by_id[event_id] for event_id in ids]
+    coverage = [
+        event for event in candidates
+        if event.position_state == "ambiguous"
+        and str(event.ambiguity_reason).startswith("unevaluable_boundary_coverage:")
+    ]
+    if len(coverage) != 1:
+        return None
+    selected = coverage[0]
+    if all(event is selected or _events_colocated(selected, event) for event in candidates):
+        return selected
+    return None
+
+
 def resolution_count(value):
     if pd.isna(value) or str(value).strip() == "":
         return 0
@@ -179,7 +213,9 @@ def annotate_loci(loci, events, strength_summary, masked, settings, tad_unevalua
         tad_coverage_reasons = _tad_coverage_reasons(
             locus, tad_unevaluable, settings.base_bin_bp
         )
-        event = event_by_id[ids[0]] if len(ids) == 1 else None
+        coverage_event = _colocated_coverage_ambiguity(ids, event_by_id) if ids else None
+        selected_ids = [coverage_event.boundary_event_id] if coverage_event else ids
+        event = coverage_event or (event_by_id[ids[0]] if len(ids) == 1 else None)
         summary = strengths.get(event.boundary_event_id) if event is not None else None
         values = _blank_event()
         if event is not None:
@@ -191,7 +227,7 @@ def annotate_loci(loci, events, strength_summary, masked, settings, tad_unevalua
             position_state, reason = "ambiguous", f"tad_coverage:{','.join(tad_coverage_reasons)}"
         elif not ids:
             position_state, reason = "no_boundary_association", "no_overlapping_boundary_event"
-        elif len(ids) > 1:
+        elif len(selected_ids) > 1:
             position_state, reason = "complex", "multiple_boundary_events"
         elif event.position_state == "complex":
             position_state, reason = "complex", "complex_boundary_event"
@@ -214,10 +250,10 @@ def annotate_loci(loci, events, strength_summary, masked, settings, tad_unevalua
         annotation = {
             **values,
             **strength,
-            "boundary_event_id": ",".join(ids),
+            "boundary_event_id": ",".join(selected_ids),
             "position_state": position_state,
             "evidence_tier": "",
-            "n_boundary_candidates": len(ids),
+            "n_boundary_candidates": len(selected_ids),
             "annotation_reason": reason,
         }
         tier_row = pd.Series({
