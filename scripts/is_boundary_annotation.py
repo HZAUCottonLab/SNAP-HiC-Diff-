@@ -177,12 +177,6 @@ def annotate_loci(loci, events, strength_summary, masked, settings):
             position_state, reason = "ambiguous", "ambiguous_boundary_event"
         else:
             position_state, reason = event.position_state, "unique_boundary_event"
-        if (
-            position_state in {"gained_in_B", "lost_in_B"}
-            and (summary is None or summary.is_consistency_state == "unevaluable")
-        ):
-            position_state, reason = "ambiguous", "unevaluable_is_consistency"
-
         if event is None or position_state in {"complex", "ambiguous"}:
             strength = _blank_strength(position_state)
         else:

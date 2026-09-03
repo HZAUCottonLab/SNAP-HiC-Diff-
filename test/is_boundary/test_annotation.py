@@ -142,6 +142,36 @@ def test_conserved_position_can_carry_a_weakened_strength_state():
 
 
 @pytest.mark.parametrize(
+    ("event_updates", "locus_updates", "mask_reason"),
+    [
+        (
+            {"position_state": "gained_in_B", "a_start": float("nan"), "a_end": float("nan"), "b_start": 400000, "b_end": 404000},
+            {"summit": 400000, "event_start": 400000, "event_end": 404000}, "IS_NA_A",
+        ),
+        (
+            {"position_state": "lost_in_B", "a_start": 400000, "a_end": 404000, "b_start": float("nan"), "b_end": float("nan")},
+            {"summit": 400000, "event_start": 400000, "event_end": 404000}, "IS_NA_B",
+        ),
+    ],
+)
+def test_masked_gain_or_loss_is_ambiguous(event_updates, locus_updates, mask_reason):
+    result = annotate_loci(
+        pd.DataFrame([_locus(**locus_updates)]),
+        pd.DataFrame([_event(**event_updates)], columns=BOUNDARY_EVENT_COLUMNS),
+        pd.DataFrame([_strength(
+            position_state=event_updates["position_state"], strength_state="not_applicable",
+            is_consistency_state="unevaluable", strength_state_stable=False,
+        )]),
+        _masked([("chr1", 400000, 404000, mask_reason)]),
+        type("S", (), {"base_bin_bp": 4000})(),
+    ).iloc[0]
+
+    assert result.position_state == "ambiguous"
+    assert result.annotation_reason == f"mask_overlap:{mask_reason}"
+    assert result.evidence_tier == "not_applicable"
+
+
+@pytest.mark.parametrize(
     ("event_updates", "locus_updates"),
     [
         (
@@ -154,20 +184,21 @@ def test_conserved_position_can_carry_a_weakened_strength_state():
         ),
     ],
 )
-def test_unevaluable_gain_or_loss_is_ambiguous(event_updates, locus_updates):
+def test_clean_unevaluable_gain_or_loss_keeps_position_with_low_evidence(event_updates, locus_updates):
     result = annotate_loci(
         pd.DataFrame([_locus(**locus_updates)]),
         pd.DataFrame([_event(**event_updates)], columns=BOUNDARY_EVENT_COLUMNS),
         pd.DataFrame([_strength(
             position_state=event_updates["position_state"], strength_state="not_applicable",
-            is_consistency_state="unevaluable", strength_state_stable=False,
+            strength_support_bands="", is_consistency_state="unevaluable",
+            strength_state_stable=False,
         )]),
         _masked(), type("S", (), {"base_bin_bp": 4000})(),
     ).iloc[0]
 
-    assert result.position_state == "ambiguous"
-    assert result.annotation_reason == "unevaluable_is_consistency"
-    assert result.evidence_tier == "not_applicable"
+    assert result.position_state == event_updates["position_state"]
+    assert result.is_consistency_state == "unevaluable"
+    assert result.evidence_tier == "low"
 
 
 @pytest.mark.parametrize(
