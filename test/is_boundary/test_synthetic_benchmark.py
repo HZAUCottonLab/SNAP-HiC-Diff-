@@ -108,6 +108,11 @@ def macro_f1(expected, observed, labels):
     return float(np.mean(scores))
 
 
+def aligned_truth_labels(truth, predicted):
+    assert set(predicted) == set(truth)
+    return [truth[key] for key in truth], [predicted[key] for key in truth]
+
+
 def _call(boundaries_a, boundaries_b, jitter, settings, comparison="A_vs_B"):
     return call_boundary_events(
         boundaries_a, boundaries_b, jitter, settings, comparison, "A", "B"
@@ -174,8 +179,7 @@ def test_empirical_jitter_truth_benchmark_has_high_macro_f1(settings):
         shifts=(40000, 60000, 80000),
     )
     predicted = _predicted_states(_call(boundaries_a, boundaries_b, jitter, settings))
-    expected = [truth[key] for key in truth]
-    observed = [predicted[key] for key in truth]
+    expected, observed = aligned_truth_labels(truth, predicted)
 
     assert jitter.source == "empirical_q95"
     assert jitter.threshold_bp == 16000
@@ -184,6 +188,14 @@ def test_empirical_jitter_truth_benchmark_has_high_macro_f1(settings):
         observed,
         ("conserved", "gained_in_B", "lost_in_B", "shifted"),
     ) >= 0.90
+
+
+def test_truth_alignment_rejects_extra_predicted_event():
+    truth = {("a", "b"): "conserved"}
+    predicted = {**truth, (None, "extra"): "gained_in_B"}
+
+    with pytest.raises(AssertionError):
+        aligned_truth_labels(truth, predicted)
 
 
 def test_crowded_components_are_complex_only_when_tied(settings):
