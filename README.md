@@ -172,6 +172,92 @@ python scripts/cleanup_cworld_is.py --outdir results --samples H1394 H1395 H1396
 dsub -s run_snakemake.sh
 ```
 
+## IS-change and TAD-boundary annotation
+
+This optional downstream layer annotates IS-change loci with a single,
+provenance-aware collection of TAD-boundary events. It is a boundary-level
+analysis: it does not infer complete-TAD split, fusion, or nested-domain
+topology. For `H1398_vs_L134`, direction is always A-to-B
+(`H1398` to `L134`): `gained_in_B` is present in L134 only and `lost_in_B` is
+present in H1398 only.
+
+Position and strength are deliberately separate axes. `position_state` reports
+whether a boundary is `conserved`, `gained_in_B`, `lost_in_B`, `shifted`,
+`complex`, or `ambiguous`. `strength_state` is evaluated only where useful
+from the multiscale IS curves: a conserved boundary can therefore be
+`weakened_in_B` or `strengthened_in_B` while its position remains conserved.
+IS and 3DNetMod both use the same Hi-C experiments, so their agreement is
+cross-method consistency evidence, not an independent biological replicate.
+
+Raw and balanced 3DNetMod boundary outputs remain intact. The annotation stage
+uses a downstream union only: overlapping calls retain `both` provenance and
+unmatched calls retain `raw_only` or `balanced_only` provenance. The raw and
+balanced calls are not pooled as replicates. Localization jitter is the 95th
+percentile of eligible technical offsets (at least 100 offsets); otherwise it
+falls back to 20 kb. The primary shifted-boundary search radius is 100 kb, and
+60/80/100 kb calls are retained as a sensitivity check. A shifted event is
+associated with an IS locus only through either endpoint support interval,
+never through the corridor between its old and new positions.
+
+The primary and `single_band_preliminary` IS-locus tables are annotated by the
+same algorithm but are published separately. Use the primary table for main
+summaries; preliminary calls are a sensitivity output and must not be pooled
+with it.
+
+Stable annotation outputs are:
+
+```text
+results/tad_boundaries/{sample}.multires.unified.boundaries.tsv
+results/tad_boundaries/{sample}.boundary_jitter_offsets.tsv
+results/tad_boundaries/{sample}.annotation_views.tsv
+results/tad_boundary_events/{comparison}.boundary_events.tsv
+results/tad_boundary_events/{comparison}.boundary_event_stability.tsv
+results/tad_boundary_events/{comparison}.matching_qc.tsv
+results/tad_boundary_events/{comparison}.boundary_strength_by_scale.tsv
+results/tad_boundary_events/{comparison}.boundary_strength_summary.tsv
+results/tad_boundary_events/{comparison}.annotation_qc.tsv
+results/tad_boundary_events/{comparison}.annotation_summary.tsv
+results/multiscale/r4000/{comparison}/is_change/{comparison}_is_change_loci.boundary_annotated.tsv
+results/multiscale/r4000/{comparison}/is_change/{comparison}_is_change_loci_preliminary.boundary_annotated.tsv
+results/multiscale/r4000/{comparison}/is_change/figures/manifest.tsv
+results/tad_boundary_events/{comparison}.permutation.tsv  # optional
+```
+
+Target the H1398-to-L134 annotated primary table and its diagnostic figure
+manifest as follows. This schedules its required TAD, IS, unification,
+matching, annotation, and plotting dependencies; it does not claim that data
+are available or that a production run has completed.
+
+```bash
+CONDA_OFFLINE=true snakemake --use-conda --conda-prefix "$PWD/.snakemake/conda" \
+  --configfile config/config.yaml -- \
+  results/multiscale/r4000/H1398_vs_L134/is_change/H1398_vs_L134_is_change_loci.boundary_annotated.tsv \
+  results/multiscale/r4000/H1398_vs_L134/is_change/figures/manifest.tsv
+```
+
+The set-level permutation analysis is disabled by default and is not a
+locus-level P value. Enable it only for a deliberate sensitivity analysis:
+
+```yaml
+is_boundary_annotation:
+  permutation:
+    enabled: true
+```
+
+For a deterministic visual audit, join the figure manifest to the annotated
+primary table by `region_id`, filter to simple `position_state` classes, use
+seed `20260903` to order loci within each class, and inspect up to 20 loci
+from every sufficiently populated class. Record `boundary_event_id`, reviewer,
+`pass/fail`, and a note in
+`results/tad_boundary_events/{comparison}.visual_review.tsv`. This manual QC
+artifact is neither a Snakemake completion dependency nor a statistical test.
+
+The rationale and implementation contract are in the
+[design](docs/superpowers/specs/2026-09-03-is-change-tad-boundary-annotation-design.md),
+[implementation plan](docs/superpowers/plans/2026-09-03-is-change-tad-boundary-annotation.md),
+[ADR-0001](docs/adr/0001-3dnetmod-raw-and-balanced-signals.md), and
+[ADR-0002](docs/adr/0002-downstream-unified-tad-boundary-view.md).
+
 ---
 
 ## Directory Structure
