@@ -102,15 +102,15 @@ def _event_order(events):
     )
 
 
-def _mask_overlap(locus, masked, base_bin_bp):
+def _mask_reasons(locus, masked, base_bin_bp):
     if masked.empty:
-        return False
+        return ()
     start, end = locus_anchor(locus, base_bin_bp)
     rows = masked[masked["chrom"].eq(locus.chrom)]
-    return any(
-        _interval_overlap(start, end, int(row.start), int(row.end))
-        for row in rows.itertuples(index=False)
-    )
+    return tuple(sorted({
+        str(row.reason) for row in rows.itertuples(index=False)
+        if _interval_overlap(start, end, int(row.start), int(row.end))
+    }))
 
 
 def _blank_event():
@@ -158,14 +158,15 @@ def annotate_loci(loci, events, strength_summary, masked, settings):
     for locus in loci.itertuples(index=False):
         local_events = ordered[ordered["chrom"].eq(locus.chrom)]
         ids = associated_event_ids(locus, local_events, settings.base_bin_bp)
-        masked_here = _mask_overlap(locus, masked, settings.base_bin_bp)
+        mask_reasons = _mask_reasons(locus, masked, settings.base_bin_bp)
         event = event_by_id[ids[0]] if len(ids) == 1 else None
+        summary = strengths.get(event.boundary_event_id) if event is not None else None
         values = _blank_event()
         if event is not None:
             values.update(_event_values(event))
 
-        if masked_here:
-            position_state, reason = "ambiguous", "mask_overlap"
+        if mask_reasons:
+            position_state, reason = "ambiguous", f"mask_overlap:{','.join(mask_reasons)}"
         elif not ids:
             position_state, reason = "no_boundary_association", "no_overlapping_boundary_event"
         elif len(ids) > 1:
@@ -176,11 +177,15 @@ def annotate_loci(loci, events, strength_summary, masked, settings):
             position_state, reason = "ambiguous", "ambiguous_boundary_event"
         else:
             position_state, reason = event.position_state, "unique_boundary_event"
+        if (
+            position_state in {"gained_in_B", "lost_in_B"}
+            and (summary is None or summary.is_consistency_state == "unevaluable")
+        ):
+            position_state, reason = "ambiguous", "unevaluable_is_consistency"
 
         if event is None or position_state in {"complex", "ambiguous"}:
             strength = _blank_strength(position_state)
         else:
-            summary = strengths.get(event.boundary_event_id)
             strength = _blank_strength(position_state) if summary is None else {
                 key: getattr(summary, key)
                 for key in (
@@ -228,12 +233,20 @@ def annotation_qc(primary, preliminary, events, strength_long, strength_summary)
     """Return concise evaluability and sensitivity diagnostics for annotation outputs."""
     loci = pd.concat((primary, preliminary), ignore_index=True)
     rows = [
-        {"metric": "masked_loci", "value": int(loci["annotation_reason"].eq("mask_overlap").sum()), "detail": ""},
+        {"metric": "masked_loci", "value": int(loci["annotation_reason"].str.startswith("mask_overlap:", na=False).sum()), "detail": ""},
         {"metric": "unevaluable_strength_scales", "value": int(strength_long["robust_z"].isna().sum()), "detail": ""},
         {"metric": "fallback_jitter_events", "value": int(events["jitter_source"].eq("fallback_max_tad_resolution").sum()), "detail": ""},
         {"metric": "position_label_changes_across_shift_thresholds", "value": int((~events["position_state_stable"].astype(bool)).sum()), "detail": ""},
         {"metric": "strength_label_changes_across_z_thresholds", "value": int((~strength_summary["strength_state_stable"].astype(bool)).sum()), "detail": ""},
     ]
+    mask_counts = {}
+    for reason in loci.loc[
+        loci["annotation_reason"].str.startswith("mask_overlap:", na=False), "annotation_reason"
+    ]:
+        for item in str(reason).split(":", 1)[1].split(","):
+            mask_counts[item] = mask_counts.get(item, 0) + 1
+    for reason, count in sorted(mask_counts.items()):
+        rows.append({"metric": "masked_loci_reason", "value": count, "detail": reason})
     for count, total in loci["n_boundary_candidates"].value_counts(sort=False).sort_index().items():
         rows.append({"metric": "candidate_multiplicity", "value": int(total), "detail": str(int(count))})
     return pd.DataFrame(rows, columns=("metric", "value", "detail"))

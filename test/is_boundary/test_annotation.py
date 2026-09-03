@@ -123,7 +123,7 @@ def test_annotation_keeps_one_row_per_locus_and_handles_masked_absence():
     assert clean.set_index("region_id").loc["none", "position_state"] == "no_boundary_association"
     assert clean.set_index("region_id").loc["none", "boundary_event_id"] == ""
     assert masked.iloc[0].position_state == "ambiguous"
-    assert masked.iloc[0].annotation_reason == "mask_overlap"
+    assert masked.iloc[0].annotation_reason == "mask_overlap:IS_NA_A"
     assert clean.set_index("region_id").loc["multiple", "position_state"] == "complex"
     assert clean.set_index("region_id").loc["multiple", "n_boundary_candidates"] == 2
     assert clean.set_index("region_id").loc["complex", "position_state"] == "complex"
@@ -139,6 +139,35 @@ def test_conserved_position_can_carry_a_weakened_strength_state():
     assert result.position_state == "conserved"
     assert result.strength_state == "weakened_in_B"
     assert result.evidence_tier == "high"
+
+
+@pytest.mark.parametrize(
+    ("event_updates", "locus_updates"),
+    [
+        (
+            {"position_state": "gained_in_B", "a_start": float("nan"), "a_end": float("nan"), "b_start": 400000, "b_end": 404000},
+            {"summit": 400000, "event_start": 400000, "event_end": 404000},
+        ),
+        (
+            {"position_state": "lost_in_B", "a_start": 400000, "a_end": 404000, "b_start": float("nan"), "b_end": float("nan")},
+            {"summit": 400000, "event_start": 400000, "event_end": 404000},
+        ),
+    ],
+)
+def test_unevaluable_gain_or_loss_is_ambiguous(event_updates, locus_updates):
+    result = annotate_loci(
+        pd.DataFrame([_locus(**locus_updates)]),
+        pd.DataFrame([_event(**event_updates)], columns=BOUNDARY_EVENT_COLUMNS),
+        pd.DataFrame([_strength(
+            position_state=event_updates["position_state"], strength_state="not_applicable",
+            is_consistency_state="unevaluable", strength_state_stable=False,
+        )]),
+        _masked(), type("S", (), {"base_bin_bp": 4000})(),
+    ).iloc[0]
+
+    assert result.position_state == "ambiguous"
+    assert result.annotation_reason == "unevaluable_is_consistency"
+    assert result.evidence_tier == "not_applicable"
 
 
 @pytest.mark.parametrize(
@@ -183,6 +212,24 @@ def test_summary_uses_confidence_tier_denominators_and_explicit_state_order():
     ]
     assert summary.loc[summary.confidence_tier.eq("primary"), "denominator"].eq(2).all()
     assert summary.iloc[0].position_state == "conserved"
+
+
+def test_annotation_qc_counts_each_mask_reason():
+    from is_boundary_annotation import annotation_qc
+
+    loci = pd.DataFrame([
+        {"annotation_reason": "mask_overlap:IS_NA_A", "n_boundary_candidates": 0},
+        {"annotation_reason": "mask_overlap:IS_NA_A,FLANK_COVERAGE", "n_boundary_candidates": 1},
+        {"annotation_reason": "unique_boundary_event", "n_boundary_candidates": 1},
+    ])
+    events = pd.DataFrame({"jitter_source": ["empirical_q95"], "position_state_stable": [True]})
+    strength_long = pd.DataFrame({"robust_z": [float("nan"), 1.0]})
+    strength_summary = pd.DataFrame({"strength_state_stable": [True]})
+
+    qc = annotation_qc(loci, loci.iloc[0:0], events, strength_long, strength_summary)
+
+    reasons = qc[qc.metric.eq("masked_loci_reason")].set_index("detail")["value"].to_dict()
+    assert reasons == {"FLANK_COVERAGE": 1, "IS_NA_A": 2}
 
 
 def test_atomic_table_write_removes_temporary_files_on_serialization_failure(tmp_path, monkeypatch):
