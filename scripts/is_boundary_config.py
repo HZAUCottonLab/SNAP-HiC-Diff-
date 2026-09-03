@@ -1,5 +1,7 @@
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Mapping, Sequence
+from math import isfinite
+from typing import Any
 
 from cworld_is_config import CworldISSettings
 from tad_config import TadSettings
@@ -38,9 +40,50 @@ class ISBoundarySettings:
     permutation: PermutationSettings
 
 
+def _invalid(message: str) -> ValueError:
+    return ValueError(f"ERROR[IS_BOUNDARY_CONFIG_INVALID] {message}")
+
+
+def _required(raw: Mapping[str, Any], name: str) -> Any:
+    try:
+        return raw[name]
+    except KeyError as error:
+        raise _invalid(f"missing={name}") from error
+
+
+def _mapping(value: Any, name: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise _invalid(f"{name} must be a mapping")
+    return value
+
+
+def _sequence(value: Any, name: str) -> tuple[Any, ...]:
+    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+        raise _invalid(f"{name} must be a sequence")
+    return tuple(value)
+
+
 def _positive_int(value: Any, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(f"ERROR[IS_BOUNDARY_CONFIG_INVALID] {name} must be positive")
+        raise _invalid(f"{name} must be positive")
+    return value
+
+
+def _positive_float(value: Any, name: str) -> float:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not isfinite(value)
+        or value <= 0
+    ):
+        raise _invalid(f"{name} must be finite and positive")
+    return float(value)
+
+
+def _distance(value: Any, name: str, base: int) -> int:
+    value = _positive_int(value, name)
+    if value % base:
+        raise _invalid(f"{name} must align to the 4 kb grid")
     return value
 
 
@@ -49,110 +92,133 @@ def parse_is_boundary_settings(
     cworld: CworldISSettings,
     tad: TadSettings,
 ) -> ISBoundarySettings:
-    try:
-        raw = config["is_boundary_annotation"]
-        strength_raw = raw["strength"]
-        permutation_raw = raw["permutation"]
-    except (KeyError, TypeError) as error:
-        raise ValueError(
-            f"ERROR[IS_BOUNDARY_CONFIG_INVALID] missing={error}"
-        ) from error
-    base = _positive_int(raw["base_bin_bp"], "base_bin_bp")
-    if base != cworld.source_resolution_bp or base != min(tad.resolutions):
-        raise ValueError(
-            "ERROR[IS_BOUNDARY_CONFIG_INVALID] base_bin_bp must equal the 4 kb IS and finest TAD resolution"
-        )
-    if raw["association_padding_bp"] != 0:
-        raise ValueError(
-            "ERROR[IS_BOUNDARY_CONFIG_INVALID] association_padding_bp must equal zero"
-        )
-    if raw["raw_balanced_overlap_only"] is not True:
-        raise ValueError(
-            "ERROR[IS_BOUNDARY_CONFIG_INVALID] raw_balanced_overlap_only must be true"
-        )
-    quantile = raw["jitter_quantile"]
-    if isinstance(quantile, bool) or not isinstance(quantile, (int, float)) or not 0 < quantile < 1:
-        raise ValueError(
-            "ERROR[IS_BOUNDARY_CONFIG_INVALID] jitter_quantile must be between zero and one"
-        )
-    sensitivity = tuple(raw["shift_sensitivity_bp"])
-    if sensitivity != tuple(sorted(set(sensitivity))):
-        raise ValueError(
-            "ERROR[IS_BOUNDARY_CONFIG_INVALID] shift_sensitivity_bp must be sorted and unique"
-        )
-    max_shift = _positive_int(raw["max_shift_bp"], "max_shift_bp")
-    if max_shift not in sensitivity:
-        raise ValueError(
-            "ERROR[IS_BOUNDARY_CONFIG_INVALID] shift_sensitivity_bp must contain max_shift_bp"
-        )
-    grid_values = sensitivity + (
-        raw["jitter_fallback_bp"], raw["match_tie_tolerance_bp"], max_shift,
+    config = _mapping(config, "config")
+    raw = _mapping(
+        _required(config, "is_boundary_annotation"),
+        "is_boundary_annotation",
     )
-    if any(value % base for value in grid_values):
-        raise ValueError(
-            "ERROR[IS_BOUNDARY_CONFIG_INVALID] distance values must align to the 4 kb grid"
+    strength_raw = _mapping(_required(raw, "strength"), "strength")
+    permutation_raw = _mapping(_required(raw, "permutation"), "permutation")
+
+    base = _positive_int(_required(raw, "base_bin_bp"), "base_bin_bp")
+    if base != cworld.source_resolution_bp or base != min(tad.resolutions):
+        raise _invalid(
+            "base_bin_bp must equal the 4 kb IS and finest TAD resolution"
         )
+    padding = _required(raw, "association_padding_bp")
+    if isinstance(padding, bool) or not isinstance(padding, int) or padding != 0:
+        raise _invalid("association_padding_bp must equal zero")
+    if _required(raw, "raw_balanced_overlap_only") is not True:
+        raise _invalid("raw_balanced_overlap_only must be true")
+    quantile = _positive_float(_required(raw, "jitter_quantile"), "jitter_quantile")
+    if quantile >= 1:
+        raise _invalid("jitter_quantile must be between zero and one")
+
+    sensitivity = _sequence(
+        _required(raw, "shift_sensitivity_bp"),
+        "shift_sensitivity_bp",
+    )
+    if not sensitivity:
+        raise _invalid("shift_sensitivity_bp must not be empty")
+    sensitivity = tuple(
+        _distance(value, "shift_sensitivity_bp", base) for value in sensitivity
+    )
+    if sensitivity != tuple(sorted(set(sensitivity))):
+        raise _invalid("shift_sensitivity_bp must be sorted and unique")
+    max_shift = _positive_int(_required(raw, "max_shift_bp"), "max_shift_bp")
+    if max_shift not in sensitivity:
+        raise _invalid("shift_sensitivity_bp must contain max_shift_bp")
+    jitter_fallback = _distance(
+        _required(raw, "jitter_fallback_bp"),
+        "jitter_fallback_bp",
+        base,
+    )
+    match_tie_tolerance = _distance(
+        _required(raw, "match_tie_tolerance_bp"),
+        "match_tie_tolerance_bp",
+        base,
+    )
+    if jitter_fallback != max(tad.resolutions):
+        raise _invalid(
+            "jitter_fallback_bp must equal the maximum TAD resolution"
+        )
+
+    sensitivity_thresholds = _sequence(
+        _required(strength_raw, "sensitivity_thresholds"),
+        "sensitivity_thresholds",
+    )
+    if not sensitivity_thresholds:
+        raise _invalid("sensitivity_thresholds must not be empty")
+    sensitivity_thresholds = tuple(
+        _positive_float(value, "sensitivity_thresholds")
+        for value in sensitivity_thresholds
+    )
     strength = StrengthSettings(
-        local_radius_scale_factor=float(strength_raw["local_radius_scale_factor"]),
+        local_radius_scale_factor=_positive_float(
+            _required(strength_raw, "local_radius_scale_factor"),
+            "local_radius_scale_factor",
+        ),
         min_reference_boundaries=_positive_int(
-            strength_raw["min_reference_boundaries"], "min_reference_boundaries"
+            _required(strength_raw, "min_reference_boundaries"),
+            "min_reference_boundaries",
         ),
         min_valid_scales_per_band=_positive_int(
-            strength_raw["min_valid_scales_per_band"], "min_valid_scales_per_band"
+            _required(strength_raw, "min_valid_scales_per_band"),
+            "min_valid_scales_per_band",
         ),
-        robust_z_threshold=float(strength_raw["robust_z_threshold"]),
-        stable_abs_z_threshold=float(strength_raw["stable_abs_z_threshold"]),
-        sensitivity_thresholds=tuple(strength_raw["sensitivity_thresholds"]),
+        robust_z_threshold=_positive_float(
+            _required(strength_raw, "robust_z_threshold"),
+            "robust_z_threshold",
+        ),
+        stable_abs_z_threshold=_positive_float(
+            _required(strength_raw, "stable_abs_z_threshold"),
+            "stable_abs_z_threshold",
+        ),
+        sensitivity_thresholds=sensitivity_thresholds,
     )
-    if strength.local_radius_scale_factor <= 0:
-        raise ValueError(
-            "ERROR[IS_BOUNDARY_CONFIG_INVALID] local_radius_scale_factor must be positive"
-        )
     if strength.stable_abs_z_threshold >= strength.robust_z_threshold:
-        raise ValueError(
-            "ERROR[IS_BOUNDARY_CONFIG_INVALID] stable_abs_z_threshold must be smaller than robust_z_threshold"
+        raise _invalid(
+            "stable_abs_z_threshold must be smaller than robust_z_threshold"
         )
     if (
-        tuple(strength.sensitivity_thresholds)
-        != tuple(sorted(set(strength.sensitivity_thresholds)))
-        or strength.robust_z_threshold not in strength.sensitivity_thresholds
+        sensitivity_thresholds != tuple(sorted(set(sensitivity_thresholds)))
+        or strength.robust_z_threshold not in sensitivity_thresholds
     ):
-        raise ValueError(
-            "ERROR[IS_BOUNDARY_CONFIG_INVALID] sensitivity_thresholds must be sorted, unique, and contain robust_z_threshold"
+        raise _invalid(
+            "sensitivity_thresholds must be sorted, unique, and contain robust_z_threshold"
+        )
+
+    enabled = _required(raw, "enabled")
+    permutation_enabled = _required(permutation_raw, "enabled")
+    if not isinstance(enabled, bool) or not isinstance(permutation_enabled, bool):
+        raise _invalid("enabled fields must be boolean")
+    if permutation_enabled and not enabled:
+        raise _invalid(
+            "permutation.enabled requires is_boundary_annotation.enabled"
         )
     permutation = PermutationSettings(
-        enabled=permutation_raw["enabled"],
+        enabled=permutation_enabled,
         n_permutations=_positive_int(
-            permutation_raw["n_permutations"], "n_permutations"
+            _required(permutation_raw, "n_permutations"),
+            "n_permutations",
         ),
-        seed=_positive_int(permutation_raw["seed"], "seed"),
+        seed=_positive_int(_required(permutation_raw, "seed"), "seed"),
     )
-    if not isinstance(raw["enabled"], bool) or not isinstance(permutation.enabled, bool):
-        raise ValueError(
-            "ERROR[IS_BOUNDARY_CONFIG_INVALID] enabled fields must be boolean"
-        )
-    if permutation.enabled and not raw["enabled"]:
-        raise ValueError(
-            "ERROR[IS_BOUNDARY_CONFIG_INVALID] permutation.enabled requires is_boundary_annotation.enabled"
-        )
-    jitter_fallback = _positive_int(raw["jitter_fallback_bp"], "jitter_fallback_bp")
-    if jitter_fallback != max(tad.resolutions):
-        raise ValueError(
-            "ERROR[IS_BOUNDARY_CONFIG_INVALID] jitter_fallback_bp must equal the maximum TAD resolution"
-        )
+
     return ISBoundarySettings(
-        enabled=raw["enabled"],
-        association_padding_bp=raw["association_padding_bp"],
+        enabled=enabled,
+        association_padding_bp=padding,
         raw_balanced_overlap_only=True,
         base_bin_bp=base,
-        jitter_quantile=float(quantile),
-        jitter_min_pairs=_positive_int(raw["jitter_min_pairs"], "jitter_min_pairs"),
+        jitter_quantile=quantile,
+        jitter_min_pairs=_positive_int(
+            _required(raw, "jitter_min_pairs"),
+            "jitter_min_pairs",
+        ),
         jitter_fallback_bp=jitter_fallback,
         max_shift_bp=max_shift,
         shift_sensitivity_bp=sensitivity,
-        match_tie_tolerance_bp=_positive_int(
-            raw["match_tie_tolerance_bp"], "match_tie_tolerance_bp"
-        ),
+        match_tie_tolerance_bp=match_tie_tolerance,
         strength=strength,
         permutation=permutation,
     )

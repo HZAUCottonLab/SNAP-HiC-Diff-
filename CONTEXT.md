@@ -37,14 +37,16 @@ outputs.
 ## Boundary position state
 
 The downstream comparison classification of a unified boundary between H1398
-(A) and L134 (B): stable, shifted, A-only, or B-only. It retains the source
-normalization provenance and positions on the 4 kb grid.
+(A) and L134 (B) on the same reference genome and the same 4 kb grid. The
+approved states are `conserved`, `gained_in_B`, `lost_in_B`, `shifted`,
+`complex`, and `ambiguous`; each retains source normalization provenance.
 
 ## Shifted boundary
 
-A unified boundary whose matched H1398 (A) and L134 (B) positions differ on
-the 4 kb grid. The shifted classification preserves both positions and does
-not replace either raw or balanced upstream boundary output.
+A shifted boundary is an ordered A→B match only when
+`J < abs(center_B - center_A) <= Dmax`. A matched boundary within J is
+`conserved`. The shifted classification preserves both positions and does not
+replace either raw or balanced upstream boundary output.
 
 ## IS boundary strength
 

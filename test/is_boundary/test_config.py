@@ -68,3 +68,71 @@ def test_permutation_cannot_be_enabled_when_annotation_is_disabled():
             parse_cworld_is_settings(config),
             parse_tad_settings(config),
         )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ("base_bin_bp",),
+        ("strength", "robust_z_threshold"),
+        ("permutation", "seed"),
+    ],
+)
+def test_rejects_missing_boundary_annotation_keys_with_stable_error(path):
+    config = deepcopy(repository_config())
+    value = config["is_boundary_annotation"]
+    for key in path[:-1]:
+        value = value[key]
+    del value[path[-1]]
+    with pytest.raises(ValueError, match=r"ERROR\[IS_BOUNDARY_CONFIG_INVALID\]"):
+        parse_is_boundary_settings(
+            config,
+            parse_cworld_is_settings(config),
+            parse_tad_settings(config),
+        )
+
+
+@pytest.mark.parametrize(
+    "sensitivity",
+    [
+        [],
+        100000,
+        [-4000, 60000, 80000, 100000],
+    ],
+)
+def test_rejects_empty_wrong_or_negative_shift_sensitivity(sensitivity):
+    config = deepcopy(repository_config())
+    config["is_boundary_annotation"]["shift_sensitivity_bp"] = sensitivity
+    with pytest.raises(
+        ValueError, match=r"ERROR\[IS_BOUNDARY_CONFIG_INVALID\].*shift_sensitivity_bp"
+    ):
+        parse_is_boundary_settings(
+            config,
+            parse_cworld_is_settings(config),
+            parse_tad_settings(config),
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "sensitivity_thresholds"),
+    [
+        ("robust_z_threshold", float("inf"), [1.5, 2.0, float("inf")]),
+        ("stable_abs_z_threshold", -1.0, None),
+        ("sensitivity_thresholds", [1.5, 2.0, float("inf")], None),
+        ("sensitivity_thresholds", [-1.0, 1.5, 2.0], None),
+    ],
+)
+def test_rejects_nonfinite_or_negative_strength_thresholds(
+    field, value, sensitivity_thresholds
+):
+    config = deepcopy(repository_config())
+    strength = config["is_boundary_annotation"]["strength"]
+    strength[field] = value
+    if sensitivity_thresholds is not None:
+        strength["sensitivity_thresholds"] = sensitivity_thresholds
+    with pytest.raises(ValueError, match=r"ERROR\[IS_BOUNDARY_CONFIG_INVALID\]"):
+        parse_is_boundary_settings(
+            config,
+            parse_cworld_is_settings(config),
+            parse_tad_settings(config),
+        )
