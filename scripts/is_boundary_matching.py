@@ -48,8 +48,8 @@ def align_ordered(boundaries_a, boundaries_b, max_distance_bp: int):
 
     def better(left, right):
         left_node, right_node = nodes[left], nodes[right]
-        return left if (left_node[0], left_node[1], -left) > (
-            right_node[0], right_node[1], -right
+        return left if (left_node[0], left_node[1], left) > (
+            right_node[0], right_node[1], right
         ) else right
 
     def query(index_b):

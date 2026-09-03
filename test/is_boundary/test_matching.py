@@ -216,6 +216,23 @@ def test_ordered_alignment_enumerates_only_local_band_candidates(monkeypatch):
     assert align_ordered(a, b, 100000) == [(index, index) for index in range(100)]
 
 
+def test_ordered_dp_tie_prefers_terminal_match_for_event_identity(settings):
+    a = unified_frame([("A02", 96000, 104000, "a")])
+    b = unified_frame([
+        ("A02", 24000, 32000, "b_earlier"),
+        ("A02", 168000, 176000, "b_later"),
+    ])
+    jitter = JitterEstimate(20000, "empirical_q95", 200, 20000.0)
+
+    assert align_ordered(a, b, settings.max_shift_bp) == [(0, 1)]
+    events = call_boundary_events(
+        a, b, jitter, settings, "sample_a_vs_sample_b", "sample_a", "sample_b"
+    )
+    paired = events.loc[events.boundary_a_id == "a"].iloc[0]
+    assert paired.boundary_b_id == "b_later"
+    assert paired.position_state == "ambiguous"
+
+
 def test_view_stability_output_order_ignores_input_row_order(settings):
     a = unified_frame([("A02", 0, 8000, "a1"), ("A02", 40000, 48000, "a2")])
     b = unified_frame([("A02", 0, 8000, "b1"), ("A02", 40000, 48000, "b2")])
