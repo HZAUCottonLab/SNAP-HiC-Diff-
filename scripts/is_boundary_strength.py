@@ -39,28 +39,53 @@ def _valid_fraction(values):
     return float(np.isfinite(values).mean()) if len(values) else 0.0
 
 
+def _max_invalid_run(valid):
+    run = maximum = 0
+    for observed in valid:
+        if observed:
+            run = 0
+        else:
+            run += 1
+            maximum = max(maximum, run)
+    return maximum
+
+
+def _evaluable(values, fraction, max_missing_run_bins):
+    valid = np.isfinite(values)
+    return (
+        len(valid) > 0
+        and valid.mean() >= fraction
+        and _max_invalid_run(valid) <= max_missing_run_bins
+    )
+
+
 def local_valley_strength(
-    track, start, end, scale_bp, min_valid_fraction, min_flank_valid_fraction=None
+    track, start, end, scale_bp, min_valid_fraction, min_flank_valid_fraction=None,
+    resolution_bp=4000, max_missing_run_bins=1,
 ):
     """Return the strongest plateau-aware IS valley inside one boundary interval."""
     radius = int(scale_bp)
     flank_threshold = min_valid_fraction if min_flank_valid_fraction is None else min_flank_valid_fraction
-    segment = track.loc[
-        track.start.between(start - radius, end + radius - 1), ["start", "IS"]
-    ].sort_values("start", kind="stable")
-    values = segment.IS.to_numpy(dtype=float)
-    starts = segment.start.to_numpy(dtype=int)
+    if track.empty:
+        return _missing_observation()
+    lower = max(0, int(start) - radius)
+    first = ((lower + resolution_bp - 1) // resolution_bp) * resolution_bp
+    upper = min(int(end) + radius, int(track.start.max()) + resolution_bp)
+    starts = np.arange(first, upper, resolution_bp, dtype=int)
+    values = (
+        track.set_index("start").IS.reindex(starts).to_numpy(dtype=float)
+        if len(starts) else np.array([], dtype=float)
+    )
     finite = np.isfinite(values)
     valid_fraction = _valid_fraction(values)
     central = values[(starts >= start) & (starts < end)]
     left = values[(starts >= start - radius) & (starts < start)]
     right = values[(starts >= end) & (starts < end + radius)]
     if (
-        not len(segment)
-        or valid_fraction < min_valid_fraction
-        or _valid_fraction(central) < min_valid_fraction
-        or _valid_fraction(left) < flank_threshold
-        or _valid_fraction(right) < flank_threshold
+        not _evaluable(values, min_valid_fraction, max_missing_run_bins)
+        or not _evaluable(central, min_valid_fraction, max_missing_run_bins)
+        or not _evaluable(left, flank_threshold, max_missing_run_bins)
+        or not _evaluable(right, flank_threshold, max_missing_run_bins)
     ):
         return StrengthObservation(float("nan"), float("nan"), "insufficient_coverage", valid_fraction)
 
@@ -105,6 +130,7 @@ def _observation(track, interval, radius, is_settings):
     return local_valley_strength(
         track, int(interval[0]), int(interval[1]), radius,
         is_settings.min_local_valid_fraction, is_settings.min_flank_valid_fraction,
+        is_settings.resolution_bp, is_settings.max_missing_run_bins,
     )
 
 

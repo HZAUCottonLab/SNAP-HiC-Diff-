@@ -69,6 +69,35 @@ def test_local_valley_strength_requires_each_flank():
     assert observation.detection == "insufficient_coverage"
 
 
+def test_local_valley_strength_counts_missing_flank_grid_positions():
+    track = pd.DataFrame({
+        "start": np.arange(9) * 4000,
+        "IS": [1.0, 0.8, 0.5, -2.0, 0.4, 0.7, 1.0, 0.9, 0.8],
+    }).query("start != 4000")
+
+    observation = local_valley_strength(
+        track, 12000, 20000, 32000, 0.50, min_flank_valid_fraction=0.80
+    )
+
+    assert np.isnan(observation.strength)
+    assert observation.detection == "insufficient_coverage"
+
+
+def test_local_valley_strength_rejects_long_missing_run_in_large_flank():
+    starts = np.arange(0, 320000, 4000)
+    values = np.zeros(len(starts))
+    values[starts == 160000] = -2.0
+    values[np.isin(starts, [80000, 84000])] = np.nan
+    track = pd.DataFrame({"start": starts, "IS": values})
+
+    observation = local_valley_strength(
+        track, 160000, 164000, 120000, 0.50, min_flank_valid_fraction=0.80
+    )
+
+    assert np.isnan(observation.strength)
+    assert observation.detection == "insufficient_coverage"
+
+
 def event_frame(rows):
     return pd.DataFrame(rows, columns=[
         "comparison", "boundary_event_id", "chrom", "position_state",
