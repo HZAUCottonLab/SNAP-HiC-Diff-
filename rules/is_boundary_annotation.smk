@@ -22,24 +22,27 @@ rule unify_tad_boundaries:
     threads: 1
     params:
         script=SCRIPT_DIR + "/scripts/unify_tad_boundaries.py",
+        config="config/config.yaml",
+        benchmark_dir=OUTDIR + "/benchmark/is_boundary",
     conda:
         "../env/SNAP-HiC-Diff.yaml"
     shell:
         r"""
         set -euo pipefail
-        mkdir -p "$(dirname "{output.unified}")" "$(dirname "{log}")"
-        python "{params.script}" \
-            --sample "{wildcards.sample}" \
-            --raw-multires "{input.raw_multires}" \
-            --balanced-multires "{input.balanced_multires}" \
-            --raw-resolution-boundaries {input.raw_resolution} \
-            --balanced-resolution-boundaries {input.balanced_resolution} \
-            --mcool "{input.mcool}" \
-            --config config/config.yaml \
-            --output-unified "{output.unified}" \
-            --output-offsets "{output.offsets}" \
-            --output-views "{output.views}" \
-            --log "{log}"
+        mkdir -p "$(dirname {output.unified:q})" "$(dirname {log:q})" {params.benchmark_dir:q}
+        python {params.script:q} \
+            --sample {wildcards.sample:q} \
+            --raw-multires {input.raw_multires:q} \
+            --balanced-multires {input.balanced_multires:q} \
+            --raw-resolution-boundaries {input.raw_resolution:q} \
+            --balanced-resolution-boundaries {input.balanced_resolution:q} \
+            --mcool {input.mcool:q} \
+            --config {params.config:q} \
+            --output-unified {output.unified:q} \
+            --output-offsets {output.offsets:q} \
+            --output-views {output.views:q} \
+            --log {log:q} \
+            >> {log:q} 2>&1
         """
 
 
@@ -62,6 +65,8 @@ rule call_tad_boundary_events:
     threads: 1
     params:
         script=SCRIPT_DIR + "/scripts/call_tad_boundary_events.py",
+        config="config/config.yaml",
+        benchmark_dir=OUTDIR + "/benchmark/is_boundary",
         sample_a=lambda w: get_pair_samples(w.comparison)[0],
         sample_b=lambda w: get_pair_samples(w.comparison)[1],
     conda:
@@ -69,22 +74,23 @@ rule call_tad_boundary_events:
     shell:
         r"""
         set -euo pipefail
-        mkdir -p "$(dirname "{output.events}")" "$(dirname "{log}")"
-        python "{params.script}" \
-            --comparison "{wildcards.comparison}" \
-            --sample-a "{params.sample_a}" \
-            --sample-b "{params.sample_b}" \
-            --boundaries-a "{input.boundaries_a}" \
-            --boundaries-b "{input.boundaries_b}" \
-            --offsets-a "{input.offsets_a}" \
-            --offsets-b "{input.offsets_b}" \
-            --views-a "{input.views_a}" \
-            --views-b "{input.views_b}" \
-            --config config/config.yaml \
-            --output-events "{output.events}" \
-            --output-stability "{output.stability}" \
-            --output-qc "{output.qc}" \
-            --log "{log}"
+        mkdir -p "$(dirname {output.events:q})" "$(dirname {log:q})" {params.benchmark_dir:q}
+        python {params.script:q} \
+            --comparison {wildcards.comparison:q} \
+            --sample-a {params.sample_a:q} \
+            --sample-b {params.sample_b:q} \
+            --boundaries-a {input.boundaries_a:q} \
+            --boundaries-b {input.boundaries_b:q} \
+            --offsets-a {input.offsets_a:q} \
+            --offsets-b {input.offsets_b:q} \
+            --views-a {input.views_a:q} \
+            --views-b {input.views_b:q} \
+            --config {params.config:q} \
+            --output-events {output.events:q} \
+            --output-stability {output.stability:q} \
+            --output-qc {output.qc:q} \
+            --log {log:q} \
+            >> {log:q} 2>&1
         """
 
 
@@ -110,28 +116,31 @@ rule annotate_is_change_boundaries:
     threads: 1
     params:
         script=SCRIPT_DIR + "/scripts/annotate_is_change_boundaries.py",
+        config="config/config.yaml",
+        benchmark_dir=OUTDIR + "/benchmark/is_boundary",
     conda:
         "../env/SNAP-HiC-Diff.yaml"
     shell:
         r"""
         set -euo pipefail
-        mkdir -p "$(dirname "{output.primary}")" "$(dirname "{log}")"
-        python "{params.script}" \
-            --comparison "{wildcards.comparison}" \
-            --events "{input.events}" \
-            --primary "{input.primary}" \
-            --preliminary "{input.preliminary}" \
-            --masked "{input.masked}" \
-            --is-a "{input.is_a}" \
-            --is-b "{input.is_b}" \
-            --config config/config.yaml \
-            --out-primary "{output.primary}" \
-            --out-preliminary "{output.preliminary}" \
-            --out-strength "{output.strength}" \
-            --out-strength-summary "{output.strength_summary}" \
-            --out-qc "{output.qc}" \
-            --out-summary "{output.summary}" \
-            --log "{log}"
+        mkdir -p "$(dirname {output.primary:q})" "$(dirname {log:q})" {params.benchmark_dir:q}
+        python {params.script:q} \
+            --comparison {wildcards.comparison:q} \
+            --events {input.events:q} \
+            --primary {input.primary:q} \
+            --preliminary {input.preliminary:q} \
+            --masked {input.masked:q} \
+            --is-a {input.is_a:q} \
+            --is-b {input.is_b:q} \
+            --config {params.config:q} \
+            --out-primary {output.primary:q} \
+            --out-preliminary {output.preliminary:q} \
+            --out-strength {output.strength:q} \
+            --out-strength-summary {output.strength_summary:q} \
+            --out-qc {output.qc:q} \
+            --out-summary {output.summary:q} \
+            --log {log:q} \
+            >> {log:q} 2>&1
         """
 
 
@@ -150,18 +159,21 @@ rule permute_is_boundary_association:
     threads: 1
     params:
         script=SCRIPT_DIR + "/scripts/permute_is_boundary_association.py",
+        config="config/config.yaml",
+        benchmark_dir=OUTDIR + "/benchmark/is_boundary",
     conda:
         "../env/SNAP-HiC-Diff.yaml"
     shell:
         r"""
         set -euo pipefail
-        mkdir -p "$(dirname "{output.permutation}")" "$(dirname "{log}")"
-        python "{params.script}" \
-            --loci "{input.loci}" \
-            --candidate-regions "{input.regions}" \
-            --events "{input.events}" \
-            --masked "{input.masked}" \
-            --config config/config.yaml \
-            --output "{output.permutation}" \
-            --log "{log}"
+        mkdir -p "$(dirname {output.permutation:q})" "$(dirname {log:q})" {params.benchmark_dir:q}
+        python {params.script:q} \
+            --loci {input.loci:q} \
+            --candidate-regions {input.regions:q} \
+            --events {input.events:q} \
+            --masked {input.masked:q} \
+            --config {params.config:q} \
+            --output {output.permutation:q} \
+            --log {log:q} \
+            >> {log:q} 2>&1
         """
