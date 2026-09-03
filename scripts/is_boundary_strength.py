@@ -118,6 +118,8 @@ def _intervals(event, role):
 
 
 def _track_index(track):
+    if isinstance(track, dict):
+        return track
     return {
         (chrom, int(scale)): group[["start", "IS"]].sort_values("start", kind="stable")
         for (chrom, scale), group in track.groupby(["chrom", "IS_distance"], sort=False, observed=True)
@@ -143,6 +145,8 @@ def _band_by_scale(is_settings):
 
 
 def _standardize_strength_long(strength_long, boundary_settings):
+    if strength_long.empty:
+        return strength_long.loc[:, STRENGTH_LONG_COLUMNS].copy()
     result = strength_long.copy()
     result[["robust_z", "reference_n", "reference_median", "reference_mad"]] = np.nan
     reference = result.loc[

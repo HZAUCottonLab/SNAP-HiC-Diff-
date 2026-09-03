@@ -38,6 +38,13 @@ BOUNDARY_STABILITY_COLUMNS = (
     "comparison", "boundary_event_id", "view", "reference_position_state",
     "sensitivity_position_state", "concordant", "reason",
 )
+ANNOTATION_COLUMNS = (
+    "boundary_event_id", "position_state", "position_substate", "strength_state",
+    "strength_support_bands", "is_consistency_state", "evidence_tier", "boundary_a_id",
+    "boundary_b_id", "shift_bp", "signal_support_a", "signal_support_b",
+    "resolution_support_a", "resolution_support_b", "n_boundary_candidates",
+    "jitter_threshold_bp", "max_shift_bp", "annotation_reason",
+)
 STRENGTH_LONG_COLUMNS = (
     "comparison", "boundary_event_id", "chrom", "position_state",
     "coordinate_role", "IS_distance", "scale_band", "a_start", "a_end",
@@ -245,4 +252,29 @@ def atomic_write_tsv(frame: pd.DataFrame, path, columns) -> None:
         os.replace(temporary, target)
     except BaseException:
         Path(temporary).unlink(missing_ok=True)
+        raise
+
+
+def atomic_write_tables(tables) -> None:
+    """Stage schema-checked TSVs before replacing their published paths."""
+    temporary = []
+    try:
+        for frame, path, columns in tables:
+            if tuple(frame.columns) != tuple(columns):
+                raise ISBoundaryError(
+                    "IS_BOUNDARY_INPUT_SCHEMA_INVALID", path=path, reason="output_schema"
+                )
+            target = Path(path)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            descriptor, name = tempfile.mkstemp(
+                dir=target.parent, prefix=f".{target.name}.", suffix=".tmp"
+            )
+            os.close(descriptor)
+            temporary.append((Path(name), target))
+            frame.to_csv(name, sep="\t", index=False)
+        for name, target in temporary:
+            os.replace(name, target)
+    except BaseException:
+        for name, _ in temporary:
+            name.unlink(missing_ok=True)
         raise
