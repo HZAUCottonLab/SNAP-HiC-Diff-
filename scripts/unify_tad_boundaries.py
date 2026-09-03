@@ -184,7 +184,8 @@ def run_from_args(args):
         raw, balanced, settings.match_tie_tolerance_bp, chrom_order=chrom_order
     )
     offsets = build_jitter_offsets(
-        raw_jitter, balanced_jitter, per_resolution_jitter, settings.base_bin_bp
+        raw_jitter, balanced_jitter, per_resolution_jitter, settings.base_bin_bp,
+        settings.match_tie_tolerance_bp,
     )
     views = build_sensitivity_views(
         args.sample, raw, balanced, per_resolution, settings

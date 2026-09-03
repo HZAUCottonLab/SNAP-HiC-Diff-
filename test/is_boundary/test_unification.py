@@ -96,6 +96,13 @@ def test_adjacency_does_not_unify_and_many_to_many_is_complex(tmp_path):
     observed = unify_boundaries(raw, balanced, tie_tolerance_bp=4000)
 
     assert (observed["component_state"] == "complex_within_sample").sum() == 1
+    complex_row = observed.loc[
+        observed["component_state"] == "complex_within_sample"
+    ].iloc[0]
+    assert complex_row[["raw_boundary_ids", "balanced_boundary_ids"]].to_dict() == {
+        "raw_boundary_ids": "r1,r2",
+        "balanced_boundary_ids": "b1,b2",
+    }
     assert set(observed.loc[observed.start >= 30000, "signal_support"]) == {"raw_only", "balanced_only"}
 
 
@@ -206,6 +213,24 @@ def test_jitter_offsets_include_raw_balanced_pair_and_propagate_exclusions():
     assert not complex_offsets.loc[
         complex_offsets["comparison"] == "raw_vs_balanced", "eligible"
     ].any()
+
+    near_tie_raw = boundary_frame("raw", [
+        ("A02", 0, 8000, "near_tie_raw", "4000", 1),
+    ])
+    near_tie_balanced = boundary_frame("balanced", [
+        ("A02", 0, 8000, "near_tie_balanced_1", "4000", 1),
+        ("A02", 2000, 10000, "near_tie_balanced_2", "4000", 1),
+    ])
+    assert (
+        unify_boundaries(near_tie_raw, near_tie_balanced, tie_tolerance_bp=4000)
+        ["component_state"].eq("complex_within_sample").all()
+    )
+    near_tie_offsets = build_jitter_offsets(
+        near_tie_raw, near_tie_balanced, per_resolution, base_bin_bp=4000
+    )
+    assert not near_tie_offsets.loc[
+        near_tie_offsets["comparison"] == "raw_vs_balanced", "eligible"
+    ].iloc[0]
 
     resolution_metadata = pd.DataFrame([
         {"chrom": "A02", "start": 0, "end": 8000, "boundary_id": "raw_r4",

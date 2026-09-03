@@ -62,7 +62,9 @@ def _resolution_union(rows):
 
 
 def _row(raw_rows, balanced_rows, component_state="simple"):
-    rows = list(raw_rows) + list(balanced_rows)
+    raw_rows = list(raw_rows)
+    balanced_rows = list(balanced_rows)
+    rows = raw_rows + balanced_rows
     resolutions = _resolution_union(rows)
     return {
         "chrom": rows[0].chrom,
@@ -242,7 +244,7 @@ def _candidate_distances(left, right, item):
     )
 
 
-def _reciprocal_unique(left, right, left_index, right_index):
+def _reciprocal_unique(left, right, left_index, right_index, tie_tolerance_bp):
     left_item = left.iloc[left_index]
     right_item = right.iloc[right_index]
     left_distances = _candidate_distances(left, right, left_item)
@@ -250,10 +252,11 @@ def _reciprocal_unique(left, right, left_index, right_index):
     if not left_distances or not right_distances:
         return False
     return (
-        len(left_distances) == 1 or left_distances[0][0] < left_distances[1][0]
-    ) and (
-        len(right_distances) == 1 or right_distances[0][0] < right_distances[1][0]
-    ) and left_distances[0][1] == right_index and right_distances[0][1] == left_index
+        (len(left_distances) == 1 or left_distances[1][0] - left_distances[0][0] >= tie_tolerance_bp)
+        and (len(right_distances) == 1 or right_distances[1][0] - right_distances[0][0] >= tie_tolerance_bp)
+        and left_distances[0][1] == right_index
+        and right_distances[0][1] == left_index
+    )
 
 
 def _is_excluded(item):
@@ -297,7 +300,9 @@ def _sample(left, right):
     return values[0] if values else ""
 
 
-def _offset_rows(left, right, source, comparison, resolution_a, resolution_b):
+def _offset_rows(
+    left, right, source, comparison, resolution_a, resolution_b, tie_tolerance_bp
+):
     left = left.copy().assign(center_bp=lambda frame: (frame["start"] + frame["end"]) // 2)
     right = right.copy().assign(center_bp=lambda frame: (frame["start"] + frame["end"]) // 2)
     rows = []
@@ -326,7 +331,9 @@ def _offset_rows(left, right, source, comparison, resolution_a, resolution_b):
                 "center_b": int(item_b.center_bp),
                 "offset_bp": abs(int(item_a.center_bp) - int(item_b.center_bp)),
                 "eligible": bool(
-                    _reciprocal_unique(left_chrom, right_chrom, left_index, right_index)
+                    _reciprocal_unique(
+                        left_chrom, right_chrom, left_index, right_index, tie_tolerance_bp
+                    )
                     and not _in_complex_component(
                         left_chrom, right_chrom, left_index, right_index
                     )
@@ -337,11 +344,22 @@ def _offset_rows(left, right, source, comparison, resolution_a, resolution_b):
     return rows
 
 
-def build_jitter_offsets(raw, balanced, per_resolution, base_bin_bp: int) -> pd.DataFrame:
+def build_jitter_offsets(
+    raw, balanced, per_resolution, base_bin_bp: int, tie_tolerance_bp=None
+) -> pd.DataFrame:
     if isinstance(base_bin_bp, bool) or not isinstance(base_bin_bp, int) or base_bin_bp <= 0:
         raise ValueError("base_bin_bp must be a positive integer")
+    if tie_tolerance_bp is None:
+        tie_tolerance_bp = base_bin_bp
+    if (
+        isinstance(tie_tolerance_bp, bool)
+        or not isinstance(tie_tolerance_bp, int)
+        or tie_tolerance_bp <= 0
+    ):
+        raise ValueError("tie_tolerance_bp must be a positive integer")
     rows = _offset_rows(
-        raw, balanced, "raw_balanced", "raw_vs_balanced", "multires", "multires"
+        raw, balanced, "raw_balanced", "raw_vs_balanced", "multires", "multires",
+        tie_tolerance_bp,
     )
     resolutions = sorted(set(per_resolution.get("resolution", pd.Series(dtype=int))))
     for signal, full in (("raw", raw), ("balanced", balanced)):
@@ -351,7 +369,7 @@ def build_jitter_offsets(raw, balanced, per_resolution, base_bin_bp: int) -> pd.
             )
             rows.extend(_offset_rows(
                 full, leave_one_out, signal, f"full_vs_leave_r{resolution}_out",
-                "full", f"leave_r{resolution}_out",
+                "full", f"leave_r{resolution}_out", tie_tolerance_bp,
             ))
     for signal in ("raw", "balanced"):
         signal_rows = per_resolution[per_resolution["signal"] == signal]
@@ -360,6 +378,7 @@ def build_jitter_offsets(raw, balanced, per_resolution, base_bin_bp: int) -> pd.
                 signal_rows[signal_rows["resolution"] == resolution_a],
                 signal_rows[signal_rows["resolution"] == resolution_b],
                 signal, f"r{resolution_a}_vs_r{resolution_b}", resolution_a, resolution_b,
+                tie_tolerance_bp,
             ))
     return pd.DataFrame(rows, columns=JITTER_OFFSET_COLUMNS)
 
