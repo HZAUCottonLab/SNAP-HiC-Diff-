@@ -70,14 +70,15 @@ def _positive_int(value: Any, name: str) -> int:
 
 
 def _positive_float(value: Any, name: str) -> float:
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, (int, float))
-        or not isfinite(value)
-        or value <= 0
-    ):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise _invalid(f"{name} must be finite and positive")
-    return float(value)
+    try:
+        value = float(value)
+    except OverflowError as error:
+        raise _invalid(f"{name} must be finite and positive") from error
+    if not isfinite(value) or value <= 0:
+        raise _invalid(f"{name} must be finite and positive")
+    return value
 
 
 def _distance(value: Any, name: str, base: int) -> int:

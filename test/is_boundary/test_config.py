@@ -136,3 +136,20 @@ def test_rejects_nonfinite_or_negative_strength_thresholds(
             parse_cworld_is_settings(config),
             parse_tad_settings(config),
         )
+
+
+def test_rejects_strength_threshold_that_overflows_float_conversion():
+    config = deepcopy(repository_config())
+    huge_integer = 10**1000
+    strength = config["is_boundary_annotation"]["strength"]
+    strength["robust_z_threshold"] = huge_integer
+    strength["sensitivity_thresholds"] = [1.5, 2.0, huge_integer]
+    with pytest.raises(
+        ValueError,
+        match=r"ERROR\[IS_BOUNDARY_CONFIG_INVALID\].*must be finite and positive",
+    ):
+        parse_is_boundary_settings(
+            config,
+            parse_cworld_is_settings(config),
+            parse_tad_settings(config),
+        )
