@@ -14,6 +14,7 @@ from cworld_is_config import parse_cworld_is_settings
 from is_boundary_config import parse_is_boundary_settings
 from is_boundary_matching import (
     JitterEstimate,
+    _candidate_data,
     align_ordered,
     call_boundary_events,
     compare_event_views,
@@ -167,6 +168,86 @@ def test_event_order_and_ids_do_not_depend_on_input_row_order(settings):
     assert original[["chrom", "boundary_event_id"]].to_dict("records") == (
         reordered[["chrom", "boundary_event_id"]].to_dict("records")
     )
+
+
+def test_stage2_uses_residual_candidates_after_fixed_match(settings):
+    a = unified_frame([
+        ("A02", 36000, 44000, "a_fixed"),
+        ("A02", 56000, 64000, "a_shifted"),
+    ])
+    b = unified_frame([
+        ("A02", 36000, 44000, "b_fixed"),
+        ("A02", 128000, 136000, "b_shifted"),
+    ])
+
+    events = call_boundary_events(
+        a, b, JitterEstimate(16000, "empirical_q95", 200, 16000.0), settings,
+        "sample_a_vs_sample_b", "sample_a", "sample_b",
+    )
+
+    shifted = events.loc[events.boundary_a_id == "a_shifted"].iloc[0]
+    assert shifted.position_state == "shifted"
+    assert shifted.boundary_b_id == "b_shifted"
+
+
+def test_ordered_alignment_enumerates_only_local_band_candidates(monkeypatch):
+    a = unified_frame([
+        ("A02", index * 1_000_000, index * 1_000_000 + 8000, f"a{index}")
+        for index in range(100)
+    ])
+    b = unified_frame([
+        ("A02", index * 1_000_000 + 72000, index * 1_000_000 + 80000, f"b{index}")
+        for index in range(100)
+    ])
+    candidates = _candidate_data(a, b, 100000)
+    assert sum(len(values) for values in candidates[0].values()) == len(a)
+
+    calls = 0
+    original_iterrows = pd.DataFrame.iterrows
+
+    def counted_iterrows(frame, *args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original_iterrows(frame, *args, **kwargs)
+
+    monkeypatch.setattr(pd.DataFrame, "iterrows", counted_iterrows)
+    _candidate_data(a, b, 100000)
+    assert calls <= 1
+    assert align_ordered(a, b, 100000) == [(index, index) for index in range(100)]
+
+
+def test_view_stability_output_order_ignores_input_row_order(settings):
+    a = unified_frame([("A02", 0, 8000, "a1"), ("A02", 40000, 48000, "a2")])
+    b = unified_frame([("A02", 0, 8000, "b1"), ("A02", 40000, 48000, "b2")])
+    events = call_boundary_events(
+        a, b, JitterEstimate(4000, "empirical_q95", 200, 4000.0), settings,
+        "sample_a_vs_sample_b", "sample_a", "sample_b",
+    )
+    views_a = pd.concat([
+        view_frame("sample_a", "raw_only_input", a),
+        view_frame("sample_a", "leave_r4000_out", a),
+        view_frame("sample_a", "balanced_only_input", a),
+    ], ignore_index=True)
+    views_b = pd.concat([
+        view_frame("sample_b", "raw_only_input", b),
+        view_frame("sample_b", "leave_r4000_out", b),
+        view_frame("sample_b", "balanced_only_input", b),
+    ], ignore_index=True)
+
+    first = compare_event_views(
+        events.copy(), views_a, views_b, JitterEstimate(4000, "empirical_q95", 200, 4000.0),
+        settings, "sample_a_vs_sample_b", "sample_a", "sample_b",
+    )
+    reordered = compare_event_views(
+        events.iloc[::-1].copy(), views_a.iloc[::-1], views_b.iloc[::-1],
+        JitterEstimate(4000, "empirical_q95", 200, 4000.0), settings,
+        "sample_a_vs_sample_b", "sample_a", "sample_b",
+    )
+
+    assert first.to_dict("records") == reordered.to_dict("records")
+    assert first.to_dict("records") == first.sort_values(
+        ["comparison", "boundary_event_id", "view"], kind="stable"
+    ).to_dict("records")
 
 
 def test_swapping_direction_reverses_gain_loss_and_shift_sign(settings):

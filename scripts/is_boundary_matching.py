@@ -42,82 +42,108 @@ def estimate_jitter(offsets_a, offsets_b, settings) -> JitterEstimate:
 
 def align_ordered(boundaries_a, boundaries_b, max_distance_bp: int):
     """Return deterministic noncrossing index pairs within ``max_distance_bp``."""
-    n, m = len(boundaries_a), len(boundaries_b)
-    cost = np.full((n + 1, m + 1), np.inf)
-    trace = np.full((n + 1, m + 1), "", dtype=object)
-    cost[:, 0] = np.arange(n + 1) * 0.5
-    cost[0, :] = np.arange(m + 1) * 0.5
-    trace[1:, 0] = "delete"
-    trace[0, 1:] = "insert"
-    for i in range(1, n + 1):
-        for j in range(1, m + 1):
-            distance = abs(
-                int(boundaries_a.iloc[i - 1].center_bp)
-                - int(boundaries_b.iloc[j - 1].center_bp)
-            )
-            candidates = [
-                (cost[i - 1, j] + 0.5, 1, "delete"),
-                (cost[i, j - 1] + 0.5, 2, "insert"),
-            ]
-            if distance <= max_distance_bp:
-                candidates.append(
-                    (cost[i - 1, j - 1] + distance / max_distance_bp, 0, "match")
-                )
-            best_cost, _, action = min(candidates)
-            cost[i, j] = best_cost
-            trace[i, j] = action
-    pairs = []
-    i, j = n, m
-    while i or j:
-        action = trace[i, j]
-        if action == "match":
-            pairs.append((i - 1, j - 1))
-            i -= 1
-            j -= 1
-        elif action == "delete":
-            i -= 1
-        else:
-            j -= 1
-    return list(reversed(pairs))
+    m = len(boundaries_b)
+    nodes = [(0, 0, None, None)]
+    tree = [0] * (m + 1)
+
+    def better(left, right):
+        left_node, right_node = nodes[left], nodes[right]
+        return left if (left_node[0], left_node[1], -left) > (
+            right_node[0], right_node[1], -right
+        ) else right
+
+    def query(index_b):
+        best = 0
+        while index_b:
+            best = better(best, tree[index_b])
+            index_b -= index_b & -index_b
+        return best
+
+    def update(index_b, node):
+        while index_b <= m:
+            tree[index_b] = better(tree[index_b], node)
+            index_b += index_b & -index_b
+
+    pairs = _local_pairs(boundaries_a, boundaries_b, max_distance_bp)
+    start = 0
+    while start < len(pairs):
+        index_a = pairs[start][0]
+        end = start
+        pending = []
+        while end < len(pairs) and pairs[end][0] == index_a:
+            _, index_b, distance = pairs[end]
+            previous = query(index_b)
+            score, count, _, _ = nodes[previous]
+            nodes.append((score + max_distance_bp - distance, count + 1, previous, (index_a, index_b)))
+            pending.append((index_b + 1, len(nodes) - 1))
+            end += 1
+        for index_b, node in pending:
+            update(index_b, node)
+        start = end
+
+    node = query(m)
+    matches = []
+    while node:
+        _, _, node, pair = nodes[node]
+        matches.append(pair)
+    return list(reversed(matches))
 
 
 def _sorted(frame):
     return frame.sort_values(
-        ["start", "end", "unified_boundary_id"], kind="stable"
+        ["center_bp", "start", "end", "unified_boundary_id"], kind="stable"
     ).reset_index(drop=True)
+
+
+def _local_pairs(boundaries_a, boundaries_b, max_distance_bp):
+    centers_a = boundaries_a["center_bp"].to_numpy(dtype=int)
+    centers_b = boundaries_b["center_bp"].to_numpy(dtype=int)
+    pairs = []
+    for index_a, center_a in enumerate(centers_a):
+        start = np.searchsorted(centers_b, center_a - max_distance_bp, side="left")
+        end = np.searchsorted(centers_b, center_a + max_distance_bp, side="right")
+        pairs.extend(
+            (index_a, index_b, abs(int(center_a) - int(centers_b[index_b])))
+            for index_b in range(start, end)
+        )
+    return pairs
 
 
 def _candidate_data(boundaries_a, boundaries_b, max_distance_bp):
     by_a = {index: [] for index in range(len(boundaries_a))}
     by_b = {index: [] for index in range(len(boundaries_b))}
-    edges = []
-    for index_a, item_a in boundaries_a.iterrows():
-        for index_b, item_b in boundaries_b.iterrows():
-            distance = abs(int(item_a.center_bp) - int(item_b.center_bp))
-            if distance <= max_distance_bp:
-                edge = (int(index_a), int(index_b), distance)
-                edges.append(edge)
-                by_a[int(index_a)].append((distance, int(index_b)))
-                by_b[int(index_b)].append((distance, int(index_a)))
+    edges = _local_pairs(boundaries_a, boundaries_b, max_distance_bp)
+    for index_a, index_b, distance in edges:
+        by_a[index_a].append((distance, index_b))
+        by_b[index_b].append((distance, index_a))
     for values in (*by_a.values(), *by_b.values()):
         values.sort()
 
-    unseen = {(index_a, index_b) for index_a, index_b, _ in edges}
     components = []
-    while unseen:
-        index_a, index_b = unseen.pop()
-        indices_a, indices_b = {index_a}, {index_b}
-        changed = True
-        while changed:
-            changed = False
-            for edge_a, edge_b in list(unseen):
-                if edge_a in indices_a or edge_b in indices_b:
-                    indices_a.add(edge_a)
-                    indices_b.add(edge_b)
-                    unseen.remove((edge_a, edge_b))
-                    changed = True
+    seen_a, seen_b = set(), set()
+    for start_a in by_a:
+        if start_a in seen_a or not by_a[start_a]:
+            continue
+        indices_a, indices_b = set(), set()
+        pending = [("a", start_a)]
+        while pending:
+            side, index = pending.pop()
+            if side == "a":
+                if index in seen_a:
+                    continue
+                seen_a.add(index)
+                indices_a.add(index)
+                pending.extend(("b", other) for _, other in by_a[index])
+            else:
+                if index in seen_b:
+                    continue
+                seen_b.add(index)
+                indices_b.add(index)
+                pending.extend(("a", other) for _, other in by_b[index])
         component_edges = [
-            edge for edge in edges if edge[0] in indices_a and edge[1] in indices_b
+            (index_a, index_b, distance)
+            for index_a in indices_a
+            for distance, index_b in by_a[index_a]
         ]
         components.append((indices_a, indices_b, component_edges))
     component_by_a = {}
@@ -152,6 +178,12 @@ def _reason(info):
     if info["is_tied"]:
         return "match_tie_within_tolerance"
     return "nonreciprocal_closest_match"
+
+
+def _remaining_frame(boundaries, indices):
+    frame = boundaries.iloc[sorted(indices)].copy()
+    frame["_original_index"] = frame.index
+    return frame.reset_index(drop=True)
 
 
 def _support(rows, column, separator=","):
@@ -334,12 +366,8 @@ def _events_at_distance(
             remaining_a.discard(index_a)
             remaining_b.discard(index_b)
 
-        jitter_a = simple_a.iloc[sorted(remaining_a)].copy()
-        jitter_b = simple_b.iloc[sorted(remaining_b)].copy()
-        jitter_a["_original_index"] = jitter_a.index
-        jitter_b["_original_index"] = jitter_b.index
-        jitter_a = jitter_a.reset_index(drop=True)
-        jitter_b = jitter_b.reset_index(drop=True)
+        jitter_a = _remaining_frame(simple_a, remaining_a)
+        jitter_b = _remaining_frame(simple_b, remaining_b)
         jitter_candidates = _candidate_data(jitter_a, jitter_b, jitter.threshold_bp)
         jitter_pairs = []
         for index_a, values in jitter_candidates[0].items():
@@ -370,18 +398,19 @@ def _events_at_distance(
             remaining_a.discard(index_a)
             remaining_b.discard(index_b)
 
-        shifted_a = simple_a.iloc[sorted(remaining_a)].copy()
-        shifted_b = simple_b.iloc[sorted(remaining_b)].copy()
-        shifted_a["_original_index"] = shifted_a.index
-        shifted_b["_original_index"] = shifted_b.index
-        shifted_a = shifted_a.reset_index(drop=True)
-        shifted_b = shifted_b.reset_index(drop=True)
+        shifted_a = _remaining_frame(simple_a, remaining_a)
+        shifted_b = _remaining_frame(simple_b, remaining_b)
+        residual_candidates = _candidate_data(shifted_a, shifted_b, max_shift_bp)
+        residual_a = dict(zip(shifted_a["_original_index"], range(len(shifted_a))))
+        residual_b = dict(zip(shifted_b["_original_index"], range(len(shifted_b))))
         for local_a, local_b in align_ordered(shifted_a, shifted_b, max_shift_bp):
             index_a = int(shifted_a.iloc[local_a]._original_index)
             index_b = int(shifted_b.iloc[local_b]._original_index)
             item_a, item_b = simple_a.iloc[index_a], simple_b.iloc[index_b]
             distance = abs(int(item_a.center_bp) - int(item_b.center_bp))
-            info = _match_info(index_a, index_b, candidates, settings.match_tie_tolerance_bp)
+            info = _match_info(
+                local_a, local_b, residual_candidates, settings.match_tie_tolerance_bp
+            )
             if jitter.threshold_bp >= max_shift_bp:
                 state, reason = "ambiguous", "jitter_not_smaller_than_shift_radius"
             elif distance <= jitter.threshold_bp:
@@ -400,14 +429,22 @@ def _events_at_distance(
             remaining_b.discard(index_b)
 
         for index_a in sorted(remaining_a):
-            info = {"reciprocal": False, "margin": pd.NA, "n_local_candidates": len(candidates[0][index_a])}
+            info = {
+                "reciprocal": False,
+                "margin": pd.NA,
+                "n_local_candidates": len(residual_candidates[0][residual_a[index_a]]),
+            }
             records.append(_event_record(
                 [simple_a.iloc[index_a]], [], comparison=comparison, sample_a=sample_a,
                 sample_b=sample_b, position_state="lost_in_B", match_stage="unmatched",
                 match_info=info, jitter=jitter, max_shift_bp=max_shift_bp,
             ))
         for index_b in sorted(remaining_b):
-            info = {"reciprocal": False, "margin": pd.NA, "n_local_candidates": len(candidates[1][index_b])}
+            info = {
+                "reciprocal": False,
+                "margin": pd.NA,
+                "n_local_candidates": len(residual_candidates[1][residual_b[index_b]]),
+            }
             records.append(_event_record(
                 [], [simple_b.iloc[index_b]], comparison=comparison, sample_a=sample_a,
                 sample_b=sample_b, position_state="gained_in_B", match_stage="unmatched",
@@ -456,11 +493,7 @@ def compare_event_views(
     reference_events, views_a, views_b, jitter, settings, comparison, sample_a, sample_b
 ) -> pd.DataFrame:
     """Compare reference endpoint states against shared source/LOO boundary views."""
-    view_order = list(dict.fromkeys(views_a["view"].tolist()))
-    shared_views = [
-        view for view in view_order
-        if view != "unified" and view in set(views_b["view"])
-    ]
+    shared_views = sorted(set(views_a["view"]) & set(views_b["view"]) - {"unified"})
     records = []
     for view in shared_views:
         events = _events_at_distance(
@@ -488,6 +521,9 @@ def compare_event_views(
                 "reason": reason,
             })
     stability = pd.DataFrame(records, columns=BOUNDARY_STABILITY_COLUMNS)
+    stability = stability.sort_values(
+        ["comparison", "boundary_event_id", "view"], kind="stable"
+    ).reset_index(drop=True)
     if not reference_events.empty:
         agreement = stability.groupby("boundary_event_id", sort=False)["concordant"].all()
         reference_events["position_state_stable"] = reference_events.apply(
