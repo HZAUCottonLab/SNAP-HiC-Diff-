@@ -43,7 +43,7 @@ def test_repository_boundary_annotation_contract_is_exact():
         ("base_bin_bp", 8000, "base_bin_bp"),
         ("jitter_quantile", 1.0, "jitter_quantile"),
         ("jitter_min_pairs", 0, "jitter_min_pairs"),
-        ("max_shift_bp", 90000, "shift_sensitivity_bp"),
+        ("max_shift_bp", 90000, "max_shift_bp"),
         ("match_tie_tolerance_bp", 2000, "4 kb"),
     ],
 )
@@ -177,6 +177,27 @@ def test_rejects_nonpublication_strength_sensitivity():
     config["is_boundary_annotation"]["strength"]["sensitivity_thresholds"] = [1.0, 2.0, 3.0]
 
     with pytest.raises(ValueError, match="fixed publication contract"):
+        parse_is_boundary_settings(
+            config, parse_cworld_is_settings(config), parse_tad_settings(config)
+        )
+
+
+@pytest.mark.parametrize("value", (60000, 80000))
+def test_rejects_nonprimary_max_shift(value):
+    config = deepcopy(repository_config())
+    config["is_boundary_annotation"]["max_shift_bp"] = value
+
+    with pytest.raises(ValueError, match="max_shift_bp must equal the fixed primary value 100000"):
+        parse_is_boundary_settings(
+            config, parse_cworld_is_settings(config), parse_tad_settings(config)
+        )
+
+
+def test_rejects_nonprimary_robust_z_threshold():
+    config = deepcopy(repository_config())
+    config["is_boundary_annotation"]["strength"]["robust_z_threshold"] = 3.0
+
+    with pytest.raises(ValueError, match="robust_z_threshold must equal the fixed primary value 2.0"):
         parse_is_boundary_settings(
             config, parse_cworld_is_settings(config), parse_tad_settings(config)
         )

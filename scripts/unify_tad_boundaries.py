@@ -15,6 +15,7 @@ from is_boundary_config import parse_is_boundary_settings
 from is_boundary_errors import ISBoundaryError
 from is_boundary_io import (
     BOUNDARY_VIEW_COLUMNS,
+    TAD_UNEVALUABLE_COLUMNS,
     UNIFIED_BOUNDARY_COLUMNS,
     atomic_write_tsv,
     read_multires_boundaries,
@@ -41,6 +42,7 @@ def build_parser():
     parser.add_argument("--output-unified", required=True)
     parser.add_argument("--output-offsets", required=True)
     parser.add_argument("--output-views", required=True)
+    parser.add_argument("--output-tad-unevaluable", required=True)
     parser.add_argument("--log", required=True)
     return parser
 
@@ -132,6 +134,25 @@ def _attach_eligibility(frame, chrom_sizes, bins, bad_regions, base_bin_bp):
     )
 
 
+def _tad_unevaluable(sample, chrom_sizes, bins, bad_regions, base_bin_bp):
+    """Publish intervals where absence of a boundary cannot be interpreted."""
+    rows = []
+    for chrom, chrom_size in chrom_sizes.items():
+        first_end = min(base_bin_bp, chrom_size)
+        last_start = max(0, chrom_size - base_bin_bp)
+        rows.append((sample, chrom, 0, first_end, "terminal_insufficient_tad_coverage"))
+        rows.append((sample, chrom, last_start, chrom_size, "terminal_insufficient_tad_coverage"))
+    for row in bins.loc[~np.isfinite(bins["weight"])].itertuples(index=False):
+        rows.append((sample, row.chrom, int(row.start), int(row.end), "nonfinite_base_bins"))
+    for chrom, start, end in bad_regions:
+        if chrom in chrom_sizes:
+            rows.append((sample, chrom, max(0, start), min(chrom_sizes[chrom], end), "bad_region"))
+    mask = pd.DataFrame(rows, columns=TAD_UNEVALUABLE_COLUMNS)
+    return mask.loc[mask["end"] > mask["start"]].sort_values(
+        ["chrom", "start", "end", "reason"], kind="stable"
+    ).reset_index(drop=True)
+
+
 def _sort_for_chromosomes(frame, chrom_order):
     if frame.empty:
         return frame
@@ -192,15 +213,21 @@ def run_from_args(args):
     views = build_sensitivity_views(
         args.sample, raw, balanced, per_resolution, settings
     )
+    tad_unevaluable = _tad_unevaluable(
+        args.sample, chrom_sizes, bins, bad_regions, settings.base_bin_bp
+    )
     if tuple(unified.columns) != UNIFIED_BOUNDARY_COLUMNS:
         raise ISBoundaryError("IS_BOUNDARY_INPUT_SCHEMA_INVALID", reason="unified_schema")
     if tuple(offsets.columns) != JITTER_OFFSET_COLUMNS:
         raise ISBoundaryError("IS_BOUNDARY_INPUT_SCHEMA_INVALID", reason="offset_schema")
     if tuple(views.columns) != BOUNDARY_VIEW_COLUMNS:
         raise ISBoundaryError("IS_BOUNDARY_INPUT_SCHEMA_INVALID", reason="view_schema")
+    if tuple(tad_unevaluable.columns) != TAD_UNEVALUABLE_COLUMNS:
+        raise ISBoundaryError("IS_BOUNDARY_INPUT_SCHEMA_INVALID", reason="tad_unevaluable_schema")
     atomic_write_tsv(unified, args.output_unified, UNIFIED_BOUNDARY_COLUMNS)
     atomic_write_tsv(offsets, args.output_offsets, JITTER_OFFSET_COLUMNS)
     atomic_write_tsv(views, args.output_views, BOUNDARY_VIEW_COLUMNS)
+    atomic_write_tsv(tad_unevaluable, args.output_tad_unevaluable, TAD_UNEVALUABLE_COLUMNS)
     _write_log(
         args.log,
         f"sample={args.sample} unified={len(unified)} offsets={len(offsets)} views={len(views)}",

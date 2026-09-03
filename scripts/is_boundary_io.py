@@ -23,6 +23,9 @@ BOUNDARY_VIEW_COLUMNS = (
     "balanced_boundary_ids", "support_resolutions",
     "n_supporting_resolutions", "n_source_boundaries",
 )
+TAD_UNEVALUABLE_COLUMNS = (
+    "sample", "chrom", "start", "end", "reason",
+)
 BOUNDARY_EVENT_COLUMNS = (
     "comparison", "sample_a", "sample_b", "chrom", "boundary_event_id",
     "position_state", "position_substate", "boundary_a_id", "boundary_b_id",
@@ -218,6 +221,21 @@ def read_boundary_views(path) -> pd.DataFrame:
     if not frame["sample"].str.len().all() or not frame["view"].str.len().all():
         _invalid(path, reason="blank_view")
     return frame
+
+
+def read_tad_unevaluable(path) -> pd.DataFrame:
+    """Read the per-sample intervals where a TAD absence call is invalid."""
+    frame = _read_tsv(path, TAD_UNEVALUABLE_COLUMNS)
+    if frame.empty:
+        return frame
+    _validate_coordinates(frame, path)
+    if not (
+        frame["sample"].str.len().all()
+        and frame["chrom"].str.len().all()
+        and frame["reason"].str.len().all()
+    ):
+        _invalid(path, reason="blank_tad_unevaluable_field")
+    return frame.reset_index(drop=True)
 
 
 def read_jitter_offsets(path) -> pd.DataFrame:

@@ -14,9 +14,11 @@ from is_boundary_errors import ISBoundaryError
 from is_boundary_io import (
     BOUNDARY_EVENT_COLUMNS,
     BOUNDARY_STABILITY_COLUMNS,
+    TAD_UNEVALUABLE_COLUMNS,
     atomic_write_tsv,
     read_boundary_views,
     read_jitter_offsets,
+    read_tad_unevaluable,
     read_unified_boundaries,
 )
 from is_boundary_matching import call_boundary_events, compare_event_views, estimate_jitter
@@ -37,6 +39,8 @@ def build_parser():
     parser.add_argument("--offsets-b", required=True)
     parser.add_argument("--views-a", required=True)
     parser.add_argument("--views-b", required=True)
+    parser.add_argument("--tad-unevaluable-a")
+    parser.add_argument("--tad-unevaluable-b")
     parser.add_argument("--config", required=True)
     parser.add_argument("--output-events", required=True)
     parser.add_argument("--output-stability", required=True)
@@ -125,11 +129,21 @@ def run_from_args(args):
     offsets_b = read_jitter_offsets(args.offsets_b)
     views_a = read_boundary_views(args.views_a)
     views_b = read_boundary_views(args.views_b)
+    tad_unevaluable_a = (
+        read_tad_unevaluable(args.tad_unevaluable_a)
+        if args.tad_unevaluable_a else pd.DataFrame(columns=TAD_UNEVALUABLE_COLUMNS)
+    )
+    tad_unevaluable_b = (
+        read_tad_unevaluable(args.tad_unevaluable_b)
+        if args.tad_unevaluable_b else pd.DataFrame(columns=TAD_UNEVALUABLE_COLUMNS)
+    )
     _validate_reference(boundaries_a, boundaries_b, settings, args.sample_a, args.sample_b)
     _validate_sample(offsets_a, args.sample_a, "offsets_a")
     _validate_sample(offsets_b, args.sample_b, "offsets_b")
     _validate_sample(views_a, args.sample_a, "views_a")
     _validate_sample(views_b, args.sample_b, "views_b")
+    _validate_sample(tad_unevaluable_a, args.sample_a, "tad_unevaluable_a")
+    _validate_sample(tad_unevaluable_b, args.sample_b, "tad_unevaluable_b")
     try:
         jitter = estimate_jitter(offsets_a, offsets_b, settings)
     except Exception as error:
@@ -139,11 +153,11 @@ def run_from_args(args):
     try:
         events = call_boundary_events(
             boundaries_a, boundaries_b, jitter, settings, args.comparison,
-            args.sample_a, args.sample_b,
+            args.sample_a, args.sample_b, tad_unevaluable_a, tad_unevaluable_b,
         )
         stability = compare_event_views(
             events, views_a, views_b, jitter, settings, args.comparison,
-            args.sample_a, args.sample_b,
+            args.sample_a, args.sample_b, tad_unevaluable_a, tad_unevaluable_b,
         )
     except Exception as error:
         raise ISBoundaryError("IS_BOUNDARY_MATCH_FAILED", error=type(error).__name__) from error

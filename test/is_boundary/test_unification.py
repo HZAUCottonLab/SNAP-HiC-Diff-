@@ -15,6 +15,7 @@ sys.path.insert(0, str(REPO / "scripts"))
 from is_boundary_io import (
     BOUNDARY_VIEW_COLUMNS,
     MULTIRES_INPUT_COLUMNS,
+    TAD_UNEVALUABLE_COLUMNS,
     atomic_write_tsv,
     read_multires_boundaries,
     read_resolution_boundaries,
@@ -25,6 +26,7 @@ from is_boundary_unification import (
     maximum_cardinality_pairs,
     unify_boundaries,
 )
+from unify_tad_boundaries import _tad_unevaluable
 
 
 SCRIPT = REPO / "scripts" / "unify_tad_boundaries.py"
@@ -267,6 +269,26 @@ def test_unified_component_retains_terminal_and_bad_coverage_state():
     assert unavailable.loc[0, "component_state"] == "unevaluable_coverage_raw_bad_region"
 
 
+def test_tad_unevaluable_mask_publishes_terminal_nonfinite_and_bad_regions():
+    bins = pd.DataFrame({
+        "chrom": ["A02", "A02", "A02"],
+        "start": [0, 4000, 8000],
+        "end": [4000, 8000, 12000],
+        "weight": [np.nan, 1.0, 1.0],
+    })
+
+    observed = _tad_unevaluable(
+        "B", {"A02": 12000}, bins, [("A02", 4000, 8000)], 4000
+    )
+
+    assert observed.to_dict("records") == [
+        {"sample": "B", "chrom": "A02", "start": 0, "end": 4000, "reason": "nonfinite_base_bins"},
+        {"sample": "B", "chrom": "A02", "start": 0, "end": 4000, "reason": "terminal_insufficient_tad_coverage"},
+        {"sample": "B", "chrom": "A02", "start": 4000, "end": 8000, "reason": "bad_region"},
+        {"sample": "B", "chrom": "A02", "start": 8000, "end": 12000, "reason": "terminal_insufficient_tad_coverage"},
+    ]
+
+
 def test_sparse_matcher_scales_with_disjoint_local_overlaps():
     count = 1500
     raw = boundary_frame("raw", [
@@ -320,6 +342,7 @@ def test_cli_writes_stable_tables_without_temporary_files(tmp_path):
     output_unified = tmp_path / "unified.tsv"
     output_offsets = tmp_path / "offsets.tsv"
     output_views = tmp_path / "views.tsv"
+    output_tad_unevaluable = tmp_path / "tad_unevaluable.tsv"
 
     result = subprocess.run(
         [
@@ -328,7 +351,9 @@ def test_cli_writes_stable_tables_without_temporary_files(tmp_path):
             *map(str, raw_paths), "--balanced-resolution-boundaries", *map(str, balanced_paths),
             "--mcool", str(mcool), "--config", str(REPO / "config" / "config.yaml"),
             "--output-unified", str(output_unified), "--output-offsets", str(output_offsets),
-            "--output-views", str(output_views), "--log", str(tmp_path / "unify.log"),
+            "--output-views", str(output_views),
+            "--output-tad-unevaluable", str(output_tad_unevaluable),
+            "--log", str(tmp_path / "unify.log"),
         ], text=True, capture_output=True, check=False,
     )
 
@@ -341,4 +366,7 @@ def test_cli_writes_stable_tables_without_temporary_files(tmp_path):
         "leave_r8000_out", "leave_r20000_out",
     }
     assert pd.read_csv(output_offsets, sep="\t").columns.tolist()[0] == "sample"
+    assert pd.read_csv(output_tad_unevaluable, sep="\t").columns.tolist() == list(
+        TAD_UNEVALUABLE_COLUMNS
+    )
     assert not list(tmp_path.glob(".*.tmp"))

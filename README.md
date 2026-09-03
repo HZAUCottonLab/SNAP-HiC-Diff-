@@ -210,6 +210,7 @@ Stable annotation outputs are:
 results/tad_boundaries/{sample}.multires.unified.boundaries.tsv
 results/tad_boundaries/{sample}.boundary_jitter_offsets.tsv
 results/tad_boundaries/{sample}.annotation_views.tsv
+results/tad_boundaries/{sample}.tad_unevaluable.tsv
 results/tad_boundary_events/{comparison}.boundary_events.tsv
 results/tad_boundary_events/{comparison}.boundary_event_stability.tsv
 results/tad_boundary_events/{comparison}.matching_qc.tsv

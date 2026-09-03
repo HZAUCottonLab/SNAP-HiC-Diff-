@@ -130,6 +130,21 @@ def test_annotation_keeps_one_row_per_locus_and_handles_masked_absence():
     assert gain_masked.iloc[0].position_state == "ambiguous"
 
 
+def test_tad_coverage_mask_blocks_zero_candidate_no_association():
+    loci = pd.DataFrame([_locus(summit=300000, event_start=300000, event_end=304000)])
+    tad_unevaluable = pd.DataFrame([
+        {"sample": "B", "chrom": "chr1", "start": 300000, "end": 304000, "reason": "nonfinite_base_bins"},
+    ])
+
+    result = annotate_loci(
+        loci, pd.DataFrame(columns=BOUNDARY_EVENT_COLUMNS), pd.DataFrame(), _masked(),
+        type("S", (), {"base_bin_bp": 4000})(), tad_unevaluable=tad_unevaluable,
+    ).iloc[0]
+
+    assert result.position_state == "ambiguous"
+    assert result.annotation_reason == "tad_coverage:B:nonfinite_base_bins"
+
+
 def test_conserved_position_can_carry_a_weakened_strength_state():
     result = annotate_loci(
         pd.DataFrame([_locus()]), pd.DataFrame([_event()], columns=BOUNDARY_EVENT_COLUMNS),

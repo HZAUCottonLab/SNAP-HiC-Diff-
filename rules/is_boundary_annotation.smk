@@ -15,6 +15,7 @@ rule unify_tad_boundaries:
         unified=OUTDIR + "/tad_boundaries/{sample}.multires.unified.boundaries.tsv",
         offsets=OUTDIR + "/tad_boundaries/{sample}.boundary_jitter_offsets.tsv",
         views=OUTDIR + "/tad_boundaries/{sample}.annotation_views.tsv",
+        unevaluable=OUTDIR + "/tad_boundaries/{sample}.tad_unevaluable.tsv",
     log:
         OUTDIR + "/logs/is_boundary/{sample}.unify.log",
     benchmark:
@@ -41,6 +42,7 @@ rule unify_tad_boundaries:
             --output-unified {output.unified:q} \
             --output-offsets {output.offsets:q} \
             --output-views {output.views:q} \
+            --output-tad-unevaluable {output.unevaluable:q} \
             --log {log:q} \
             >> {log:q} 2>&1
         """
@@ -54,6 +56,8 @@ rule call_tad_boundary_events:
         offsets_b=lambda w: boundary_jitter_path(get_pair_samples(w.comparison)[1]),
         views_a=lambda w: boundary_view_path(get_pair_samples(w.comparison)[0]),
         views_b=lambda w: boundary_view_path(get_pair_samples(w.comparison)[1]),
+        tad_unevaluable_a=lambda w: boundary_tad_unevaluable_path(get_pair_samples(w.comparison)[0]),
+        tad_unevaluable_b=lambda w: boundary_tad_unevaluable_path(get_pair_samples(w.comparison)[1]),
     output:
         events=OUTDIR + "/tad_boundary_events/{comparison}.boundary_events.tsv",
         stability=OUTDIR + "/tad_boundary_events/{comparison}.boundary_event_stability.tsv",
@@ -85,6 +89,8 @@ rule call_tad_boundary_events:
             --offsets-b {input.offsets_b:q} \
             --views-a {input.views_a:q} \
             --views-b {input.views_b:q} \
+            --tad-unevaluable-a {input.tad_unevaluable_a:q} \
+            --tad-unevaluable-b {input.tad_unevaluable_b:q} \
             --config {params.config:q} \
             --output-events {output.events:q} \
             --output-stability {output.stability:q} \
@@ -102,6 +108,8 @@ rule annotate_is_change_boundaries:
         masked=MULTISCALE_ROOT + "/{comparison}/is_change/{comparison}_is_change_masked.bed",
         is_a=lambda w: get_comparison_is_file(w.comparison, 0),
         is_b=lambda w: get_comparison_is_file(w.comparison, 1),
+        tad_unevaluable_a=lambda w: boundary_tad_unevaluable_path(get_pair_samples(w.comparison)[0]),
+        tad_unevaluable_b=lambda w: boundary_tad_unevaluable_path(get_pair_samples(w.comparison)[1]),
     output:
         primary=MULTISCALE_ROOT + "/{comparison}/is_change/{comparison}_is_change_loci.boundary_annotated.tsv",
         preliminary=MULTISCALE_ROOT + "/{comparison}/is_change/{comparison}_is_change_loci_preliminary.boundary_annotated.tsv",
@@ -132,6 +140,8 @@ rule annotate_is_change_boundaries:
             --masked {input.masked:q} \
             --is-a {input.is_a:q} \
             --is-b {input.is_b:q} \
+            --tad-unevaluable-a {input.tad_unevaluable_a:q} \
+            --tad-unevaluable-b {input.tad_unevaluable_b:q} \
             --config {params.config:q} \
             --out-primary {output.primary:q} \
             --out-preliminary {output.preliminary:q} \

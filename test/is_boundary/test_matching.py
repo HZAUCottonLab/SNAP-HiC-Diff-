@@ -395,3 +395,26 @@ def test_unevaluable_boundary_component_is_ambiguous_not_a_rearrangement(setting
 
     assert event.position_state == "ambiguous"
     assert event.ambiguity_reason == "unevaluable_boundary_coverage:raw_bad_region"
+
+
+@pytest.mark.parametrize("reason", ("bad_region", "nonfinite_base_bins"))
+def test_missing_side_tad_coverage_blocks_absence_calls(settings, reason):
+    a = unified_frame([("A02", 4000, 12000, "a")])
+    b = unified_frame([])
+    unavailable_b = pd.DataFrame([
+        {"sample": "B", "chrom": "A02", "start": 4000, "end": 12000, "reason": reason},
+    ])
+
+    blocked = call_boundary_events(
+        a, b, JitterEstimate(4000, "empirical_q95", 200, 4000.0), settings,
+        "A_vs_B", "A", "B", tad_unevaluable_b=unavailable_b,
+    ).iloc[0]
+    clean = call_boundary_events(
+        a, b, JitterEstimate(4000, "empirical_q95", 200, 4000.0), settings,
+        "A_vs_B", "A", "B",
+    ).iloc[0]
+
+    assert (blocked.position_state, blocked.ambiguity_reason) == (
+        "ambiguous", f"missing_side_unevaluable:B:{reason}",
+    )
+    assert clean.position_state == "lost_in_B"

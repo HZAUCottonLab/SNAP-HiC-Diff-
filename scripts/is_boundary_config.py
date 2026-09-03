@@ -127,6 +127,8 @@ def parse_is_boundary_settings(
     if sensitivity != (60000, 80000, 100000):
         raise _invalid("shift_sensitivity_bp must use the fixed publication contract [60000, 80000, 100000]")
     max_shift = _positive_int(_required(raw, "max_shift_bp"), "max_shift_bp")
+    if max_shift != 100000:
+        raise _invalid("max_shift_bp must equal the fixed primary value 100000")
     if max_shift not in sensitivity:
         raise _invalid("shift_sensitivity_bp must contain max_shift_bp")
     jitter_fallback = _distance(
@@ -177,6 +179,8 @@ def parse_is_boundary_settings(
         ),
         sensitivity_thresholds=sensitivity_thresholds,
     )
+    if strength.robust_z_threshold != 2.0:
+        raise _invalid("robust_z_threshold must equal the fixed primary value 2.0")
     if strength.stable_abs_z_threshold >= strength.robust_z_threshold:
         raise _invalid(
             "stable_abs_z_threshold must be smaller than robust_z_threshold"

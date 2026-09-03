@@ -186,6 +186,20 @@ def _remaining_frame(boundaries, indices):
     return frame.reset_index(drop=True)
 
 
+def _missing_side_unevaluable_reason(mask, chrom, start, end, sample):
+    """Return the audited reason when absence at an endpoint cannot be called."""
+    if mask is None or mask.empty:
+        return ""
+    overlapping = mask.loc[
+        mask["chrom"].eq(chrom)
+        & (mask["start"] < end)
+        & (mask["end"] > start),
+        "reason",
+    ]
+    reasons = sorted({str(reason) for reason in overlapping if str(reason)})
+    return f"{sample}:{','.join(reasons)}" if reasons else ""
+
+
 def _support(rows, column, separator=","):
     values = [str(item[column]) for item in rows if pd.notna(item[column])]
     if column == "support_resolutions":
@@ -306,6 +320,8 @@ def _events_at_distance(
     sample_a,
     sample_b,
     max_shift_bp,
+    tad_unevaluable_a=None,
+    tad_unevaluable_b=None,
 ):
     records = []
     chromosomes = tuple(sorted(set(boundaries_a["chrom"]) | set(boundaries_b["chrom"])))
@@ -446,10 +462,17 @@ def _events_at_distance(
                 "margin": pd.NA,
                 "n_local_candidates": len(residual_candidates[0][residual_a[index_a]]),
             }
+            item_a = simple_a.iloc[index_a]
+            unevaluable = _missing_side_unevaluable_reason(
+                tad_unevaluable_b, chrom, int(item_a.start), int(item_a.end), sample_b
+            )
             records.append(_event_record(
-                [simple_a.iloc[index_a]], [], comparison=comparison, sample_a=sample_a,
-                sample_b=sample_b, position_state="lost_in_B", match_stage="unmatched",
+                [item_a], [], comparison=comparison, sample_a=sample_a,
+                sample_b=sample_b,
+                position_state="ambiguous" if unevaluable else "lost_in_B",
+                match_stage="missing_side_unevaluable" if unevaluable else "unmatched",
                 match_info=info, jitter=jitter, max_shift_bp=max_shift_bp,
+                ambiguity_reason=(f"missing_side_unevaluable:{unevaluable}" if unevaluable else ""),
             ))
         for index_b in sorted(remaining_b):
             info = {
@@ -457,10 +480,17 @@ def _events_at_distance(
                 "margin": pd.NA,
                 "n_local_candidates": len(residual_candidates[1][residual_b[index_b]]),
             }
+            item_b = simple_b.iloc[index_b]
+            unevaluable = _missing_side_unevaluable_reason(
+                tad_unevaluable_a, chrom, int(item_b.start), int(item_b.end), sample_a
+            )
             records.append(_event_record(
-                [], [simple_b.iloc[index_b]], comparison=comparison, sample_a=sample_a,
-                sample_b=sample_b, position_state="gained_in_B", match_stage="unmatched",
+                [], [item_b], comparison=comparison, sample_a=sample_a,
+                sample_b=sample_b,
+                position_state="ambiguous" if unevaluable else "gained_in_B",
+                match_stage="missing_side_unevaluable" if unevaluable else "unmatched",
                 match_info=info, jitter=jitter, max_shift_bp=max_shift_bp,
+                ambiguity_reason=(f"missing_side_unevaluable:{unevaluable}" if unevaluable else ""),
             ))
 
     events = pd.DataFrame(records, columns=BOUNDARY_EVENT_COLUMNS)
@@ -477,18 +507,19 @@ def _events_at_distance(
 
 
 def call_boundary_events(
-    boundaries_a, boundaries_b, jitter, settings, comparison, sample_a, sample_b
+    boundaries_a, boundaries_b, jitter, settings, comparison, sample_a, sample_b,
+    tad_unevaluable_a=None, tad_unevaluable_b=None,
 ) -> pd.DataFrame:
     """Call conserved, shifted, gained, lost, complex, and ambiguous events."""
     events = _events_at_distance(
         boundaries_a, boundaries_b, jitter, settings, comparison, sample_a, sample_b,
-        settings.max_shift_bp,
+        settings.max_shift_bp, tad_unevaluable_a, tad_unevaluable_b,
     )
     for radius in settings.shift_sensitivity_bp:
         column = f"state_at_{radius}"
         sensitivity_events = _events_at_distance(
             boundaries_a, boundaries_b, jitter, settings, comparison, sample_a, sample_b,
-            radius,
+            radius, tad_unevaluable_a, tad_unevaluable_b,
         )
         events[column] = [
             _associated_state(row, sensitivity_events) for row in events.itertuples(index=False)
@@ -502,7 +533,8 @@ def call_boundary_events(
 
 
 def compare_event_views(
-    reference_events, views_a, views_b, jitter, settings, comparison, sample_a, sample_b
+    reference_events, views_a, views_b, jitter, settings, comparison, sample_a, sample_b,
+    tad_unevaluable_a=None, tad_unevaluable_b=None,
 ) -> pd.DataFrame:
     """Compare reference endpoint states against shared source/LOO boundary views."""
     shared_views = sorted(set(views_a["view"]) & set(views_b["view"]) - {"unified"})
@@ -511,6 +543,7 @@ def compare_event_views(
         events = _events_at_distance(
             views_a[views_a["view"] == view], views_b[views_b["view"] == view],
             jitter, settings, comparison, sample_a, sample_b, settings.max_shift_bp,
+            tad_unevaluable_a, tad_unevaluable_b,
         )
         for reference in reference_events.itertuples(index=False):
             associated = _associated_events(reference, events)

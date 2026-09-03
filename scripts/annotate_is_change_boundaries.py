@@ -18,7 +18,9 @@ from is_boundary_io import (
     BOUNDARY_EVENT_COLUMNS,
     STRENGTH_LONG_COLUMNS,
     STRENGTH_SUMMARY_COLUMNS,
+    TAD_UNEVALUABLE_COLUMNS,
     atomic_write_tables,
+    read_tad_unevaluable,
 )
 from is_boundary_strength import compute_strength_long, summarize_strength
 from is_change_config import parse_is_change_settings
@@ -42,6 +44,8 @@ def build_parser():
     parser.add_argument("--masked", required=True)
     parser.add_argument("--is-a", required=True)
     parser.add_argument("--is-b", required=True)
+    parser.add_argument("--tad-unevaluable-a")
+    parser.add_argument("--tad-unevaluable-b")
     parser.add_argument("--config", required=True)
     parser.add_argument("--out-primary", required=True)
     parser.add_argument("--out-preliminary", required=True)
@@ -150,6 +154,10 @@ def run_from_args(args):
         primary = _canonicalize_current_locus_comparison(primary, events, args.comparison)
         preliminary = _canonicalize_current_locus_comparison(preliminary, events, args.comparison)
         masked = _read_masked(args.masked)
+        tad_unevaluable = pd.concat([
+            read_tad_unevaluable(path) if path else pd.DataFrame(columns=TAD_UNEVALUABLE_COLUMNS)
+            for path in (args.tad_unevaluable_a, args.tad_unevaluable_b)
+        ], ignore_index=True)
     except Exception as error:
         _raise("IS_BOUNDARY_ANNOTATION_FAILED", error)
     try:
@@ -169,10 +177,10 @@ def run_from_args(args):
         _raise("IS_BOUNDARY_STRENGTH_FAILED", error)
     try:
         annotated_primary = annotate_loci(
-            primary, events, strength_summary, masked, boundary_settings
+            primary, events, strength_summary, masked, boundary_settings, tad_unevaluable
         )
         annotated_preliminary = annotate_loci(
-            preliminary, events, strength_summary, masked, boundary_settings
+            preliminary, events, strength_summary, masked, boundary_settings, tad_unevaluable
         )
         summary = summarize_annotations(annotated_primary, annotated_preliminary)
         qc = annotation_qc(

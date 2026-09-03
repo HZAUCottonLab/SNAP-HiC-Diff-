@@ -91,6 +91,10 @@ def boundary_view_path(sample):
     return "{}/tad_boundaries/{}.annotation_views.tsv".format(OUTDIR, sample)
 
 
+def boundary_tad_unevaluable_path(sample):
+    return "{}/tad_boundaries/{}.tad_unevaluable.tsv".format(OUTDIR, sample)
+
+
 def boundary_event_path(comparison):
     return "{}/tad_boundary_events/{}.boundary_events.tsv".format(OUTDIR, comparison)
 
@@ -321,6 +325,10 @@ IS_BOUNDARY_ALL_OUTPUTS = (
     )
     + expand(
         OUTDIR + "/tad_boundaries/{sample}.annotation_views.tsv",
+        sample=SAMPLES,
+    )
+    + expand(
+        OUTDIR + "/tad_boundaries/{sample}.tad_unevaluable.tsv",
         sample=SAMPLES,
     )
     + expand(

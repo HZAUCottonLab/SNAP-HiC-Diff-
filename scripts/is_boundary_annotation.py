@@ -119,6 +119,17 @@ def _mask_reasons(locus, masked, base_bin_bp):
     }))
 
 
+def _tad_coverage_reasons(locus, tad_unevaluable, base_bin_bp):
+    if tad_unevaluable is None or tad_unevaluable.empty:
+        return ()
+    start, end = locus_anchor(locus, base_bin_bp)
+    rows = tad_unevaluable[tad_unevaluable["chrom"].eq(locus.chrom)]
+    return tuple(sorted({
+        f"{row.sample}:{row.reason}" for row in rows.itertuples(index=False)
+        if _interval_overlap(start, end, int(row.start), int(row.end))
+    }))
+
+
 def _blank_event():
     return {
         "boundary_event_id": "", "position_substate": "", "boundary_a_id": "",
@@ -146,7 +157,7 @@ def _event_values(event):
     }
 
 
-def annotate_loci(loci, events, strength_summary, masked, settings):
+def annotate_loci(loci, events, strength_summary, masked, settings, tad_unevaluable=None):
     """Annotate each locus once; shifted corridors are never association targets."""
     result_columns = [*loci.columns, *ANNOTATION_COLUMNS]
     if loci.empty:
@@ -165,6 +176,9 @@ def annotate_loci(loci, events, strength_summary, masked, settings):
         local_events = ordered[ordered["chrom"].eq(locus.chrom)]
         ids = associated_event_ids(locus, local_events, settings.base_bin_bp)
         mask_reasons = _mask_reasons(locus, masked, settings.base_bin_bp)
+        tad_coverage_reasons = _tad_coverage_reasons(
+            locus, tad_unevaluable, settings.base_bin_bp
+        )
         event = event_by_id[ids[0]] if len(ids) == 1 else None
         summary = strengths.get(event.boundary_event_id) if event is not None else None
         values = _blank_event()
@@ -173,6 +187,8 @@ def annotate_loci(loci, events, strength_summary, masked, settings):
 
         if mask_reasons:
             position_state, reason = "ambiguous", f"mask_overlap:{','.join(mask_reasons)}"
+        elif not ids and tad_coverage_reasons:
+            position_state, reason = "ambiguous", f"tad_coverage:{','.join(tad_coverage_reasons)}"
         elif not ids:
             position_state, reason = "no_boundary_association", "no_overlapping_boundary_event"
         elif len(ids) > 1:
@@ -180,7 +196,9 @@ def annotate_loci(loci, events, strength_summary, masked, settings):
         elif event.position_state == "complex":
             position_state, reason = "complex", "complex_boundary_event"
         elif event.position_state == "ambiguous":
-            position_state, reason = "ambiguous", "ambiguous_boundary_event"
+            position_state, reason = "ambiguous", (
+                event.ambiguity_reason or "ambiguous_boundary_event"
+            )
         else:
             position_state, reason = event.position_state, "unique_boundary_event"
         if event is None or position_state in {"complex", "ambiguous"}:
