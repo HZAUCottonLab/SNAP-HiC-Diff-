@@ -141,15 +141,44 @@ def test_permutations_return_only_set_level_statistics(settings):
 
 
 def test_conditional_rearrangement_statistic_reports_insufficient_null_draws(settings):
-    settings = replace(settings, permutation=replace(settings.permutation, n_permutations=4))
-    loci = loci_frame().iloc[[0]].assign(event_start=200000, event_end=204000, summit=200000)
-    regions = regions_frame().iloc[[0]].assign(region_start=200000, region_end=240000)
-    output = run_permutations(loci, regions, events_frame(), masked_frame().iloc[0:0], settings)
+    settings = replace(
+        settings, permutation=replace(settings.permutation, n_permutations=4, seed=1)
+    )
+    output = run_permutations(
+        loci_frame().iloc[[0]], regions_frame().iloc[[0]], events_frame(),
+        masked_frame().iloc[0:0], settings,
+    )
 
     conditional = output.loc[output.statistic.eq("rearranged_given_boundary_fraction")].iloc[0]
+    assert conditional.observed == 0
     assert conditional.detail == "insufficient_valid_null_draws"
     assert np.isnan(conditional.empirical_p)
     assert np.isnan(conditional.bh_qvalue)
+
+
+def test_undefined_observed_statistic_is_excluded_from_empirical_p_and_bh(settings):
+    settings = replace(
+        settings, permutation=replace(settings.permutation, n_permutations=4, seed=1)
+    )
+    loci = loci_frame().iloc[[0]].assign(event_start=8000, event_end=12000, summit=8000)
+    regions = regions_frame().iloc[[0]].assign(region_end=12000)
+    events = events_frame().query("chrom == 'A02'").copy()
+    second = events.iloc[0].copy()
+    second[["boundary_event_id", "a_start", "a_end", "b_start", "b_end", "event_span_start", "event_span_end"]] = [
+        "conserved_2", 4000, 8000, 4000, 8000, 4000, 8000,
+    ]
+    events = pd.concat([events, pd.DataFrame([second])], ignore_index=True)
+
+    output = run_permutations(loci, regions, events, masked_frame().iloc[0:0], settings)
+
+    conditional = output.loc[output.statistic.eq("rearranged_given_boundary_fraction")].iloc[0]
+    any_boundary = output.loc[output.statistic.eq("any_boundary_fraction")].iloc[0]
+    assert np.isnan(conditional.observed)
+    assert conditional.detail == "observed_statistic_undefined"
+    assert np.isnan(conditional.empirical_p)
+    assert np.isnan(conditional.bh_qvalue)
+    assert np.isfinite(any_boundary.empirical_p)
+    assert np.isfinite(any_boundary.bh_qvalue)
 
 
 def test_cli_seed_is_byte_deterministic(tmp_path):

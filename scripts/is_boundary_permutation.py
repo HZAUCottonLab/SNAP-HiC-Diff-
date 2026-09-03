@@ -185,6 +185,9 @@ def _result_row(comparison, tier, statistic, observed, null, settings):
         "seed": settings.permutation.seed,
         "detail": "",
     }
+    if not np.isfinite(observed):
+        row["detail"] = "observed_statistic_undefined"
+        return row
     if not enough_null:
         row["detail"] = "insufficient_valid_null_draws"
         return row
