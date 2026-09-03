@@ -23,6 +23,21 @@ BOUNDARY_VIEW_COLUMNS = (
     "balanced_boundary_ids", "support_resolutions",
     "n_supporting_resolutions", "n_source_boundaries",
 )
+BOUNDARY_EVENT_COLUMNS = (
+    "comparison", "sample_a", "sample_b", "chrom", "boundary_event_id",
+    "position_state", "position_substate", "boundary_a_id", "boundary_b_id",
+    "a_start", "a_end", "b_start", "b_end", "event_span_start",
+    "event_span_end", "shift_bp", "match_stage", "match_is_reciprocal",
+    "second_best_margin_bp", "n_local_candidates", "jitter_threshold_bp",
+    "jitter_source", "max_shift_bp", "ambiguity_reason", "state_at_60000",
+    "state_at_80000", "state_at_100000", "position_state_stable",
+    "signal_support_a", "signal_support_b", "resolution_support_a",
+    "resolution_support_b",
+)
+BOUNDARY_STABILITY_COLUMNS = (
+    "comparison", "boundary_event_id", "view", "reference_position_state",
+    "sensitivity_position_state", "concordant", "reason",
+)
 RESOLUTION_INPUT_COLUMNS = (
     "chrom", "start", "end", "boundary_id", "resolution", "n_source_boundaries",
 )
@@ -141,6 +156,62 @@ def read_resolution_boundaries(paths, signal: str) -> pd.DataFrame:
     if not frames:
         return pd.DataFrame(columns=(*RESOLUTION_INPUT_COLUMNS, "signal"))
     return pd.concat(frames, ignore_index=True)
+
+
+def _read_tsv(path, columns):
+    path = Path(path)
+    try:
+        frame = pd.read_csv(path, sep="\t", dtype=str, keep_default_na=False)
+    except Exception as error:
+        raise ISBoundaryError(
+            "IS_BOUNDARY_INPUT_SCHEMA_INVALID", path=path, reason=type(error).__name__
+        ) from error
+    if tuple(frame.columns) != tuple(columns):
+        _invalid(path, reason="header")
+    return frame
+
+
+def _typed_boundary_frame(path, columns, unique_columns=("unified_boundary_id",)):
+    frame = _read_tsv(path, columns)
+    for column in ("start", "end", "center_bp"):
+        frame[column] = _integer_column(frame, column, path)
+    _validate_coordinates(frame, path)
+    if not frame["chrom"].str.len().all() or not frame["unified_boundary_id"].str.len().all():
+        _invalid(path, reason="blank_identifier")
+    if unique_columns and frame.duplicated(list(unique_columns)).any():
+        _invalid(path, reason="duplicate_boundary_id")
+    if not frame["center_bp"].eq((frame["start"] + frame["end"]) // 2).all():
+        _invalid(path, reason="center_bp")
+    return frame
+
+
+def read_unified_boundaries(path) -> pd.DataFrame:
+    return _typed_boundary_frame(path, UNIFIED_BOUNDARY_COLUMNS)
+
+
+def read_boundary_views(path) -> pd.DataFrame:
+    frame = _typed_boundary_frame(
+        path, BOUNDARY_VIEW_COLUMNS, ("sample", "view", "unified_boundary_id")
+    )
+    if not frame["sample"].str.len().all() or not frame["view"].str.len().all():
+        _invalid(path, reason="blank_view")
+    return frame
+
+
+def read_jitter_offsets(path) -> pd.DataFrame:
+    columns = (
+        "sample", "chrom", "source", "comparison", "resolution_a", "resolution_b",
+        "boundary_a_id", "boundary_b_id", "center_a", "center_b", "offset_bp", "eligible",
+    )
+    frame = _read_tsv(path, columns)
+    for column in ("center_a", "center_b", "offset_bp"):
+        frame[column] = _integer_column(frame, column, path)
+    if (frame["offset_bp"] < 0).any() or not frame["sample"].str.len().all():
+        _invalid(path, reason="offsets")
+    if not frame["eligible"].isin(["True", "False", "true", "false", "1", "0"]).all():
+        _invalid(path, reason="eligible")
+    frame["eligible"] = frame["eligible"].isin(["True", "true", "1"])
+    return frame
 
 
 def atomic_write_tsv(frame: pd.DataFrame, path, columns) -> None:
