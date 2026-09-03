@@ -21,6 +21,8 @@ import cooler
 
 from cworld_is_config import parse_cworld_is_settings
 from call_is_change_loci import read_balanced_bins
+from is_boundary_errors import ISBoundaryError
+from is_boundary_io import ANNOTATION_COLUMNS, BOUNDARY_EVENT_COLUMNS
 from is_change_config import ISChangeSettings, parse_is_change_settings
 
 
@@ -35,6 +37,7 @@ def parse_args():
     parser.add_argument("--cool-b", required=True, nargs="+")
     parser.add_argument("--outdir", required=True)
     parser.add_argument("--manifest", required=True)
+    parser.add_argument("--boundary-events", default=None)
     return parser.parse_args()
 
 
@@ -74,6 +77,124 @@ HEATMAP_HEIGHT_RATIO = 2.8
 EVENT_COLOR = "red"
 EVENT_ALPHA = 0.22
 MAX_CONTACT_MATRIX_BINS = 2_000
+BOUNDARY_COLORS = {"a": "#2563eb", "b": "#16a34a"}
+
+
+def _invalid_boundary_events(path, reason):
+    raise ISBoundaryError(
+        "IS_BOUNDARY_INPUT_SCHEMA_INVALID", path=path, reason=f"boundary_events_{reason}"
+    )
+
+
+def read_boundary_events(path):
+    """Read the published boundary-event map needed for optional overlays."""
+    try:
+        events = pd.read_csv(path, sep="\t")
+    except Exception as error:
+        _invalid_boundary_events(path, f"read_{type(error).__name__}")
+    missing = set(BOUNDARY_EVENT_COLUMNS).difference(events.columns)
+    if missing:
+        _invalid_boundary_events(path, "missing_columns")
+    identifiers = events["boundary_event_id"].astype("string")
+    if identifiers.isna().any() or identifiers.str.strip().eq("").any():
+        _invalid_boundary_events(path, "blank_boundary_event_id")
+    if events["boundary_event_id"].duplicated().any():
+        _invalid_boundary_events(path, "duplicate_boundary_event_id")
+    for column in (
+        "a_start", "a_end", "b_start", "b_end", "event_span_start", "event_span_end",
+    ):
+        try:
+            values = pd.to_numeric(events[column], errors="raise")
+        except Exception:
+            _invalid_boundary_events(path, f"{column}_not_numeric")
+        present = values.notna()
+        if (~np.isfinite(values[present])).any():
+            _invalid_boundary_events(path, f"{column}_not_finite")
+        if not np.equal(values[present], np.floor(values[present])).all():
+            _invalid_boundary_events(path, f"{column}_not_integer")
+        events[column] = values
+    for sample in ("a", "b"):
+        start, end = events[f"{sample}_start"], events[f"{sample}_end"]
+        present = start.notna()
+        if present.ne(end.notna()).any():
+            _invalid_boundary_events(path, f"{sample}_endpoints_partial")
+        if (present & ((start < 0) | (end <= start))).any():
+            _invalid_boundary_events(path, f"{sample}_endpoints_invalid")
+    if (
+        events["event_span_start"].isna().any()
+        or events["event_span_end"].isna().any()
+        or (events["event_span_start"] < 0).any()
+        or (events["event_span_end"] <= events["event_span_start"]).any()
+    ):
+        _invalid_boundary_events(path, "event_span_invalid")
+    return events
+
+
+def draw_boundary_support(axis: Axes, event, sample: str) -> None:
+    """Outline the endpoint support for one sample without hiding the IS signal."""
+    start = event[f"{sample}_start"]
+    end = event[f"{sample}_end"]
+    if pd.isna(start) or pd.isna(end):
+        return
+    axis.axvspan(
+        int(start), int(end), facecolor="none",
+        edgecolor=BOUNDARY_COLORS[sample], linewidth=1.2,
+    )
+
+
+def draw_complex_support(axis: Axes, event, sample: str) -> None:
+    """Hatch an unresolved component at its sample-specific endpoint."""
+    start = event[f"{sample}_start"]
+    end = event[f"{sample}_end"]
+    if pd.isna(start) or pd.isna(end):
+        start, end = event.event_span_start, event.event_span_end
+    if pd.isna(start) or pd.isna(end):
+        return
+    axis.axvspan(
+        int(start), int(end), facecolor="none", edgecolor="0.45",
+        hatch="//", linewidth=1.0,
+    )
+
+
+def draw_boundary_overlays(axis: Axes, events: pd.DataFrame, sample: str) -> None:
+    for _, event in events.iterrows():
+        if event.position_state == "complex":
+            draw_complex_support(axis, event, sample)
+        else:
+            draw_boundary_support(axis, event, sample)
+
+
+def boundary_events_for_locus(locus: pd.Series, events: pd.DataFrame) -> pd.DataFrame:
+    identifiers = {
+        item for item in str(locus.boundary_event_id).split(",")
+        if item and item != "nan"
+    }
+    if not identifiers:
+        return events.iloc[0:0]
+    return events.loc[events["boundary_event_id"].isin(identifiers)]
+
+
+def validate_annotation_event_ids(loci: pd.DataFrame, events: pd.DataFrame) -> None:
+    identifiers = {
+        item
+        for value in loci["boundary_event_id"].dropna()
+        for item in str(value).split(",")
+        if item
+    }
+    unknown = identifiers.difference(events["boundary_event_id"])
+    if unknown:
+        raise ValueError("annotated primary loci reference unknown boundary events: {}".format(
+            ", ".join(sorted(unknown))
+        ))
+
+
+def annotation_title(locus: pd.Series) -> str:
+    return " | ".join(
+        f"{column}={locus[column]}"
+        for column in (
+            "position_state", "strength_state", "is_consistency_state", "evidence_tier",
+        )
+    )
 
 
 def plot_interval(region: pd.Series, settings: ISChangeSettings) -> tuple[int, int]:
@@ -236,6 +357,7 @@ def build_region_figure(
     sample_a: str,
     sample_b: str,
     settings: ISChangeSettings,
+    boundary_events: pd.DataFrame | None = None,
 ) -> tuple[Figure, tuple[Axes, Axes], tuple[Axes, ...]]:
     start, end = common_plot_interval(
         region, settings, coolers_a, coolers_b, sample_a, sample_b
@@ -260,6 +382,9 @@ def build_region_figure(
     )
     image = draw_contact_heatmap(heatmap_a, matrix_a, start, end, sample_a, norm, events)
     draw_contact_heatmap(heatmap_b, matrix_b, start, end, sample_b, norm, events)
+    if boundary_events is not None:
+        draw_boundary_overlays(heatmap_a, boundary_events, "a")
+        draw_boundary_overlays(heatmap_b, boundary_events, "b")
     figure.colorbar(image, ax=(heatmap_a, heatmap_b), label="log1p(balanced contact; shared P2-P98)")
     for axis, scale in zip(is_axes, settings.scales_bp):
         frame = scale_plot_frame(
@@ -268,20 +393,25 @@ def build_region_figure(
         for point in frame.loc[frame["unavailable"], "start"]:
             axis.axvspan(point, point + settings.resolution_bp, color="0.85", zorder=0)
         axis.axvspan(region.region_start, region.region_end, color="#dbeafe", zorder=0)
-        axis.plot(frame.start, frame.a, color="#2563eb", lw=0.8, label="A")
-        axis.plot(frame.start, frame.b, color="#16a34a", lw=0.8, label="B")
-        axis.plot(frame.start, frame.b - frame.a, color="#6b21a8", lw=0.8, label="B-A")
+        axis.plot(frame.start, frame.a, color="#2563eb", lw=0.8, label=f"{sample_a} (A)")
+        axis.plot(frame.start, frame.b, color="#16a34a", lw=0.8, label=f"{sample_b} (B)")
+        axis.plot(frame.start, frame.b - frame.a, color="#6b21a8", lw=0.8, label=f"{sample_b} - {sample_a}")
         for event in events.itertuples(index=False):
             if event.is_change_type == "broad_shift":
                 axis.axvspan(event.event_start, event.event_end, color="#dc2626", alpha=0.20)
             elif pd.notna(event.summit):
                 axis.axvline(event.summit, color="#dc2626", lw=1)
+        if boundary_events is not None:
+            draw_boundary_overlays(axis, boundary_events, "a")
+            draw_boundary_overlays(axis, boundary_events, "b")
         axis.set_ylabel(f"{scale // 1000} kb")
         axis.grid(axis="y", alpha=0.2)
     is_axes[0].legend(loc="upper right", ncol=3, fontsize=8)
     is_axes[-1].set_xlabel(f"{region.chrom} coordinate (bp)")
     for axis in (heatmap_a, heatmap_b, *is_axes[:-1]):
         axis.tick_params(axis="x", labelbottom=False)
+    if boundary_events is not None:
+        figure.suptitle(annotation_title(events.iloc[0]), fontsize=10)
     return figure, (heatmap_a, heatmap_b), is_axes
 
 
@@ -298,6 +428,7 @@ def plot_region(
     sample_b,
     settings,
     output,
+    boundary_events=None,
 ):
     output = Path(output)
     figure = None
@@ -305,7 +436,7 @@ def plot_region(
     try:
         figure, _, _ = build_region_figure(
             region, events, track_a, track_b, bins_a, bins_b,
-            coolers_a, coolers_b, sample_a, sample_b, settings,
+            coolers_a, coolers_b, sample_a, sample_b, settings, boundary_events,
         )
         output.parent.mkdir(parents=True, exist_ok=True)
         descriptor, temporary = tempfile.mkstemp(
@@ -352,16 +483,24 @@ def main():
         raise ValueError(f"primary loci missing columns: {', '.join(sorted(missing))}")
     if not primary["confidence_tier"].eq("primary").all():
         raise ValueError("--primary contains preliminary rows; provide primary-tier loci only")
+    boundary_events = None
+    if args.boundary_events is not None:
+        missing_annotations = set(ANNOTATION_COLUMNS).difference(primary.columns)
+        if missing_annotations:
+            raise ValueError("annotated primary loci missing columns: {}".format(
+                ", ".join(sorted(missing_annotations))
+            ))
+        boundary_events = read_boundary_events(args.boundary_events)
+        validate_annotation_event_ids(primary, boundary_events)
     required_regions = {"region_id", "chrom", "region_start", "region_end"}
     if required_regions.difference(regions.columns):
         raise ValueError("candidate regions missing required coordinate columns")
     track_a, track_b = read_track(args.is_a, settings), read_track(args.is_b, settings)
     bins_a = read_balanced_bins(args.cool_a, settings.resolution_bp)
     bins_b = read_balanced_bins(args.cool_b, settings.resolution_bp)
-    coolers_a = open_coolers_by_chrom(args.cool_a, "sample A")
-    coolers_b = open_coolers_by_chrom(args.cool_b, "sample B")
-    sample_a = Path(args.is_a).stem.removesuffix("_IS")
-    sample_b = Path(args.is_b).stem.removesuffix("_IS")
+    sample_a, sample_b = "H1398", "L134"
+    coolers_a = open_coolers_by_chrom(args.cool_a, sample_a)
+    coolers_b = open_coolers_by_chrom(args.cool_b, sample_b)
     top = primary.assign(
         _support_band_count=primary["support_scale_bands"].fillna("").map(
             lambda bands: len({band.strip() for band in str(bands).split(",") if band.strip()})
@@ -379,6 +518,24 @@ def main():
     output_dir = Path(args.outdir)
     output_dir.mkdir(parents=True, exist_ok=True)
     manifest = []
+    if boundary_events is not None:
+        for locus_number, (_, locus) in enumerate(top.iterrows(), start=1):
+            region = regions.loc[regions.region_id == locus.region_id]
+            if len(region) != 1:
+                raise ValueError(f"primary locus references unknown or duplicate region_id {locus.region_id}")
+            comparison = str(locus.get("comparison", "comparison"))
+            output = output_dir / f"{comparison}_region_{locus.region_id}_locus_{locus_number}.png"
+            plot_region(
+                region.iloc[0], locus.to_frame().T, track_a, track_b, bins_a, bins_b,
+                coolers_a, coolers_b, sample_a, sample_b, settings, output,
+                boundary_events_for_locus(locus, boundary_events),
+            )
+            manifest.append({
+                "region_id": locus.region_id, "chrom": locus.chrom,
+                "plot_path": str(output.resolve()),
+            })
+        atomic_manifest(pd.DataFrame(manifest, columns=["region_id", "chrom", "plot_path"]), args.manifest)
+        return
     for region_id in top.region_id.drop_duplicates():
         region = regions.loc[regions.region_id == region_id]
         if len(region) != 1:
