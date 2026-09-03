@@ -34,6 +34,38 @@ def test_draw_boundary_support_uses_sample_specific_endpoint():
     plt.close(figure)
 
 
+def test_annotation_plot_selection_keeps_one_representative_per_position_state():
+    rows = []
+    for index, state in enumerate(("conserved", "gained_in_B", "lost_in_B", "shifted")):
+        rows.append({
+            "comparison": "A_vs_B", "region_id": index, "chrom": "chr1",
+            "event_start": 320000 + index * 4000, "event_end": 324000 + index * 4000,
+            "summit": 320000 + index * 4000, "is_change_type": "transition",
+            "rank_within_region": 1, "position_state": state,
+            "support_scale_bands": "small,medium",
+            "max_transition_percentile": 0.99 - index / 100,
+            "max_pulse_percentile": 0.99, "max_amplitude_percentile": 0.99,
+        })
+
+    selected = plotter.select_plot_loci(pd.DataFrame(rows), diagnostic_plot_top_n=1)
+
+    assert set(selected["position_state"]) == {"conserved", "gained_in_B", "lost_in_B", "shifted"}
+    assert selected["region_id"].is_unique
+
+
+def test_locus_manifest_id_is_stable_when_region_id_is_shared():
+    common = pd.Series({
+        "comparison": "A_vs_B", "region_id": 1, "chrom": "chr1", "summit": 320000,
+        "is_change_type": "transition", "rank_within_region": 1,
+    })
+    first = common.copy()
+    first["event_start"], first["event_end"] = 320000, 324000
+    second = common.copy()
+    second["event_start"], second["event_end"] = 324000, 328000
+
+    assert plotter.locus_manifest_id(first) != plotter.locus_manifest_id(second)
+
+
 def test_boundary_figure_draws_endpoints_and_annotation_title(tmp_path):
     locus = {
         "event_start": 320_000, "event_end": 324_000, "summit": 320_000,
@@ -522,6 +554,8 @@ def test_annotated_boundary_plots_write_one_png_per_primary_locus(tmp_path, reco
     manifest = pd.read_csv(tmp_path / "plots" / "manifest.tsv", sep="\t")
     assert len(manifest) == 2
     assert manifest.plot_path.nunique() == 2
+    assert manifest.locus_id.nunique() == 2
+    assert manifest.boundary_event_id.tolist() == ["e1", "e2"]
     assert all(Path(path).is_file() for path in manifest.plot_path)
 
 

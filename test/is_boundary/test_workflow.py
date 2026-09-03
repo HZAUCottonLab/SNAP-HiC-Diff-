@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 
 import yaml
+import pytest
 
 
 REPO = Path(__file__).resolve().parents[2]
@@ -101,13 +102,14 @@ def test_plot_rule_reverts_to_unannotated_primary_when_disabled(tmp_path):
     assert "--boundary-events" not in plan
 
 
-def test_permutation_dag_is_targeted_when_enabled(tmp_path):
+@pytest.mark.parametrize("tier", ("primary", "preliminary"))
+def test_permutation_dag_is_targeted_for_each_tier_when_enabled(tmp_path, tier):
     config = yaml.safe_load((REPO / "config" / "config.yaml").read_text())
     config = deepcopy(config)
     config["is_boundary_annotation"]["permutation"]["enabled"] = True
     config_path = tmp_path / "config.yaml"
     config_path.write_text(yaml.safe_dump(config))
-    target = "results/tad_boundary_events/H1398_vs_L134.permutation.tsv"
+    target = f"results/tad_boundary_events/H1398_vs_L134.{tier}.permutation.tsv"
     completed = _dry_run(target, tmp_path / "cache", str(config_path))
     plan = completed.stdout + completed.stderr
 
@@ -119,3 +121,12 @@ def test_permutation_dag_is_targeted_when_enabled(tmp_path):
         "permute_is_boundary_association",
     ):
         assert rule in plan
+
+
+def test_permutation_contract_uses_distinct_primary_and_preliminary_targets():
+    snakefile = (REPO / "Snakefile").read_text()
+    rules = (REPO / "rules" / "is_boundary_annotation.smk").read_text()
+
+    assert '{comparison}.{tier}.permutation.tsv' in snakefile
+    assert 'tier=("primary", "preliminary")' in snakefile
+    assert 'annotated_locus_path(w.comparison, w.tier)' in rules

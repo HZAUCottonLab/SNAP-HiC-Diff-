@@ -252,40 +252,49 @@ def _strength_state(scores, threshold, stable_threshold):
     return "discordant_or_unevaluable", []
 
 
-def _direction_state(scores, sign, threshold):
+def _direction_support(scores, sign, threshold):
     valid = [value for value in scores.values() if np.isfinite(value)]
     if len(valid) < 2:
-        return "unevaluable"
-    expected = sum(value * sign >= threshold for value in valid) >= 2
+        return "unevaluable", []
+    support = [
+        band for band, value in scores.items()
+        if np.isfinite(value) and value * sign >= threshold
+    ]
+    expected = len(support) >= 2
     opposite = sum(value * sign <= -threshold for value in valid) >= 2
     if expected:
-        return "supported"
+        return "supported", support
     if opposite:
-        return "opposite"
-    return "absent"
+        return "opposite", []
+    return "absent", []
 
 
 def _is_consistency(position_state, scores_by_role, threshold):
     if position_state in {"conserved", "complex", "ambiguous"}:
-        return "not_applicable"
+        return "not_applicable", ""
     if position_state == "gained_in_B":
-        return "direction_concordant" if _direction_state(scores_by_role["new_b"], 1, threshold) == "supported" else (
-            "unevaluable" if _direction_state(scores_by_role["new_b"], 1, threshold) == "unevaluable" else "discordant"
-        )
+        state, support = _direction_support(scores_by_role["new_b"], 1, threshold)
+        return ({"supported": "direction_concordant", "unevaluable": "unevaluable"}.get(state, "discordant"), ",".join(support))
     if position_state == "lost_in_B":
-        state = _direction_state(scores_by_role["old_a"], -1, threshold)
-        return "direction_concordant" if state == "supported" else "unevaluable" if state == "unevaluable" else "discordant"
-    old = _direction_state(scores_by_role["old_a"], -1, threshold)
-    new = _direction_state(scores_by_role["new_b"], 1, threshold)
+        state, support = _direction_support(scores_by_role["old_a"], -1, threshold)
+        return ({"supported": "direction_concordant", "unevaluable": "unevaluable"}.get(state, "discordant"), ",".join(support))
+    old, old_support = _direction_support(scores_by_role["old_a"], -1, threshold)
+    new, new_support = _direction_support(scores_by_role["new_b"], 1, threshold)
+    support = ";".join(
+        value for value in (
+            f"old_a:{','.join(old_support)}" if old_support else "",
+            f"new_b:{','.join(new_support)}" if new_support else "",
+        ) if value
+    )
     if "unevaluable" in {old, new}:
-        return "unevaluable"
+        return "unevaluable", support
     if "opposite" in {old, new}:
-        return "discordant"
+        return "discordant", support
     if old == new == "supported":
-        return "bidirectional_shift_support"
+        return "bidirectional_shift_support", support
     if "supported" in {old, new}:
-        return "partial_shift_support"
-    return "discordant"
+        return "partial_shift_support", support
+    return "discordant", support
 
 
 def summarize_strength(strength_long, events, boundary_settings, is_settings):
@@ -313,10 +322,11 @@ def summarize_strength(strength_long, events, boundary_settings, is_settings):
             )
             consistency = "not_applicable"
         else:
-            primary, support, consistency = "not_applicable", [], _is_consistency(
+            consistency, support = _is_consistency(
                 event.position_state, scores_by_role,
                 boundary_settings.strength.robust_z_threshold,
             )
+            primary = "not_applicable"
             states = {threshold: "not_applicable" for threshold in boundary_settings.strength.sensitivity_thresholds}
         state_names = {f"state_at_z{threshold:.1f}": state for threshold, state in states.items()}
         rows.append({
@@ -324,7 +334,7 @@ def summarize_strength(strength_long, events, boundary_settings, is_settings):
             "boundary_event_id": event.boundary_event_id,
             "position_state": event.position_state,
             "strength_state": primary,
-            "strength_support_bands": ",".join(support),
+            "strength_support_bands": ",".join(support) if isinstance(support, list) else support,
             "is_consistency_state": consistency,
             "small_band_score": scores["small"],
             "medium_band_score": scores["medium"],

@@ -24,6 +24,7 @@ from is_boundary_permutation import (
     randomize_loci_once,
     run_permutations,
 )
+from annotate_is_change_boundaries import _canonicalize_current_locus_comparison
 from tad_config import parse_tad_settings
 
 
@@ -202,3 +203,19 @@ def test_cli_seed_is_byte_deterministic(tmp_path):
         result = subprocess.run(base + ["--output", str(output)], text=True, capture_output=True)
         assert result.returncode == 0, result.stderr
     assert outputs[0].read_bytes() == outputs[1].read_bytes()
+
+
+def test_legacy_is_comparison_reaches_enabled_permutation_as_event_comparison(settings):
+    events = events_frame().assign(
+        comparison="H1398_vs_L134", sample_a="H1398", sample_b="L134"
+    )
+    loci = loci_frame().assign(comparison="H1398_IS__vs__L134_IS")
+    canonical = _canonicalize_current_locus_comparison(loci, events, "H1398_vs_L134")
+    configured = replace(settings, permutation=replace(settings.permutation, enabled=True, n_permutations=2))
+
+    result = run_permutations(
+        canonical, regions_frame(), events, masked_frame(), configured
+    )
+
+    assert canonical.comparison.eq("H1398_vs_L134").all()
+    assert result.comparison.eq("H1398_vs_L134").all()

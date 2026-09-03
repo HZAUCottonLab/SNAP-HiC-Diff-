@@ -114,6 +114,19 @@ def _validate_events(events, comparison):
         raise ValueError("boundary event comparison does not match --comparison")
 
 
+def _canonicalize_current_locus_comparison(loci, events, comparison):
+    """Map only this event map's legacy IS comparison name to its canonical key."""
+    pairs = events[["sample_a", "sample_b"]].dropna().drop_duplicates()
+    if len(pairs) != 1:
+        return loci
+    sample_a, sample_b = pairs.iloc[0]
+    canonical = f"{sample_a}_vs_{sample_b}"
+    if comparison != canonical:
+        return loci
+    legacy = f"{sample_a}_IS__vs__{sample_b}_IS"
+    return loci.assign(comparison=loci["comparison"].where(loci["comparison"] != legacy, canonical))
+
+
 def _write_log(path, message):
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -134,6 +147,8 @@ def run_from_args(args):
         _validate_events(events, args.comparison)
         primary = _read_loci(args.primary)
         preliminary = _read_loci(args.preliminary)
+        primary = _canonicalize_current_locus_comparison(primary, events, args.comparison)
+        preliminary = _canonicalize_current_locus_comparison(preliminary, events, args.comparison)
         masked = _read_masked(args.masked)
     except Exception as error:
         _raise("IS_BOUNDARY_ANNOTATION_FAILED", error)

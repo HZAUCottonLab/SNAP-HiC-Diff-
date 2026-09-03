@@ -146,16 +146,16 @@ rule annotate_is_change_boundaries:
 
 rule permute_is_boundary_association:
     input:
-        loci=MULTISCALE_ROOT + "/{comparison}/is_change/{comparison}_is_change_loci.boundary_annotated.tsv",
+        loci=lambda w: annotated_locus_path(w.comparison, w.tier),
         regions=MULTISCALE_ROOT + "/{comparison}/candidate_union.tsv",
         events=OUTDIR + "/tad_boundary_events/{comparison}.boundary_events.tsv",
         masked=MULTISCALE_ROOT + "/{comparison}/is_change/{comparison}_is_change_masked.bed",
     output:
-        permutation=OUTDIR + "/tad_boundary_events/{comparison}.permutation.tsv",
+        permutation=OUTDIR + "/tad_boundary_events/{comparison}.{tier}.permutation.tsv",
     log:
-        OUTDIR + "/logs/is_boundary/{comparison}.permutation.log",
+        OUTDIR + "/logs/is_boundary/{comparison}.{tier}.permutation.log",
     benchmark:
-        OUTDIR + "/benchmark/is_boundary/{comparison}.permutation.tsv"
+        OUTDIR + "/benchmark/is_boundary/{comparison}.{tier}.permutation.tsv"
     threads: 1
     params:
         script=SCRIPT_DIR + "/scripts/permute_is_boundary_association.py",

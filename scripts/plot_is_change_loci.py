@@ -466,6 +466,46 @@ def atomic_manifest(frame, path):
         raise
 
 
+def select_plot_loci(primary, diagnostic_plot_top_n):
+    ranked = primary.assign(
+        _support_band_count=primary["support_scale_bands"].fillna("").map(
+            lambda bands: len({band.strip() for band in str(bands).split(",") if band.strip()})
+        )
+    ).sort_values(
+        [
+            "_support_band_count", "max_transition_percentile", "max_pulse_percentile",
+            "max_amplitude_percentile", "region_id", "chrom", "event_start", "event_end",
+            "is_change_type",
+        ],
+        ascending=[False, False, False, False, True, True, True, True, True],
+        kind="stable",
+        na_position="last",
+    )
+    if diagnostic_plot_top_n <= 0 or "position_state" not in ranked:
+        return ranked if diagnostic_plot_top_n <= 0 else ranked.head(diagnostic_plot_top_n)
+    representatives = ranked.drop_duplicates("position_state", keep="first")
+    remainder = ranked.drop(index=representatives.index).head(
+        max(0, diagnostic_plot_top_n - len(representatives))
+    )
+    return pd.concat((representatives, remainder), ignore_index=False)
+
+
+def locus_manifest_id(locus):
+    value = locus.get("locus_id", "")
+    if pd.notna(value) and str(value).strip():
+        return str(value)
+    return ":".join(map(str, (
+        locus.get("comparison", "comparison"), locus.region_id, locus.chrom,
+        locus.event_start, locus.event_end, locus.summit, locus.is_change_type,
+        locus.rank_within_region,
+    )))
+
+
+def manifest_boundary_event_id(locus):
+    value = locus.get("boundary_event_id", "")
+    return "" if pd.isna(value) else str(value)
+
+
 def main():
     args = parse_args()
     with open(args.config) as handle:
@@ -501,20 +541,7 @@ def main():
     sample_a, sample_b = "H1398", "L134"
     coolers_a = open_coolers_by_chrom(args.cool_a, sample_a)
     coolers_b = open_coolers_by_chrom(args.cool_b, sample_b)
-    top = primary.assign(
-        _support_band_count=primary["support_scale_bands"].fillna("").map(
-            lambda bands: len({band.strip() for band in str(bands).split(",") if band.strip()})
-        )
-    ).sort_values(
-        [
-            "_support_band_count", "max_transition_percentile", "max_pulse_percentile",
-            "max_amplitude_percentile", "region_id", "chrom", "event_start", "event_end",
-            "is_change_type",
-        ],
-        ascending=[False, False, False, False, True, True, True, True, True],
-        kind="stable",
-        na_position="last",
-    ).head(settings.diagnostic_plot_top_n)
+    top = select_plot_loci(primary, settings.diagnostic_plot_top_n)
     output_dir = Path(args.outdir)
     output_dir.mkdir(parents=True, exist_ok=True)
     manifest = []
@@ -532,9 +559,13 @@ def main():
             )
             manifest.append({
                 "region_id": locus.region_id, "chrom": locus.chrom,
+                "locus_id": locus_manifest_id(locus),
+                "boundary_event_id": manifest_boundary_event_id(locus),
                 "plot_path": str(output.resolve()),
             })
-        atomic_manifest(pd.DataFrame(manifest, columns=["region_id", "chrom", "plot_path"]), args.manifest)
+        atomic_manifest(pd.DataFrame(manifest, columns=[
+            "region_id", "chrom", "locus_id", "boundary_event_id", "plot_path",
+        ]), args.manifest)
         return
     for region_id in top.region_id.drop_duplicates():
         region = regions.loc[regions.region_id == region_id]

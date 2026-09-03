@@ -220,7 +220,8 @@ results/tad_boundary_events/{comparison}.annotation_summary.tsv
 results/multiscale/r4000/{comparison}/is_change/{comparison}_is_change_loci.boundary_annotated.tsv
 results/multiscale/r4000/{comparison}/is_change/{comparison}_is_change_loci_preliminary.boundary_annotated.tsv
 results/multiscale/r4000/{comparison}/is_change/figures/manifest.tsv
-results/tad_boundary_events/{comparison}.permutation.tsv  # optional
+results/tad_boundary_events/{comparison}.primary.permutation.tsv  # optional
+results/tad_boundary_events/{comparison}.preliminary.permutation.tsv  # optional
 ```
 
 Target the H1398-to-L134 annotated primary table and its diagnostic figure
@@ -244,11 +245,13 @@ is_boundary_annotation:
     enabled: true
 ```
 
-For a deterministic visual audit, join the figure manifest to the annotated
-primary table by `region_id`, filter to simple `position_state` classes, use
-seed `20260903` to order loci within each class, and inspect up to 20 loci
-from every sufficiently populated class. Record `boundary_event_id`, reviewer,
-`pass/fail`, and a note in
+For a deterministic visual audit, use the annotation-mode figure manifest's
+`locus_id` (not the non-unique `region_id`) together with its
+`boundary_event_id`; an empty event ID explicitly records no endpoint event.
+The plot selector retains one deterministic representative for every available
+`position_state` before it fills the global top-N list. Filter to simple
+classes and inspect up to 20 loci from every sufficiently populated class.
+Record `boundary_event_id`, reviewer, `pass/fail`, and a note in
 `results/tad_boundary_events/{comparison}.visual_review.tsv`. This manual QC
 artifact is neither a Snakemake completion dependency nor a statistical test.
 

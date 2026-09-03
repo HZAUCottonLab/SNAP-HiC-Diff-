@@ -59,6 +59,16 @@ def resolution_count(value):
     return len({int(item) for item in str(value).split(",")})
 
 
+def direction_support_band_count(value):
+    bands = set()
+    for role in str(value).split(";"):
+        parts = role.split(":", 1)
+        for band in parts[-1].split(","):
+            if band and band != "nan":
+                bands.add(band)
+    return len(bands)
+
+
 def evidence_tier(row):
     if row.position_state in {"complex", "ambiguous"}:
         return "not_applicable"
@@ -80,11 +90,7 @@ def evidence_tier(row):
     direction_ok = row.is_consistency_state in {
         "direction_concordant", "bidirectional_shift_support", "not_applicable"
     }
-    support_bands = {
-        value for value in str(row.strength_support_bands).split(",")
-        if value and value != "nan"
-    }
-    if row.is_consistency_state != "not_applicable" and len(support_bands) < 2:
+    if row.is_consistency_state != "not_applicable" and direction_support_band_count(row.strength_support_bands) < 2:
         return "low"
     strength_stable = (
         row.position_state == "no_boundary_association"

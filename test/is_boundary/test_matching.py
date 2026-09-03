@@ -358,3 +358,40 @@ def test_cli_writes_atomic_outputs_and_rejects_same_sample(tmp_path):
     rejected_grid = subprocess.run(command, text=True, capture_output=True, check=False)
     assert rejected_grid.returncode == 1
     assert "IS_BOUNDARY_REFERENCE_MISMATCH" in rejected_grid.stderr
+
+
+def test_one_sided_chromosome_and_terminal_partial_boundary_are_valid_events(settings):
+    a = unified_frame([
+        ("A01", 0, 8000, "lost"),
+        ("A02", 8000, 16000, "shifted"),
+    ])
+    b = unified_frame([("A02", 76000, 84000, "new")])
+    events = call_boundary_events(
+        a, b, JitterEstimate(4000, "empirical_q95", 200, 4000.0), settings,
+        "A_vs_B", "A", "B",
+    )
+
+    assert events.loc[events.boundary_a_id.eq("lost"), "position_state"].item() == "lost_in_B"
+    assert events.loc[events.boundary_b_id.eq("new"), "position_state"].item() == "shifted"
+
+    terminal_a = unified_frame([("A03", 4000, 10003, "terminal")])
+    terminal_b = terminal_a.copy()
+    terminal_a.loc[0, "component_state"] = "simple_terminal_partial_raw"
+    terminal_b.loc[0, "component_state"] = "simple_terminal_partial_balanced"
+    from call_tad_boundary_events import _validate_reference
+
+    _validate_reference(terminal_a, terminal_b, settings, "A", "B")
+
+
+def test_unevaluable_boundary_component_is_ambiguous_not_a_rearrangement(settings):
+    a = unified_frame([("A02", 4000, 12000, "a")])
+    b = unified_frame([])
+    a.loc[0, "component_state"] = "unevaluable_coverage_raw_bad_region"
+
+    event = call_boundary_events(
+        a, b, JitterEstimate(4000, "empirical_q95", 200, 4000.0), settings,
+        "A_vs_B", "A", "B",
+    ).iloc[0]
+
+    assert event.position_state == "ambiguous"
+    assert event.ambiguity_reason == "unevaluable_boundary_coverage:raw_bad_region"

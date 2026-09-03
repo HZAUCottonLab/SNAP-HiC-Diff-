@@ -96,6 +96,7 @@ def _attach_eligibility(frame, chrom_sizes, bins, bad_regions, base_bin_bp):
             touches_chromosome_end=pd.Series(dtype=bool),
             has_nonfinite_base_bins=pd.Series(dtype=bool),
             overlaps_bad_region=pd.Series(dtype=bool),
+            terminal_partial_coordinate=pd.Series(dtype=bool),
         )
     columns = {chrom: group for chrom, group in bins.groupby("chrom", observed=True)}
     end_flags, missing_flags, bad_flags = [], [], []
@@ -124,6 +125,10 @@ def _attach_eligibility(frame, chrom_sizes, bins, bad_regions, base_bin_bp):
         touches_chromosome_end=end_flags,
         has_nonfinite_base_bins=missing_flags,
         overlaps_bad_region=bad_flags,
+        terminal_partial_coordinate=[
+            row.end == chrom_sizes[row.chrom] and row.end % base_bin_bp != 0
+            for row in frame.itertuples(index=False)
+        ],
     )
 
 
@@ -168,23 +173,20 @@ def run_from_args(args):
     per_resolution = _sort_for_chromosomes(
         pd.concat([raw_resolution, balanced_resolution], ignore_index=True), chrom_order
     )
-    raw_jitter = _attach_eligibility(raw, chrom_sizes, bins, bad_regions, settings.base_bin_bp)
-    balanced_jitter = _attach_eligibility(
+    raw = _attach_eligibility(raw, chrom_sizes, bins, bad_regions, settings.base_bin_bp)
+    balanced = _attach_eligibility(
         balanced, chrom_sizes, bins, bad_regions, settings.base_bin_bp
     )
-    per_resolution_jitter = _attach_eligibility(
+    per_resolution = _attach_eligibility(
         per_resolution, chrom_sizes, bins, bad_regions, settings.base_bin_bp
     )
     raw = raw.assign(sample=args.sample)
     balanced = balanced.assign(sample=args.sample)
-    raw_jitter = raw_jitter.assign(sample=args.sample)
-    balanced_jitter = balanced_jitter.assign(sample=args.sample)
-    per_resolution_jitter = per_resolution_jitter.assign(sample=args.sample)
     unified = unify_boundaries(
         raw, balanced, settings.match_tie_tolerance_bp, chrom_order=chrom_order
     )
     offsets = build_jitter_offsets(
-        raw_jitter, balanced_jitter, per_resolution_jitter, settings.base_bin_bp,
+        raw, balanced, per_resolution, settings.base_bin_bp,
         settings.match_tie_tolerance_bp,
     )
     views = build_sensitivity_views(

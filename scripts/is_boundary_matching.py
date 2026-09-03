@@ -312,19 +312,31 @@ def _events_at_distance(
     for chrom in chromosomes:
         all_a = _sorted(boundaries_a[boundaries_a["chrom"] == chrom])
         all_b = _sorted(boundaries_b[boundaries_b["chrom"] == chrom])
-        simple_a = _sorted(all_a[all_a["component_state"] == "simple"])
-        simple_b = _sorted(all_b[all_b["component_state"] == "simple"])
-        for _, row in all_a[all_a["component_state"] != "simple"].iterrows():
+        simple_a = _sorted(all_a[all_a["component_state"].str.startswith("simple")])
+        simple_b = _sorted(all_b[all_b["component_state"].str.startswith("simple")])
+        for _, row in all_a[~all_a["component_state"].str.startswith("simple")].iterrows():
+            unevaluable = row.component_state.startswith("unevaluable_coverage")
             records.append(_event_record(
                 [row], [], comparison=comparison, sample_a=sample_a, sample_b=sample_b,
-                position_state="complex", match_stage="within_sample_complex", jitter=jitter,
-                max_shift_bp=max_shift_bp, ambiguity_reason="complex_within_sample",
+                position_state=("ambiguous" if unevaluable else "complex"),
+                match_stage=("coverage_unevaluable" if unevaluable else "within_sample_complex"),
+                jitter=jitter, max_shift_bp=max_shift_bp,
+                ambiguity_reason=(
+                    "unevaluable_boundary_coverage:" + row.component_state.removeprefix("unevaluable_coverage_")
+                    if unevaluable else "complex_within_sample"
+                ),
             ))
-        for _, row in all_b[all_b["component_state"] != "simple"].iterrows():
+        for _, row in all_b[~all_b["component_state"].str.startswith("simple")].iterrows():
+            unevaluable = row.component_state.startswith("unevaluable_coverage")
             records.append(_event_record(
                 [], [row], comparison=comparison, sample_a=sample_a, sample_b=sample_b,
-                position_state="complex", match_stage="within_sample_complex", jitter=jitter,
-                max_shift_bp=max_shift_bp, ambiguity_reason="complex_within_sample",
+                position_state=("ambiguous" if unevaluable else "complex"),
+                match_stage=("coverage_unevaluable" if unevaluable else "within_sample_complex"),
+                jitter=jitter, max_shift_bp=max_shift_bp,
+                ambiguity_reason=(
+                    "unevaluable_boundary_coverage:" + row.component_state.removeprefix("unevaluable_coverage_")
+                    if unevaluable else "complex_within_sample"
+                ),
             ))
 
         candidates = _candidate_data(simple_a, simple_b, max_shift_bp)

@@ -201,6 +201,20 @@ def test_clean_unevaluable_gain_or_loss_keeps_position_with_low_evidence(event_u
     assert result.evidence_tier == "low"
 
 
+def test_annotation_canonicalizes_only_the_current_legacy_is_comparison(tmp_path):
+    primary = pd.DataFrame([_locus(comparison="A_IS__vs__B_IS")], columns=PRIMARY_COLUMNS)
+    preliminary = pd.DataFrame(columns=PRIMARY_COLUMNS)
+    result = subprocess.run(
+        _annotation_command(
+            tmp_path, pd.DataFrame([_event()], columns=BOUNDARY_EVENT_COLUMNS), primary, preliminary
+        ), text=True, capture_output=True, check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    annotated = pd.read_csv(tmp_path / "annotated.primary.tsv", sep="\t")
+    assert annotated.loc[0, "comparison"] == "A_vs_B"
+
+
 @pytest.mark.parametrize(
     ("updates", "expected"),
     [
@@ -224,6 +238,28 @@ def test_evidence_tier_outcomes(updates, expected):
     }
     row.update(updates)
     assert evidence_tier(pd.Series(row)) == expected
+
+
+@pytest.mark.parametrize(
+    ("position_state", "consistency", "support"),
+    [
+        ("gained_in_B", "direction_concordant", "small,medium"),
+        ("lost_in_B", "direction_concordant", "small,medium"),
+        ("shifted", "bidirectional_shift_support", "old_a:small,medium;new_b:small,medium"),
+    ],
+)
+def test_direction_supported_rearrangements_can_reach_high_evidence(
+    position_state, consistency, support
+):
+    row = pd.Series({
+        "position_state": position_state, "confidence_tier": "primary",
+        "jitter_source": "empirical_q95", "signal_support_a": "both", "signal_support_b": "both",
+        "resolution_support_a": "4000,8000", "resolution_support_b": "4000,8000",
+        "is_consistency_state": consistency, "strength_support_bands": support,
+        "strength_state_stable": True, "position_state_stable": True,
+    })
+
+    assert evidence_tier(row) == "high"
 
 
 def test_summary_uses_confidence_tier_denominators_and_explicit_state_order():

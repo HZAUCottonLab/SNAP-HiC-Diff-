@@ -153,3 +153,30 @@ def test_rejects_strength_threshold_that_overflows_float_conversion():
             parse_cworld_is_settings(config),
             parse_tad_settings(config),
         )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("shift_sensitivity_bp", [60000, 100000]),
+        ("shift_sensitivity_bp", [60000, 80000, 120000]),
+    ],
+)
+def test_rejects_nonpublication_shift_sensitivity(field, value):
+    config = deepcopy(repository_config())
+    config["is_boundary_annotation"][field] = value
+
+    with pytest.raises(ValueError, match="fixed publication contract"):
+        parse_is_boundary_settings(
+            config, parse_cworld_is_settings(config), parse_tad_settings(config)
+        )
+
+
+def test_rejects_nonpublication_strength_sensitivity():
+    config = deepcopy(repository_config())
+    config["is_boundary_annotation"]["strength"]["sensitivity_thresholds"] = [1.0, 2.0, 3.0]
+
+    with pytest.raises(ValueError, match="fixed publication contract"):
+        parse_is_boundary_settings(
+            config, parse_cworld_is_settings(config), parse_tad_settings(config)
+        )

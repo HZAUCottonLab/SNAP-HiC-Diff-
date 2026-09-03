@@ -244,6 +244,11 @@ def test_rearrangements_use_directional_is_consistency_states():
     assert summary.loc["loss", "is_consistency_state"] == "direction_concordant"
     assert summary.loc["shift", "is_consistency_state"] == "bidirectional_shift_support"
     assert summary.loc["shift_opposite", "is_consistency_state"] == "discordant"
+    assert summary.loc["gain", "strength_support_bands"] == "small,medium,large"
+    assert summary.loc["loss", "strength_support_bands"] == "small,medium,large"
+    assert summary.loc["shift", "strength_support_bands"] == (
+        "old_a:small,medium,large;new_b:small,medium,large"
+    )
 
 
 def test_compute_strength_long_assigns_each_coordinate_role():

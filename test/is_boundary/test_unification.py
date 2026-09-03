@@ -22,6 +22,7 @@ from is_boundary_io import (
 from is_boundary_unification import (
     build_jitter_offsets,
     build_sensitivity_views,
+    maximum_cardinality_pairs,
     unify_boundaries,
 )
 
@@ -249,6 +250,43 @@ def test_jitter_offsets_include_raw_balanced_pair_and_propagate_exclusions():
         & (leave_one_out["comparison"] == "full_vs_leave_r4000_out"),
         "eligible",
     ].iloc[0]
+
+
+def test_unified_component_retains_terminal_and_bad_coverage_state():
+    raw = boundary_frame("raw", [("A02", 0, 8000, "raw", "4000", 1)])
+    balanced = boundary_frame("balanced", [("A02", 0, 8000, "balanced", "4000", 1)])
+
+    terminal = unify_boundaries(
+        raw.assign(terminal_partial_coordinate=True), balanced, tie_tolerance_bp=4000
+    )
+    unavailable = unify_boundaries(
+        raw.assign(overlaps_bad_region=True), balanced, tie_tolerance_bp=4000
+    )
+
+    assert terminal.loc[0, "component_state"] == "simple_terminal_partial_raw"
+    assert unavailable.loc[0, "component_state"] == "unevaluable_coverage_raw_bad_region"
+
+
+def test_sparse_matcher_scales_with_disjoint_local_overlaps():
+    count = 1500
+    raw = boundary_frame("raw", [
+        ("A02", index * 20000, index * 20000 + 8000, f"raw_{index}", "4000", 1)
+        for index in range(count)
+    ]).assign(center_bp=lambda frame: (frame.start + frame.end) // 2)
+    balanced = boundary_frame("balanced", [
+        ("A02", index * 20000 + 4000, index * 20000 + 12000, f"balanced_{index}", "4000", 1)
+        for index in range(count)
+    ]).assign(center_bp=lambda frame: (frame.start + frame.end) // 2)
+
+    assert maximum_cardinality_pairs(raw, balanced, lambda left, right: left.start < right.end and right.start < left.end) == [
+        (index, index) for index in range(count)
+    ]
+    offsets = build_jitter_offsets(
+        raw.drop(columns="center_bp"), balanced.drop(columns="center_bp"),
+        pd.DataFrame(columns=["chrom", "start", "end", "boundary_id", "resolution", "n_source_boundaries", "signal"]),
+        base_bin_bp=4000,
+    )
+    assert len(offsets) == count
 
 
 def make_mcool(path):

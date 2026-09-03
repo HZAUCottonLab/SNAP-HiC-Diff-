@@ -20,38 +20,76 @@ def overlaps(left, right):
     return max(int(left.start), int(right.start)) < min(int(left.end), int(right.end))
 
 
-def maximum_cardinality_pairs(left, right, eligible):
-    n, m = len(left), len(right)
-    score = [[(0, 0) for _ in range(m + 1)] for _ in range(n + 1)]
-    trace = [[None for _ in range(m + 1)] for _ in range(n + 1)]
-    for i in range(n + 1):
-        for j in range(m + 1):
-            if i < n and score[i][j] > score[i + 1][j]:
-                score[i + 1][j] = score[i][j]
-                trace[i + 1][j] = (i, j, "skip_left")
-            if j < m and score[i][j] > score[i][j + 1]:
-                score[i][j + 1] = score[i][j]
-                trace[i][j + 1] = (i, j, "skip_right")
-            if i < n and j < m and eligible(left.iloc[i], right.iloc[j]):
-                distance = abs(int(left.iloc[i].center_bp) - int(right.iloc[j].center_bp))
-                candidate = (score[i][j][0] + 1, score[i][j][1] - distance)
-                if candidate > score[i + 1][j + 1]:
-                    score[i + 1][j + 1] = candidate
-                    trace[i + 1][j + 1] = (i, j, "match")
+def _overlap_pairs(left, right):
+    """Enumerate cross-signal interval overlaps without a chromosome-wide grid."""
+    events = []
+    for side, frame in enumerate((left, right)):
+        for index, row in enumerate(frame.itertuples(index=False)):
+            events.extend(((int(row.start), 1, side, index), (int(row.end), 0, side, index)))
+    active = (set(), set())
     pairs = []
-    i, j = n, m
-    while i or j:
-        previous = trace[i][j]
-        if previous is None:
-            if i:
-                i -= 1
-            else:
-                j -= 1
-            continue
-        previous_i, previous_j, action = previous
-        if action == "match":
-            pairs.append((previous_i, previous_j))
-        i, j = previous_i, previous_j
+    for _, action, side, index in sorted(events):
+        if action == 0:
+            active[side].discard(index)
+        else:
+            other = 1 - side
+            pairs.extend(
+                (index, other_index) if side == 0 else (other_index, index)
+                for other_index in sorted(active[other])
+            )
+            active[side].add(index)
+    return pairs
+
+
+def maximum_cardinality_pairs(left, right, eligible):
+    """Maximize noncrossing overlap matches, then minimize their total shift."""
+    m = len(right)
+    nodes = [(0, 0, 0, None)]
+    tree = [0] * (m + 1)
+
+    def better(left_node, right_node):
+        left_score, right_score = nodes[left_node][:2], nodes[right_node][:2]
+        return left_node if left_score > right_score or (left_score == right_score and left_node > right_node) else right_node
+
+    def query(index):
+        best = 0
+        while index:
+            best = better(best, tree[index])
+            index -= index & -index
+        return best
+
+    def update(index, node):
+        while index <= m:
+            tree[index] = better(tree[index], node)
+            index += index & -index
+
+    candidates = []
+    for index_left, index_right in _overlap_pairs(left, right):
+        row_left, row_right = left.iloc[index_left], right.iloc[index_right]
+        if eligible(row_left, row_right):
+            candidates.append((index_left, index_right, abs(int(row_left.center_bp) - int(row_right.center_bp))))
+    start = 0
+    candidates.sort()
+    while start < len(candidates):
+        index_left = candidates[start][0]
+        pending = []
+        end = start
+        while end < len(candidates) and candidates[end][0] == index_left:
+            _, index_right, distance = candidates[end]
+            previous = query(index_right)
+            count, total_distance = nodes[previous][:2]
+            nodes.append((count + 1, total_distance - distance, previous, (index_left, index_right)))
+            pending.append((index_right + 1, len(nodes) - 1))
+            end += 1
+        for index_right, node in pending:
+            update(index_right, node)
+        start = end
+
+    pairs = []
+    node = query(m)
+    while node:
+        _, _, node, pair = nodes[node]
+        pairs.append(pair)
     return list(reversed(pairs))
 
 
@@ -61,11 +99,28 @@ def _resolution_union(rows):
     })))
 
 
-def _row(raw_rows, balanced_rows, component_state="simple"):
+def _row(raw_rows, balanced_rows, component_state=None):
     raw_rows = list(raw_rows)
     balanced_rows = list(balanced_rows)
     rows = raw_rows + balanced_rows
     resolutions = _resolution_union(rows)
+    if component_state is None:
+        coverage = [
+            f"{signal}_{reason}"
+            for signal, signal_rows in (("raw", raw_rows), ("balanced", balanced_rows))
+            for reason, column in (("bad_region", "overlaps_bad_region"), ("nonfinite_base_bins", "has_nonfinite_base_bins"))
+            if any(bool(getattr(row, column, False)) for row in signal_rows)
+        ]
+        terminal = [
+            signal for signal, signal_rows in (("raw", raw_rows), ("balanced", balanced_rows))
+            if any(bool(getattr(row, "terminal_partial_coordinate", False)) for row in signal_rows)
+        ]
+        if coverage:
+            component_state = "unevaluable_coverage_" + "_and_".join(coverage)
+        elif terminal:
+            component_state = "simple_terminal_partial_" + "_and_".join(terminal)
+        else:
+            component_state = "simple"
     return {
         "chrom": rows[0].chrom,
         "start": min(int(item.start) for item in rows),
@@ -83,41 +138,41 @@ def _row(raw_rows, balanced_rows, component_state="simple"):
 
 
 def _components(raw, balanced):
-    edges = {
-        (raw_index, balanced_index)
-        for raw_index, raw_row in raw.iterrows()
-        for balanced_index, balanced_row in balanced.iterrows()
-        if overlaps(raw_row, balanced_row)
-    }
+    edges = _overlap_pairs(raw, balanced)
+    adjacent_raw = {index: [] for index in range(len(raw))}
+    adjacent_balanced = {index: [] for index in range(len(balanced))}
+    for raw_index, balanced_index in edges:
+        adjacent_raw[raw_index].append(balanced_index)
+        adjacent_balanced[balanced_index].append(raw_index)
     components = []
-    unseen = set(edges)
-    while unseen:
-        seed = unseen.pop()
-        raw_indices, balanced_indices = {seed[0]}, {seed[1]}
-        changed = True
-        while changed:
-            changed = False
-            for edge in list(unseen):
-                if edge[0] in raw_indices or edge[1] in balanced_indices:
-                    raw_indices.add(edge[0])
-                    balanced_indices.add(edge[1])
-                    unseen.remove(edge)
-                    changed = True
+    seen_raw, seen_balanced = set(), set()
+    for seed in sorted(index for index, values in adjacent_raw.items() if values):
+        if seed in seen_raw:
+            continue
+        raw_indices, balanced_indices = set(), set()
+        pending = [(0, seed)]
+        while pending:
+            side, index = pending.pop()
+            if side == 0:
+                if index in seen_raw:
+                    continue
+                seen_raw.add(index)
+                raw_indices.add(index)
+                pending.extend((1, other) for other in adjacent_raw[index])
+            elif index not in seen_balanced:
+                seen_balanced.add(index)
+                balanced_indices.add(index)
+                pending.extend((0, other) for other in adjacent_balanced[index])
         components.append((sorted(raw_indices), sorted(balanced_indices)))
     return components
 
 
 def _has_tie(raw, balanced, tie_tolerance_bp):
-    for left, right in ((raw, balanced), (balanced, raw)):
-        for _, item in left.iterrows():
-            distances = sorted(
-                abs(int(item.center_bp) - int(other.center_bp))
-                for _, other in right.iterrows()
-                if overlaps(item, other)
-            )
-            if len(distances) > 1 and distances[1] - distances[0] < tie_tolerance_bp:
-                return True
-    return False
+    return any(
+        len(distances) > 1 and distances[1][0] - distances[0][0] < tie_tolerance_bp
+        for candidates in _overlap_distances(raw, balanced)
+        for distances in candidates.values()
+    )
 
 
 def _chrom_rank(chromosomes, chrom_order):
@@ -205,7 +260,7 @@ def _merge_resolution_boundaries(per_resolution, signal, excluded_resolution=Non
     eligibility_columns = [
         column for column in (
             "touches_chromosome_end", "has_nonfinite_base_bins",
-            "overlaps_bad_region", "complex_component",
+            "overlaps_bad_region", "complex_component", "terminal_partial_coordinate",
         ) if column in frame
     ]
     rows = []
@@ -236,19 +291,20 @@ def _merge_resolution_boundaries(per_resolution, signal, excluded_resolution=Non
     return pd.DataFrame(rows, columns=columns)
 
 
-def _candidate_distances(left, right, item):
-    return sorted(
-        (abs(int(item.center_bp) - int(other.center_bp)), index)
-        for index, other in right.iterrows()
-        if overlaps(item, other)
-    )
+def _overlap_distances(left, right):
+    by_left = {index: [] for index in range(len(left))}
+    by_right = {index: [] for index in range(len(right))}
+    for left_index, right_index in _overlap_pairs(left, right):
+        distance = abs(int(left.iloc[left_index].center_bp) - int(right.iloc[right_index].center_bp))
+        by_left[left_index].append((distance, right_index))
+        by_right[right_index].append((distance, left_index))
+    for values in (*by_left.values(), *by_right.values()):
+        values.sort()
+    return by_left, by_right
 
 
-def _reciprocal_unique(left, right, left_index, right_index, tie_tolerance_bp):
-    left_item = left.iloc[left_index]
-    right_item = right.iloc[right_index]
-    left_distances = _candidate_distances(left, right, left_item)
-    right_distances = _candidate_distances(right, left, right_item)
+def _reciprocal_unique(left_index, right_index, distances, tie_tolerance_bp):
+    left_distances, right_distances = distances[0][left_index], distances[1][right_index]
     if not left_distances or not right_distances:
         return False
     return (
@@ -272,26 +328,6 @@ def _is_excluded(item):
     )
 
 
-def _in_complex_component(left, right, left_index, right_index):
-    left_indices, right_indices = {left_index}, {right_index}
-    changed = True
-    while changed:
-        changed = False
-        for index, item in left.iterrows():
-            if index not in left_indices and any(
-                overlaps(item, right.iloc[other]) for other in right_indices
-            ):
-                left_indices.add(index)
-                changed = True
-        for index, item in right.iterrows():
-            if index not in right_indices and any(
-                overlaps(item, left.iloc[other]) for other in left_indices
-            ):
-                right_indices.add(index)
-                changed = True
-    return len(left_indices) > 1 and len(right_indices) > 1
-
-
 def _sample(left, right):
     values = []
     for frame in (left, right):
@@ -313,6 +349,13 @@ def _offset_rows(
         right_chrom = right[right["chrom"] == chrom].sort_values(
             ["start", "end", "boundary_id"], kind="stable"
         ).reset_index(drop=True)
+        distances = _overlap_distances(left_chrom, right_chrom)
+        complex_left = set()
+        complex_right = set()
+        for left_indices, right_indices in _components(left_chrom, right_chrom):
+            if len(left_indices) > 1 and len(right_indices) > 1:
+                complex_left.update(left_indices)
+                complex_right.update(right_indices)
         for left_index, right_index in maximum_cardinality_pairs(
             left_chrom, right_chrom, overlaps
         ):
@@ -331,12 +374,8 @@ def _offset_rows(
                 "center_b": int(item_b.center_bp),
                 "offset_bp": abs(int(item_a.center_bp) - int(item_b.center_bp)),
                 "eligible": bool(
-                    _reciprocal_unique(
-                        left_chrom, right_chrom, left_index, right_index, tie_tolerance_bp
-                    )
-                    and not _in_complex_component(
-                        left_chrom, right_chrom, left_index, right_index
-                    )
+                    _reciprocal_unique(left_index, right_index, distances, tie_tolerance_bp)
+                    and not (left_index in complex_left and right_index in complex_right)
                     and not _is_excluded(item_a)
                     and not _is_excluded(item_b)
                 ),

@@ -64,13 +64,14 @@ def _reference_mismatch(message):
 def _validate_reference(boundaries_a, boundaries_b, settings, sample_a, sample_b):
     if sample_a == sample_b:
         _reference_mismatch("sample_names_equal")
-    if set(boundaries_a["chrom"]) != set(boundaries_b["chrom"]):
-        _reference_mismatch("chromosome_sets_differ")
-    coordinates = pd.concat([
-        boundaries_a[["start", "end"]], boundaries_b[["start", "end"]],
-    ], ignore_index=True)
-    if not coordinates.empty and (coordinates.to_numpy(dtype=int) % settings.base_bin_bp).any():
-        _reference_mismatch("coordinates_not_on_base_grid")
+    for frame in (boundaries_a, boundaries_b):
+        for row in frame.itertuples(index=False):
+            terminal_partial = row.component_state.startswith("simple_terminal_partial")
+            if (
+                int(row.start) % settings.base_bin_bp
+                or (int(row.end) % settings.base_bin_bp and not terminal_partial)
+            ):
+                _reference_mismatch("coordinates_not_on_base_grid")
 
 
 def _validate_sample(frame, sample, label):

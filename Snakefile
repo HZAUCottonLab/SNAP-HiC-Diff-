@@ -98,6 +98,13 @@ def boundary_event_path(comparison):
 def boundary_stability_path(comparison):
     return "{}/tad_boundary_events/{}.boundary_event_stability.tsv".format(OUTDIR, comparison)
 
+
+def annotated_locus_path(comparison, tier):
+    suffix = "_preliminary" if tier == "preliminary" else ""
+    return MULTISCALE_ROOT + "/{}/is_change/{}_is_change_loci{}.boundary_annotated.tsv".format(
+        comparison, comparison, suffix
+    )
+
 # ==============================================================================
 # Helper Functions
 # ==============================================================================
@@ -362,8 +369,8 @@ IS_BOUNDARY_ALL_OUTPUTS = (
 
 PERMUTATION_ALL_OUTPUTS = (
     expand(
-        OUTDIR + "/tad_boundary_events/{comparison}.permutation.tsv",
-        comparison=get_window_compare_pairs(),
+        OUTDIR + "/tad_boundary_events/{comparison}.{tier}.permutation.tsv",
+        comparison=get_window_compare_pairs(), tier=("primary", "preliminary"),
     )
     if IS_BOUNDARY.permutation.enabled
     else []

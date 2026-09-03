@@ -124,8 +124,8 @@ def parse_is_boundary_settings(
     sensitivity = tuple(
         _distance(value, "shift_sensitivity_bp", base) for value in sensitivity
     )
-    if sensitivity != tuple(sorted(set(sensitivity))):
-        raise _invalid("shift_sensitivity_bp must be sorted and unique")
+    if sensitivity != (60000, 80000, 100000):
+        raise _invalid("shift_sensitivity_bp must use the fixed publication contract [60000, 80000, 100000]")
     max_shift = _positive_int(_required(raw, "max_shift_bp"), "max_shift_bp")
     if max_shift not in sensitivity:
         raise _invalid("shift_sensitivity_bp must contain max_shift_bp")
@@ -181,13 +181,8 @@ def parse_is_boundary_settings(
         raise _invalid(
             "stable_abs_z_threshold must be smaller than robust_z_threshold"
         )
-    if (
-        sensitivity_thresholds != tuple(sorted(set(sensitivity_thresholds)))
-        or strength.robust_z_threshold not in sensitivity_thresholds
-    ):
-        raise _invalid(
-            "sensitivity_thresholds must be sorted, unique, and contain robust_z_threshold"
-        )
+    if sensitivity_thresholds != (1.5, 2.0, 2.5):
+        raise _invalid("sensitivity_thresholds must use the fixed publication contract [1.5, 2.0, 2.5]")
 
     enabled = _required(raw, "enabled")
     permutation_enabled = _required(permutation_raw, "enabled")
