@@ -244,7 +244,7 @@ def test_annotation_canonicalizes_current_legacy_comparison_without_boundary_eve
     assert observed["comparison"].tolist() == ["H1398_vs_L134", "other_IS__vs__pair_IS"]
 
 
-def test_colocated_coverage_ambiguity_precedes_simple_boundary_counterpart():
+def test_colocated_coverage_and_simple_boundary_events_remain_complex():
     coverage = _event(
         boundary_event_id="coverage", position_state="ambiguous",
         boundary_a_id="a_coverage", boundary_b_id="", b_start=float("nan"),
@@ -262,10 +262,36 @@ def test_colocated_coverage_ambiguity_precedes_simple_boundary_counterpart():
         pd.DataFrame(), _masked(), type("S", (), {"base_bin_bp": 4000})(),
     ).iloc[0]
 
-    assert result["boundary_event_id"] == "coverage"
+    assert result["boundary_event_id"] == "counterpart,coverage"
+    assert result["n_boundary_candidates"] == 2
+    assert result["position_state"] == "complex"
+    assert result["annotation_reason"] == "multiple_boundary_events"
+
+
+def test_colocated_double_sided_coverage_ambiguity_has_stable_combined_reason():
+    coverage_a = _event(
+        boundary_event_id="coverage_a", position_state="ambiguous",
+        boundary_a_id="a_coverage", boundary_b_id="", b_start=float("nan"),
+        b_end=float("nan"), ambiguity_reason="unevaluable_boundary_coverage:raw_bad_region",
+    )
+    coverage_b = _event(
+        boundary_event_id="coverage_b", position_state="ambiguous",
+        boundary_a_id="", boundary_b_id="b_coverage", a_start=float("nan"),
+        a_end=float("nan"), ambiguity_reason="unevaluable_boundary_coverage:balanced_nonfinite_base_bins",
+    )
+
+    result = annotate_loci(
+        pd.DataFrame([_locus()]),
+        pd.DataFrame([coverage_b, coverage_a], columns=BOUNDARY_EVENT_COLUMNS),
+        pd.DataFrame(), _masked(), type("S", (), {"base_bin_bp": 4000})(),
+    ).iloc[0]
+
+    assert result["boundary_event_id"] == "coverage_a"
     assert result["n_boundary_candidates"] == 1
     assert result["position_state"] == "ambiguous"
-    assert result["annotation_reason"] == "unevaluable_boundary_coverage:raw_bad_region"
+    assert result["annotation_reason"] == (
+        "unevaluable_boundary_coverage:balanced_nonfinite_base_bins,raw_bad_region"
+    )
 
 
 def test_distinct_coverage_and_simple_boundary_events_remain_complex():

@@ -72,19 +72,20 @@ def _events_colocated(left, right):
 
 
 def _colocated_coverage_ambiguity(ids, event_by_id):
-    """Select one coverage failure over co-located bookkeeping counterparts."""
+    """Consolidate only co-located coverage failures into one annotation."""
     candidates = [event_by_id[event_id] for event_id in ids]
-    coverage = [
-        event for event in candidates
-        if event.position_state == "ambiguous"
-        and str(event.ambiguity_reason).startswith("unevaluable_boundary_coverage:")
-    ]
-    if len(coverage) != 1:
+    prefix = "unevaluable_boundary_coverage:"
+    if not candidates or not all(
+        event.position_state == "ambiguous"
+        and str(event.ambiguity_reason).startswith(prefix)
+        for event in candidates
+    ):
         return None
-    selected = coverage[0]
-    if all(event is selected or _events_colocated(selected, event) for event in candidates):
-        return selected
-    return None
+    selected = min(candidates, key=lambda event: event.boundary_event_id)
+    if not all(event is selected or _events_colocated(selected, event) for event in candidates):
+        return None
+    details = sorted({str(event.ambiguity_reason)[len(prefix):] for event in candidates})
+    return selected, prefix + ",".join(details)
 
 
 def resolution_count(value):
@@ -213,7 +214,8 @@ def annotate_loci(loci, events, strength_summary, masked, settings, tad_unevalua
         tad_coverage_reasons = _tad_coverage_reasons(
             locus, tad_unevaluable, settings.base_bin_bp
         )
-        coverage_event = _colocated_coverage_ambiguity(ids, event_by_id) if ids else None
+        coverage_selection = _colocated_coverage_ambiguity(ids, event_by_id) if ids else None
+        coverage_event, coverage_reason = coverage_selection or (None, "")
         selected_ids = [coverage_event.boundary_event_id] if coverage_event else ids
         event = coverage_event or (event_by_id[ids[0]] if len(ids) == 1 else None)
         summary = strengths.get(event.boundary_event_id) if event is not None else None
@@ -233,7 +235,7 @@ def annotate_loci(loci, events, strength_summary, masked, settings, tad_unevalua
             position_state, reason = "complex", "complex_boundary_event"
         elif event.position_state == "ambiguous":
             position_state, reason = "ambiguous", (
-                event.ambiguity_reason or "ambiguous_boundary_event"
+                coverage_reason or event.ambiguity_reason or "ambiguous_boundary_event"
             )
         else:
             position_state, reason = event.position_state, "unique_boundary_event"
