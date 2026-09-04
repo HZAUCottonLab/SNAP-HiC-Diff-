@@ -12,6 +12,7 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts"))
 
+import is_boundary_unification
 from is_boundary_io import (
     BOUNDARY_VIEW_COLUMNS,
     MULTIRES_INPUT_COLUMNS,
@@ -21,6 +22,7 @@ from is_boundary_io import (
     read_resolution_boundaries,
 )
 from is_boundary_unification import (
+    _merge_resolution_boundaries,
     build_jitter_offsets,
     build_sensitivity_views,
     maximum_cardinality_pairs,
@@ -145,6 +147,48 @@ def test_readers_accept_empty_boundary_beds(tmp_path):
     assert per_resolution.empty
     assert per_resolution.columns.tolist() == [
         "chrom", "start", "end", "boundary_id", "resolution", "n_source_boundaries", "signal"
+    ]
+
+
+def test_resolution_merge_aggregates_component_flags_without_rescanning_sources(monkeypatch):
+    per_resolution = pd.DataFrame([
+        {"sample": "S", "chrom": "A02", "start": 0, "end": 12,
+         "boundary_id": "raw_r4", "resolution": 4000,
+         "n_source_boundaries": 2, "signal": "raw",
+         "touches_chromosome_end": True, "has_nonfinite_base_bins": False},
+        {"sample": "S", "chrom": "A02", "start": 8, "end": 18,
+         "boundary_id": "raw_r8", "resolution": 8000,
+         "n_source_boundaries": 3, "signal": "raw",
+         "touches_chromosome_end": False, "has_nonfinite_base_bins": True},
+        {"sample": "S", "chrom": "A02", "start": 17, "end": 26,
+         "boundary_id": "raw_r20", "resolution": 20000,
+         "n_source_boundaries": 4, "signal": "raw",
+         "touches_chromosome_end": False, "has_nonfinite_base_bins": False},
+        {"sample": "S", "chrom": "A02", "start": 26, "end": 34,
+         "boundary_id": "raw_adjacent", "resolution": 4000,
+         "n_source_boundaries": 1, "signal": "raw",
+         "touches_chromosome_end": False, "has_nonfinite_base_bins": False},
+    ])
+
+    monkeypatch.setattr(
+        is_boundary_unification,
+        "merge_intervals",
+        lambda *args, **kwargs: pytest.fail("resolution merge must aggregate while scanning"),
+        raising=False,
+    )
+
+    observed = _merge_resolution_boundaries(per_resolution, "raw")
+
+    assert observed[[
+        "start", "end", "support_resolutions", "n_source_boundaries",
+        "touches_chromosome_end", "has_nonfinite_base_bins", "sample",
+    ]].to_dict("records") == [
+        {"start": 0, "end": 26, "support_resolutions": "4000,8000,20000",
+         "n_source_boundaries": 9, "touches_chromosome_end": True,
+         "has_nonfinite_base_bins": True, "sample": "S"},
+        {"start": 26, "end": 34, "support_resolutions": "4000",
+         "n_source_boundaries": 1, "touches_chromosome_end": False,
+         "has_nonfinite_base_bins": False, "sample": "S"},
     ]
 
 

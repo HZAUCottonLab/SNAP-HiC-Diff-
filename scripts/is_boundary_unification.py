@@ -7,9 +7,6 @@ from is_boundary_io import (
     MULTIRES_INPUT_COLUMNS,
     UNIFIED_BOUNDARY_COLUMNS,
 )
-from tad_boundaries import Interval, merge_intervals
-
-
 JITTER_OFFSET_COLUMNS = (
     "sample", "chrom", "source", "comparison", "resolution_a", "resolution_b",
     "boundary_a_id", "boundary_b_id", "center_a", "center_b", "offset_bp", "eligible",
@@ -250,43 +247,74 @@ def _merge_resolution_boundaries(per_resolution, signal, excluded_resolution=Non
         return _empty_multires()
     chromosomes = list(dict.fromkeys(frame["chrom"]))
     chrom_order = {chrom: index for index, chrom in enumerate(chromosomes)}
-    intervals = [
-        Interval(
-            row.chrom, int(row.start), int(row.end), {int(row.resolution)},
-            int(row.n_source_boundaries),
-        )
-        for row in frame.itertuples(index=False)
-    ]
     eligibility_columns = [
         column for column in (
             "touches_chromosome_end", "has_nonfinite_base_bins",
             "overlaps_bad_region", "complex_component", "terminal_partial_coordinate",
         ) if column in frame
     ]
-    rows = []
-    for index, item in enumerate(merge_intervals(intervals, chrom_order), 1):
-        resolutions = ",".join(map(str, sorted(item.resolutions)))
-        source_rows = frame[
-            (frame["chrom"] == item.chrom)
-            & (frame["start"] < item.end)
-            & (frame["end"] > item.start)
-        ]
-        row = {
+    sample = None
+    if "sample" in frame:
+        sample_values = frame["sample"].dropna().astype(str)
+        sample = sample_values.iloc[0] if not sample_values.empty else None
+
+    def start_component(item):
+        return {
             "chrom": item.chrom,
-            "start": item.start,
-            "end": item.end,
+            "start": int(item.start),
+            "end": int(item.end),
+            "resolutions": {int(item.resolution)},
+            "n_source_boundaries": int(item.n_source_boundaries),
+            "eligibility": {
+                column: False if pd.isna(getattr(item, column)) else bool(getattr(item, column))
+                for column in eligibility_columns
+            },
+        }
+
+    def append_component(item, index):
+        resolutions = ",".join(map(str, sorted(item["resolutions"])))
+        row = {
+            "chrom": item["chrom"],
+            "start": item["start"],
+            "end": item["end"],
             "boundary_id": f"{signal}_boundary_{index:06d}",
             "support_resolutions": resolutions,
-            "n_supporting_resolutions": len(item.resolutions),
-            "n_source_boundaries": item.n_source_boundaries,
+            "n_supporting_resolutions": len(item["resolutions"]),
+            "n_source_boundaries": item["n_source_boundaries"],
             "signal": signal,
         }
-        row.update({column: bool(source_rows[column].any()) for column in eligibility_columns})
-        if "sample" in frame:
-            row["sample"] = frame["sample"].dropna().astype(str).iloc[0]
+        row.update(item["eligibility"])
+        if sample is not None:
+            row["sample"] = sample
         rows.append(row)
+
+    ordered = frame.assign(_chrom_rank=frame["chrom"].map(chrom_order)).sort_values(
+        ["_chrom_rank", "start", "end"], kind="stable"
+    )
+    rows = []
+    component = None
+    for item in ordered.itertuples(index=False):
+        if (
+            component is None
+            or component["chrom"] != item.chrom
+            or int(item.start) >= component["end"]
+        ):
+            if component is not None:
+                append_component(component, len(rows) + 1)
+            component = start_component(item)
+            continue
+        component["end"] = max(component["end"], int(item.end))
+        component["resolutions"].add(int(item.resolution))
+        component["n_source_boundaries"] += int(item.n_source_boundaries)
+        for column in eligibility_columns:
+            value = getattr(item, column)
+            component["eligibility"][column] |= (
+                False if pd.isna(value) else bool(value)
+            )
+    if component is not None:
+        append_component(component, len(rows) + 1)
     columns = (*MULTIRES_INPUT_COLUMNS, "signal", *eligibility_columns)
-    if "sample" in frame:
+    if sample is not None:
         columns += ("sample",)
     return pd.DataFrame(rows, columns=columns)
 
