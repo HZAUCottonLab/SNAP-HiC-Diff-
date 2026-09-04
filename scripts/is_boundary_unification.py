@@ -424,6 +424,8 @@ def build_jitter_offsets(
         or tie_tolerance_bp <= 0
     ):
         raise ValueError("tie_tolerance_bp must be a positive integer")
+    if "sample" not in per_resolution:
+        per_resolution = per_resolution.assign(sample=_sample(raw, balanced))
     rows = _offset_rows(
         raw, balanced, "raw_balanced", "raw_vs_balanced", "multires", "multires",
         tie_tolerance_bp,

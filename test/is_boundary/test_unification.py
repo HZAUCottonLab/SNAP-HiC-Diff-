@@ -313,6 +313,24 @@ def test_jitter_offsets_include_raw_balanced_pair_and_propagate_exclusions():
     ].iloc[0]
 
 
+def test_jitter_offsets_propagate_sample_to_per_resolution_comparisons():
+    raw = boundary_frame("raw", [
+        ("A02", 0, 8000, "raw_4", "4000", 1),
+        ("A02", 16000, 24000, "raw_8", "8000", 1),
+    ]).assign(sample="S")
+    balanced = raw.iloc[0:0].copy().assign(signal="balanced")
+    per_resolution = pd.DataFrame([
+        {"chrom": "A02", "start": 0, "end": 8000, "boundary_id": "raw_r4",
+         "resolution": 4000, "n_source_boundaries": 1, "signal": "raw"},
+        {"chrom": "A02", "start": 4000, "end": 12000, "boundary_id": "raw_r8",
+         "resolution": 8000, "n_source_boundaries": 1, "signal": "raw"},
+    ])
+
+    observed = build_jitter_offsets(raw, balanced, per_resolution, base_bin_bp=4000)
+
+    assert observed["sample"].eq("S").all()
+
+
 def test_unified_component_retains_terminal_and_bad_coverage_state():
     raw = boundary_frame("raw", [("A02", 0, 8000, "raw", "4000", 1)])
     balanced = boundary_frame("balanced", [("A02", 0, 8000, "balanced", "4000", 1)])
