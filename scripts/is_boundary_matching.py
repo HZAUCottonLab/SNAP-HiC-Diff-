@@ -1,6 +1,7 @@
 """Calibrate technical jitter and classify ordered cross-sample boundary events."""
 
 from dataclasses import dataclass
+import heapq
 import math
 
 import numpy as np
@@ -276,30 +277,79 @@ def _event_record(
     return record
 
 
-def _associated_events(reference, candidates):
-    def overlap(left_start, left_end, right_start, right_end):
-        return (
-            pd.notna(left_start) and pd.notna(left_end)
-            and pd.notna(right_start) and pd.notna(right_end)
-            and max(int(left_start), int(right_start)) < min(int(left_end), int(right_end))
-        )
+def _interval_associations(reference, candidates, start_column, end_column, associations):
+    """Add overlaps for one endpoint role with an ordered interval sweep."""
+    valid_reference = reference[start_column].notna() & reference[end_column].notna()
+    valid_candidates = candidates[start_column].notna() & candidates[end_column].notna()
+    shared_chromosomes = sorted(
+        set(reference.loc[valid_reference, "chrom"])
+        & set(candidates.loc[valid_candidates, "chrom"])
+    )
+    for chrom in shared_chromosomes:
+        reference_mask = valid_reference & reference["chrom"].eq(chrom)
+        candidate_mask = valid_candidates & candidates["chrom"].eq(chrom)
+        reference_positions = np.flatnonzero(reference_mask.to_numpy())
+        candidate_positions = np.flatnonzero(candidate_mask.to_numpy())
+        left = reference.iloc[reference_positions].assign(
+            _position=reference_positions
+        ).sort_values([start_column, end_column], kind="stable")
+        right = candidates.iloc[candidate_positions].assign(
+            _position=candidate_positions
+        ).sort_values([start_column, end_column], kind="stable")
+        right_rows = list(right[[start_column, end_column, "_position"]].itertuples(index=False))
+        active, next_right = [], 0
+        for item in left[[start_column, end_column, "_position"]].itertuples(index=False):
+            left_start, left_end, left_position = map(int, item)
+            while next_right < len(right_rows) and int(right_rows[next_right][0]) < left_end:
+                right_start, right_end, right_position = right_rows[next_right]
+                heapq.heappush(active, (int(right_end), int(right_position)))
+                next_right += 1
+            while active and active[0][0] <= left_start:
+                heapq.heappop(active)
+            associations[left_position].update(position for _, position in active)
 
-    return candidates.loc[
-        (candidates["chrom"] == reference.chrom)
-        & (
-            candidates.apply(
-                lambda candidate: overlap(
-                    reference.a_start, reference.a_end,
-                    candidate.a_start, candidate.a_end,
-                )
-                or overlap(
-                    reference.b_start, reference.b_end,
-                    candidate.b_start, candidate.b_end,
-                ),
-                axis=1,
-            )
+
+def _association_indices(reference, candidates):
+    associations = [set() for _ in range(len(reference))]
+    if reference.empty or candidates.empty:
+        return associations
+    for start_column, end_column in (("a_start", "a_end"), ("b_start", "b_end")):
+        _interval_associations(
+            reference, candidates, start_column, end_column, associations
         )
-    ]
+    return associations
+
+
+def _association_summaries(reference, candidates):
+    """Summarize endpoint-associated events without per-reference table scans."""
+    states = candidates["position_state"].astype(str).to_numpy()
+    rows = []
+    for indices in _association_indices(reference, candidates):
+        if not indices:
+            rows.append({"n_associated": 0, "position_state": "no_boundary_in_view"})
+            continue
+        associated_states = [states[index] for index in sorted(indices)]
+        rows.append({
+            "n_associated": len(indices),
+            "position_state": (
+                "complex"
+                if len(indices) > 1 or "complex" in associated_states
+                else associated_states[0]
+            ),
+        })
+    return pd.DataFrame(rows, columns=("n_associated", "position_state"))
+
+
+def _associated_events(reference, candidates):
+    single_reference = pd.DataFrame([{
+        "chrom": reference.chrom,
+        "a_start": reference.a_start,
+        "a_end": reference.a_end,
+        "b_start": reference.b_start,
+        "b_end": reference.b_end,
+    }])
+    indices = _association_indices(single_reference, candidates)[0]
+    return candidates.iloc[sorted(indices)]
 
 
 def _associated_state(reference, candidates):
@@ -521,9 +571,9 @@ def call_boundary_events(
             boundaries_a, boundaries_b, jitter, settings, comparison, sample_a, sample_b,
             radius, tad_unevaluable_a, tad_unevaluable_b,
         )
-        events[column] = [
-            _associated_state(row, sensitivity_events) for row in events.itertuples(index=False)
-        ]
+        events[column] = _association_summaries(
+            events, sensitivity_events
+        )["position_state"].to_numpy()
     state_columns = [f"state_at_{radius}" for radius in settings.shift_sensitivity_bp]
     events["position_state_stable"] = events.apply(
         lambda row: all(row[column] == row.position_state for column in state_columns),
@@ -545,14 +595,13 @@ def compare_event_views(
             jitter, settings, comparison, sample_a, sample_b, settings.max_shift_bp,
             tad_unevaluable_a, tad_unevaluable_b,
         )
-        for reference in reference_events.itertuples(index=False):
-            associated = _associated_events(reference, events)
-            state = _associated_state(reference, events)
-            if associated.empty:
+        summaries = _association_summaries(reference_events, events)
+        for reference, summary in zip(reference_events.itertuples(index=False), summaries.itertuples(index=False)):
+            if summary.n_associated == 0:
                 reason = "no_endpoint_overlap"
-            elif len(associated) > 1:
+            elif summary.n_associated > 1:
                 reason = "multiple_endpoint_events"
-            elif state == "complex":
+            elif summary.position_state == "complex":
                 reason = "complex_component"
             else:
                 reason = "single_endpoint_association"
@@ -561,8 +610,8 @@ def compare_event_views(
                 "boundary_event_id": reference.boundary_event_id,
                 "view": view,
                 "reference_position_state": reference.position_state,
-                "sensitivity_position_state": state,
-                "concordant": state == reference.position_state,
+                "sensitivity_position_state": summary.position_state,
+                "concordant": summary.position_state == reference.position_state,
                 "reason": reason,
             })
     stability = pd.DataFrame(records, columns=BOUNDARY_STABILITY_COLUMNS)

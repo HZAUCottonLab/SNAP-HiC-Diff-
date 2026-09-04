@@ -10,6 +10,7 @@ import yaml
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts"))
 
+import is_boundary_matching
 from cworld_is_config import parse_cworld_is_settings
 from is_boundary_config import parse_is_boundary_settings
 from is_boundary_matching import (
@@ -80,6 +81,40 @@ def offsets_frame(sample, values):
         }
         for index, value in enumerate(values)
     ], columns=JITTER_OFFSET_COLUMNS)
+
+
+def test_association_summaries_scan_endpoint_intervals_without_dataframe_apply(monkeypatch):
+    reference = pd.DataFrame([
+        {"chrom": "A02", "a_start": 0, "a_end": 10, "b_start": 100, "b_end": 110},
+        {"chrom": "A02", "a_start": 20, "a_end": 30, "b_start": 200, "b_end": 210},
+        {"chrom": "A02", "a_start": 40, "a_end": 50, "b_start": 300, "b_end": 310},
+        {"chrom": "A02", "a_start": 60, "a_end": 70, "b_start": 400, "b_end": 410},
+    ])
+    candidates = pd.DataFrame([
+        {"chrom": "A02", "a_start": 2, "a_end": 8, "b_start": 150, "b_end": 160,
+         "position_state": "conserved"},
+        {"chrom": "A02", "a_start": 90, "a_end": 100, "b_start": 202, "b_end": 208,
+         "position_state": "shifted"},
+        {"chrom": "A02", "a_start": 42, "a_end": 48, "b_start": 350, "b_end": 360,
+         "position_state": "conserved"},
+        {"chrom": "A02", "a_start": 500, "a_end": 510, "b_start": 302, "b_end": 308,
+         "position_state": "lost_in_B"},
+    ])
+
+    monkeypatch.setattr(
+        pd.DataFrame,
+        "apply",
+        lambda *args, **kwargs: pytest.fail("endpoint association must not scan rows with apply"),
+    )
+
+    observed = is_boundary_matching._association_summaries(reference, candidates)
+
+    assert observed.to_dict("records") == [
+        {"n_associated": 1, "position_state": "conserved"},
+        {"n_associated": 1, "position_state": "shifted"},
+        {"n_associated": 2, "position_state": "complex"},
+        {"n_associated": 0, "position_state": "no_boundary_in_view"},
+    ]
 
 
 def test_jitter_uses_q95_and_falls_back_below_minimum(settings):
