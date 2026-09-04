@@ -83,6 +83,10 @@ def _read_bed(path, columns):
     path = Path(path)
     try:
         frame = pd.read_csv(path, sep="\t", header=None, dtype=str, keep_default_na=False)
+    except pd.errors.EmptyDataError:
+        # A TAD caller may legitimately yield no boundaries for one signal.
+        # Keep that state distinct from a malformed or unreadable BED.
+        return pd.DataFrame(columns=columns)
     except Exception as error:
         raise ISBoundaryError(
             "IS_BOUNDARY_INPUT_SCHEMA_INVALID", path=path, reason=type(error).__name__

@@ -133,6 +133,21 @@ def test_readers_reject_bad_bed_schema_and_atomic_writer_removes_temporary_file(
     assert not list(tmp_path.glob(".output.tsv.*.tmp"))
 
 
+def test_readers_accept_empty_boundary_beds(tmp_path):
+    empty = tmp_path / "empty.boundaries.bed"
+    empty.touch()
+
+    multires = read_multires_boundaries(empty, "balanced")
+    per_resolution = read_resolution_boundaries([(4000, empty)], "balanced")
+
+    assert multires.empty
+    assert multires.columns.tolist() == list(MULTIRES_INPUT_COLUMNS) + ["signal"]
+    assert per_resolution.empty
+    assert per_resolution.columns.tolist() == [
+        "chrom", "start", "end", "boundary_id", "resolution", "n_source_boundaries", "signal"
+    ]
+
+
 def test_sensitivity_views_keep_source_inputs_and_drop_leave_one_resolution_out():
     raw = boundary_frame("raw", [
         ("A02", 0, 8000, "raw_4", "4000", 1),
