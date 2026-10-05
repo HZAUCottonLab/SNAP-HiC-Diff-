@@ -15,6 +15,158 @@ SCRIPT = REPO / "scripts" / "plot_is_change_loci.py"
 SCALES = (32000, 60000, 92000, 120000, 152000, 180000, 212000, 240000, 272000, 300000)
 sys.path.insert(0, str(REPO / "scripts"))
 import plot_is_change_loci as plotter
+from is_boundary_errors import ISBoundaryError
+
+
+def test_draw_boundary_support_uses_sample_specific_endpoint():
+    figure, axes = plt.subplots(2, 1)
+    event = pd.Series({
+        "a_start": 100000, "a_end": 108000,
+        "b_start": 180000, "b_end": 188000,
+        "position_state": "shifted",
+    })
+
+    plotter.draw_boundary_support(axes[0], event, "a")
+    plotter.draw_boundary_support(axes[1], event, "b")
+
+    assert axes[0].patches[0].get_xy()[0][0] == 100000
+    assert axes[1].patches[0].get_xy()[0][0] == 180000
+    plt.close(figure)
+
+
+def test_annotation_plot_selection_keeps_one_representative_per_position_state():
+    rows = []
+    for index, state in enumerate(("conserved", "gained_in_B", "lost_in_B", "shifted")):
+        rows.append({
+            "comparison": "A_vs_B", "region_id": index, "chrom": "chr1",
+            "event_start": 320000 + index * 4000, "event_end": 324000 + index * 4000,
+            "summit": 320000 + index * 4000, "is_change_type": "transition",
+            "rank_within_region": 1, "position_state": state,
+            "support_scale_bands": "small,medium",
+            "max_transition_percentile": 0.99 - index / 100,
+            "max_pulse_percentile": 0.99, "max_amplitude_percentile": 0.99,
+        })
+
+    selected = plotter.select_plot_loci(pd.DataFrame(rows), diagnostic_plot_top_n=1)
+
+    assert set(selected["position_state"]) == {"conserved", "gained_in_B", "lost_in_B", "shifted"}
+    assert selected["region_id"].is_unique
+
+
+def test_locus_manifest_id_is_stable_when_region_id_is_shared():
+    common = pd.Series({
+        "comparison": "A_vs_B", "region_id": 1, "chrom": "chr1", "summit": 320000,
+        "is_change_type": "transition", "rank_within_region": 1,
+    })
+    first = common.copy()
+    first["event_start"], first["event_end"] = 320000, 324000
+    second = common.copy()
+    second["event_start"], second["event_end"] = 324000, 328000
+
+    assert plotter.locus_manifest_id(first) != plotter.locus_manifest_id(second)
+
+
+def test_boundary_figure_draws_endpoints_and_annotation_title(tmp_path):
+    locus = {
+        "event_start": 320_000, "event_end": 324_000, "summit": 320_000,
+        "is_change_type": "transition", "position_state": "shifted",
+        "strength_state": "not_applicable",
+        "is_consistency_state": "bidirectional_shift_support", "evidence_tier": "high",
+    }
+    inputs = plot_inputs(tmp_path, pd.DataFrame([locus]))
+    boundary_events = pd.DataFrame([{
+        "boundary_event_id": "e1", "position_state": "shifted",
+        "a_start": 100_000, "a_end": 108_000,
+        "b_start": 180_000, "b_end": 188_000,
+        "event_span_start": 100_000, "event_span_end": 188_000,
+    }])
+
+    figure, heatmap_axes, is_axes = plotter.build_region_figure(
+        **inputs, sample_a="H1398", sample_b="L134", boundary_events=boundary_events
+    )
+
+    assert heatmap_axes[0].patches[0].get_xy()[0][0] == 100_000
+    assert heatmap_axes[1].patches[0].get_xy()[0][0] == 180_000
+    assert {patch.get_xy()[0][0] for patch in is_axes[0].patches}.issuperset({100_000, 180_000})
+    title = figure._suptitle.get_text()
+    assert "position_state=shifted" in title
+    assert "strength_state=not_applicable" in title
+    assert "is_consistency_state=bidirectional_shift_support" in title
+    assert "evidence_tier=high" in title
+    labels = {line.get_label() for line in is_axes[0].lines}
+    assert {"H1398 (A)", "L134 (B)", "L134 - H1398"}.issubset(labels)
+    plt.close(figure)
+
+
+def test_complex_boundary_support_is_hatched():
+    figure, axis = plt.subplots()
+    event = pd.DataFrame([{
+        "position_state": "complex", "a_start": 100_000, "a_end": 108_000,
+        "b_start": 180_000, "b_end": 188_000,
+        "event_span_start": 100_000, "event_span_end": 188_000,
+    }])
+
+    plotter.draw_boundary_overlays(axis, event, "a")
+
+    assert axis.patches[0].get_hatch() == "//"
+    plt.close(figure)
+
+
+def test_boundary_event_reader_and_annotated_ids_are_validated(tmp_path):
+    path = tmp_path / "incomplete-boundary-events.tsv"
+    pd.DataFrame({"boundary_event_id": ["e1"]}).to_csv(path, sep="\t", index=False)
+
+    with pytest.raises(ISBoundaryError, match="IS_BOUNDARY_INPUT_SCHEMA_INVALID") as error:
+        plotter.read_boundary_events(path)
+    assert error.value.context["reason"] == "boundary_events_missing_columns"
+    with pytest.raises(ValueError, match="unknown boundary events: missing"):
+        plotter.validate_annotation_event_ids(
+            pd.DataFrame({"boundary_event_id": ["missing"]}),
+            pd.DataFrame({"boundary_event_id": ["e1"]}),
+        )
+
+
+def boundary_event_row(**updates):
+    row = {column: "" for column in plotter.BOUNDARY_EVENT_COLUMNS}
+    row.update({
+        "boundary_event_id": "e1", "position_state": "shifted",
+        "a_start": 100_000, "a_end": 108_000,
+        "b_start": 180_000, "b_end": 188_000,
+        "event_span_start": 100_000, "event_span_end": 188_000,
+    })
+    row.update(updates)
+    return row
+
+
+@pytest.mark.parametrize("identifier", [np.nan, "   "])
+def test_boundary_event_reader_rejects_missing_or_blank_identifiers(tmp_path, identifier):
+    path = tmp_path / "boundary-events.tsv"
+    pd.DataFrame([boundary_event_row(boundary_event_id=identifier)]).to_csv(
+        path, sep="\t", index=False
+    )
+
+    with pytest.raises(ISBoundaryError, match="IS_BOUNDARY_INPUT_SCHEMA_INVALID") as error:
+        plotter.read_boundary_events(path)
+
+    assert error.value.context["reason"] == "boundary_events_blank_boundary_event_id"
+
+
+@pytest.mark.parametrize(
+    ("updates", "reason"),
+    [
+        ({"a_start": np.inf}, "boundary_events_a_start_not_finite"),
+        ({"event_span_end": np.inf}, "boundary_events_event_span_end_not_finite"),
+        ({"a_start": np.nan}, "boundary_events_a_endpoints_partial"),
+    ],
+)
+def test_boundary_event_reader_rejects_nonfinite_or_partial_coordinates(tmp_path, updates, reason):
+    path = tmp_path / "boundary-events.tsv"
+    pd.DataFrame([boundary_event_row(**updates)]).to_csv(path, sep="\t", index=False)
+
+    with pytest.raises(ISBoundaryError, match="IS_BOUNDARY_INPUT_SCHEMA_INVALID") as error:
+        plotter.read_boundary_events(path)
+
+    assert error.value.context["reason"] == reason
 
 
 def write_config(root):
@@ -352,6 +504,59 @@ def test_plot_manifest_contains_existing_pngs(tmp_path, recovered_primary_row):
     assert result.returncode == 0, result.stderr
     paths = pd.read_csv(tmp_path / "plots" / "manifest.tsv", sep="\t")["plot_path"]
     assert all(Path(path).is_file() for path in paths)
+
+
+def test_annotated_boundary_plots_write_one_png_per_primary_locus(tmp_path, recovered_primary_row):
+    config = write_config(tmp_path)
+    config_data = yaml.safe_load(config.read_text())
+    config_data["is_change"]["diagnostic_plot_top_n"] = 2
+    config.write_text(yaml.safe_dump(config_data))
+    write_tracks(tmp_path)
+    annotation = {column: "" for column in plotter.ANNOTATION_COLUMNS}
+    annotation.update({
+        "position_state": "shifted", "strength_state": "not_applicable",
+        "is_consistency_state": "bidirectional_shift_support", "evidence_tier": "high",
+    })
+    first = {**recovered_primary_row, **annotation, "boundary_event_id": "e1"}
+    second = {
+        **first, "event_start": 332_000, "event_end": 336_000, "summit": 332_000,
+        "boundary_event_id": "e2",
+    }
+    pd.DataFrame([first, second]).to_csv(tmp_path / "primary.tsv", sep="\t", index=False)
+    pd.DataFrame([{
+        "region_id": 1, "chrom": "chr1", "region_start": 324000, "region_end": 328000,
+    }]).to_csv(tmp_path / "candidate_regions.tsv", sep="\t", index=False)
+    rows = []
+    for identifier, a_start, b_start in (("e1", 100_000, 180_000), ("e2", 200_000, 280_000)):
+        row = {column: "" for column in plotter.BOUNDARY_EVENT_COLUMNS}
+        row.update({
+            "boundary_event_id": identifier, "position_state": "shifted",
+            "a_start": a_start, "a_end": a_start + 8_000,
+            "b_start": b_start, "b_end": b_start + 8_000,
+            "event_span_start": a_start, "event_span_end": b_start + 8_000,
+        })
+        rows.append(row)
+    pd.DataFrame(rows).to_csv(tmp_path / "boundary-events.tsv", sep="\t", index=False)
+
+    result = subprocess.run(
+        [
+            sys.executable, str(SCRIPT), "--primary", str(tmp_path / "primary.tsv"),
+            "--candidate-regions", str(tmp_path / "candidate_regions.tsv"),
+            "--boundary-events", str(tmp_path / "boundary-events.tsv"),
+            "--is-a", str(tmp_path / "is_a.tsv"), "--is-b", str(tmp_path / "is_b.tsv"),
+            "--cool-a", str(tmp_path / "a_iced.cool"), "--cool-b", str(tmp_path / "b_iced.cool"),
+            "--config", str(config), "--outdir", str(tmp_path / "plots"),
+            "--manifest", str(tmp_path / "plots" / "manifest.tsv"),
+        ], text=True, capture_output=True, check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    manifest = pd.read_csv(tmp_path / "plots" / "manifest.tsv", sep="\t")
+    assert len(manifest) == 2
+    assert manifest.plot_path.nunique() == 2
+    assert manifest.locus_id.nunique() == 2
+    assert manifest.boundary_event_id.tolist() == ["e1", "e2"]
+    assert all(Path(path).is_file() for path in manifest.plot_path)
 
 
 

@@ -44,13 +44,13 @@ Edit `config/config.yaml` to set paths and parameters:
 # Sample manifest (TSV)
 manifest: data/manifest.tsv
 
-# Matrix resolution (bp)
+# Resolution (bp)
 resolution: 4000
 
-# Resolution-derived genomic windows
+# Multiscale window settings
 window_analysis:
   window_bins: [25, 50, 75, 100, 125]
-  step_fraction: 0.20
+  step_fraction: 0.2
 
 # Smoothing sigma
 smoothing:
@@ -64,6 +64,31 @@ Meltron rejects lower resolutions. The converter writes each
 bedGraph bin start as Meltron `viewpoint` and verifies that every complete
 bedGraph bin has exactly that width, so Meltron infers the configured
 resolution rather than a midpoint-derived half-resolution.
+
+### Multiscale window-analysis contract
+
+At the 4 kb production resolution, the configured window scales are:
+
+| Label | Window bins | Window bp | Step bins | Step bp |
+| --- | ---: | ---: | ---: | ---: |
+| `w25` | 25 | 100,000 | 5 | 20,000 |
+| `w50` | 50 | 200,000 | 10 | 40,000 |
+| `w75` | 75 | 300,000 | 15 | 60,000 |
+| `w100` | 100 | 400,000 | 20 | 80,000 |
+| `w125` | 125 | 500,000 | 25 | 100,000 |
+
+The five production absolute background paths live only in
+`config/config.yaml` and are read in place; the workflow does not copy, link,
+regenerate, or edit these backgrounds. The scale root
+`results/window_scales/r4000/w*/` holds the scale-dependent windows,
+comparisons, KNN results, diagnostics, and Meltron outputs.
+
+For each comparison, `results/multiscale/r4000/<comparison>/all_scale_candidates.tsv`
+is the evidence ledger. `candidate_union.tsv` and `candidate_union.bed` are the
+any-scale union and retain support columns that show the contributing scales
+and windows. Primary IS-change calls still require support from at least two
+CWorld IS scale bands. A valid header-only empty result is a successful result,
+not a failed workflow.
 
 Edit `data/manifest.tsv` with your sample paths.
 
@@ -80,108 +105,45 @@ CONDA_OFFLINE=true snakemake -n --use-conda --conda-prefix "$PWD/.snakemake/cond
 dsub -s run_snakemake.sh
 ```
 
+One manual `dsub -s run_snakemake.sh` starts one full DAG; every scale branch
+whose dependencies are ready is eligible to run concurrently.
+
 See [docs/dsub_hpc_standard.md](docs/dsub_hpc_standard.md) for HPC setup details.
 
-## Multi-window analysis and portability
+## 3DNetMod TADs and boundary regions
 
-Each run analyses one configured matrix resolution through five independent
-genomic window scales: 25, 50, 75, 100, and 125 bins. The scale is always
-expressed in bins, so a valid integer resolution changes physical sizes without
-changing workflow, Python, or R code.
+The default workflow runs raw and balanced 3DNetMod D calls at 4 kb, 8 kb,
+and 20 kb for every manifest sample. Raw calls use positive pixel counts;
+balanced calls use `count * weight1 * weight2`. No chromosome is excluded by
+default.
 
-### Bin-derived arithmetic
+Build or refresh all Conda prefixes on the login node before submission:
 
-For resolution `R`, window bins `W`, and `window_analysis.step_fraction` `F`:
+```bash
+bash scripts/conda_envs.sh bootstrap
+CONDA_OFFLINE=true bash scripts/conda_envs.sh verify
+```
+
+Compute nodes do not create environments or access Conda channels.
+
+Stable outputs are:
 
 ```text
-window_size_bp = R * W
-step_bins      = ceil(W * F)
-step_size_bp   = R * step_bins
+results/tads/{sample}.{4kb|8kb|20kb}.{raw|balanced}.3dnetmod.bed
+results/tads/{sample}.{4kb|8kb|20kb}.{raw|balanced}.3dnetmod.bedpe
+results/tad_boundaries/{sample}.{4kb|8kb|20kb}.{raw|balanced}.boundaries.bed
+results/tad_boundaries/{sample}.multires.{raw|balanced}.boundaries.bed
 ```
 
-The ceiling is mandatory: a 3.4-bin step becomes 4 bins before coordinates are
-created. With the default `F = 0.20`, the 4 kb scales are:
+Run one sample by targeting its two merged boundary files; Snakemake will pull
+the six required TAD calls:
 
-| Window bins | Window size | Step bins | Step size |
-|---:|---:|---:|---:|
-| 25 | 100 kb | 5 | 20 kb |
-| 50 | 200 kb | 10 | 40 kb |
-| 75 | 300 kb | 15 | 60 kb |
-| 100 | 400 kb | 20 | 80 kb |
-| 125 | 500 kb | 25 | 100 kb |
-
-At **10 kb**, the same tags remain `w25`, `w50`, `w75`, `w100`, and `w125`,
-but physical windows become 250, 500, 750, 1,000, and 1,250 kb; step bins
-remain 5, 10, 15, 20, and 25, with 50, 100, 150, 200, and 250 kb steps.
-
-### KNN background presets
-
-`window_analysis` is the sole source of genomic-window arithmetic:
-
-```yaml
-window_analysis:
-  window_bins: [25, 50, 75, 100, 125]
-  step_fraction: 0.20
+```bash
+snakemake --use-conda --conda-prefix "$PWD/.snakemake/conda" \
+  --configfile config/config.yaml -- \
+  results/tad_boundaries/H1394.multires.raw.boundaries.bed \
+  results/tad_boundaries/H1394.multires.balanced.boundaries.bed
 ```
-
-`background_pool` is the producer: it selects cohorts and creates large KNN
-background tables. SNAP-HiC-Diff is a strict consumer: it neither invokes nor
-copies `background_pool`; it selects, validates, and consumes declared files.
-
-`knn_empirical_pvalue.background_presets` requires these five exact mappings
-for the default 4 kb configuration:
-
-```yaml
-knn_empirical_pvalue:
-  background_presets:
-    - {resolution_bp: 4000, window_bins: 25, step_bins: 5, file: /path/to/r4000_w25.tsv}
-    - {resolution_bp: 4000, window_bins: 50, step_bins: 10, file: /path/to/r4000_w50.tsv}
-    - {resolution_bp: 4000, window_bins: 75, step_bins: 15, file: /path/to/r4000_w75.tsv}
-    - {resolution_bp: 4000, window_bins: 100, step_bins: 20, file: /path/to/r4000_w100.tsv}
-    - {resolution_bp: 4000, window_bins: 125, step_bins: 25, file: /path/to/r4000_w125.tsv}
-```
-
-Each active tuple has exactly one preset. A referenced TSV must be non-empty
-and include `comparison`, `chrom`, `window_start`, `window_end`, `EC`, `IB`,
-`SP`, `MSE`, `SSIM`, `Spearman`, `tw_pvalue`, and `NCC`. Validation also checks
-finite KNN rows, physical window width, step grid, and duplicate coordinates.
-Missing presets fail during preflight with the expected tuple; missing or
-malformed files fail before KNN allocation and identify the tuple and file.
-
-### Per-scale selection and cross-scale union
-
-Each `comparison x window_bins` branch is evaluated independently:
-
-1. KNN calculates raw empirical P values for `MSE`, `d_SSIM`, `d_Spearman`, `tw_score`, and `d_NCC`.
-2. A window is KNN-passing when **any** raw P value is `< 0.05`.
-3. It is Meltron-passing when `meltron_best_score >= 5.0`.
-4. A candidate must pass both tests in its own scale.
-
-KNN selection uses the five raw values; no cross-window multiple-testing
-correction is applied. A candidate requires no minimum number of genomic
-window-scale supports: a valid one-scale candidate remains in the union.
-
-Genomic `support_scale_count` is descriptive only. It is distinct from CWorld
-IS scale-band support: the existing IS-change caller still requires exactly two
-or more CWorld IS scale bands for a primary biological call.
-
-### Output contract
-
-All window-dependent paths are qualified by resolution and bin window scale:
-
-```text
-results/window_scales/r<resolution>/w<window_bins>/
-results/multiscale/r<resolution>/<comparison>/all_scale_candidates.tsv
-results/multiscale/r<resolution>/<comparison>/candidate_union.tsv
-results/multiscale/r<resolution>/<comparison>/is_change/<comparison>_is_change_loci.tsv
-results/multiscale/r<resolution>/<comparison>/is_change/figures/manifest.tsv
-```
-
-`all_scale_candidates.tsv` is the source-window evidence ledger; it preserves
-the scale identity, Meltron score, and five raw KNN P values. `candidate_union.tsv`
-is the merged region-level handoff to IS-change. Every configured scale must
-complete before aggregation publishes those outputs; valid empty scales retain
-header-only schemas.
 
 ## CWorld insulation scores for Meltron
 
@@ -209,6 +171,96 @@ python scripts/cleanup_cworld_is.py --outdir results --samples H1394 H1395 H1396
 python scripts/cleanup_cworld_is.py --outdir results --samples H1394 H1395 H1396 H1397 H1398 H1406 H1409 H1410 H1436 L021 --execute
 dsub -s run_snakemake.sh
 ```
+
+## IS-change and TAD-boundary annotation
+
+This optional downstream layer annotates IS-change loci with a single,
+provenance-aware collection of TAD-boundary events. It is a boundary-level
+analysis: it does not infer complete-TAD split, fusion, or nested-domain
+topology. For `H1398_vs_L134`, direction is always A-to-B
+(`H1398` to `L134`): `gained_in_B` is present in L134 only and `lost_in_B` is
+present in H1398 only.
+
+Position and strength are deliberately separate axes. `position_state` reports
+whether a boundary is `conserved`, `gained_in_B`, `lost_in_B`, `shifted`,
+`complex`, or `ambiguous`. `strength_state` is evaluated only where useful
+from the multiscale IS curves: a conserved boundary can therefore be
+`weakened_in_B` or `strengthened_in_B` while its position remains conserved.
+IS and 3DNetMod both use the same Hi-C experiments, so their agreement is
+cross-method consistency evidence, not an independent biological replicate.
+
+Raw and balanced 3DNetMod boundary outputs remain intact. The annotation stage
+uses a downstream union only: overlapping calls retain `both` provenance and
+unmatched calls retain `raw_only` or `balanced_only` provenance. The raw and
+balanced calls are not pooled as replicates. Localization jitter is the 95th
+percentile of eligible technical offsets (at least 100 offsets); otherwise it
+falls back to 20 kb. The primary shifted-boundary search radius is 100 kb, and
+60/80/100 kb calls are retained as a sensitivity check. A shifted event is
+associated with an IS locus only through either endpoint support interval,
+never through the corridor between its old and new positions.
+
+The primary and `single_band_preliminary` IS-locus tables are annotated by the
+same algorithm but are published separately. Use the primary table for main
+summaries; preliminary calls are a sensitivity output and must not be pooled
+with it.
+
+Stable annotation outputs are:
+
+```text
+results/tad_boundaries/{sample}.multires.unified.boundaries.tsv
+results/tad_boundaries/{sample}.boundary_jitter_offsets.tsv
+results/tad_boundaries/{sample}.annotation_views.tsv
+results/tad_boundaries/{sample}.tad_unevaluable.tsv
+results/tad_boundary_events/{comparison}.boundary_events.tsv
+results/tad_boundary_events/{comparison}.boundary_event_stability.tsv
+results/tad_boundary_events/{comparison}.matching_qc.tsv
+results/tad_boundary_events/{comparison}.boundary_strength_by_scale.tsv
+results/tad_boundary_events/{comparison}.boundary_strength_summary.tsv
+results/tad_boundary_events/{comparison}.annotation_qc.tsv
+results/tad_boundary_events/{comparison}.annotation_summary.tsv
+results/multiscale/r4000/{comparison}/is_change/{comparison}_is_change_loci.boundary_annotated.tsv
+results/multiscale/r4000/{comparison}/is_change/{comparison}_is_change_loci_preliminary.boundary_annotated.tsv
+results/multiscale/r4000/{comparison}/is_change/figures/manifest.tsv
+results/tad_boundary_events/{comparison}.primary.permutation.tsv  # optional
+results/tad_boundary_events/{comparison}.preliminary.permutation.tsv  # optional
+```
+
+Target the H1398-to-L134 annotated primary table and its diagnostic figure
+manifest as follows. This schedules its required TAD, IS, unification,
+matching, annotation, and plotting dependencies; it does not claim that data
+are available or that a production run has completed.
+
+```bash
+CONDA_OFFLINE=true snakemake --use-conda --conda-prefix "$PWD/.snakemake/conda" \
+  --configfile config/config.yaml -- \
+  results/multiscale/r4000/H1398_vs_L134/is_change/H1398_vs_L134_is_change_loci.boundary_annotated.tsv \
+  results/multiscale/r4000/H1398_vs_L134/is_change/figures/manifest.tsv
+```
+
+The set-level permutation analysis is disabled by default and is not a
+locus-level P value. Enable it only for a deliberate sensitivity analysis:
+
+```yaml
+is_boundary_annotation:
+  permutation:
+    enabled: true
+```
+
+For a deterministic visual audit, use the annotation-mode figure manifest's
+`locus_id` (not the non-unique `region_id`) together with its
+`boundary_event_id`; an empty event ID explicitly records no endpoint event.
+The plot selector retains one deterministic representative for every available
+`position_state` before it fills the global top-N list. Filter to simple
+classes and inspect up to 20 loci from every sufficiently populated class.
+Record `boundary_event_id`, reviewer, `pass/fail`, and a note in
+`results/tad_boundary_events/{comparison}.visual_review.tsv`. This manual QC
+artifact is neither a Snakemake completion dependency nor a statistical test.
+
+The rationale and implementation contract are in the
+[design](docs/superpowers/specs/2026-09-03-is-change-tad-boundary-annotation-design.md),
+[implementation plan](docs/superpowers/plans/2026-09-03-is-change-tad-boundary-annotation.md),
+[ADR-0001](docs/adr/0001-3dnetmod-raw-and-balanced-signals.md), and
+[ADR-0002](docs/adr/0002-downstream-unified-tad-boundary-view.md).
 
 ---
 
@@ -304,9 +356,8 @@ Extracts the largest eigenvalue from ICE-normalized matrices, computes TW statis
 | Section | Key Parameters |
 |---------|---------------|
 | `resolution` | Bin size in bp (e.g., `10000`) |
-| `window_analysis.window_bins` | Genomic window widths in bins (`[25, 50, 75, 100, 125]` by default) |
-| `window_analysis.step_fraction` | Fraction of a window used for the ceiling-rounded bin step (`0.20` by default) |
-| `knn_empirical_pvalue.background_presets` | One external KNN background preset for every active resolution/window/step tuple |
+| `window_size` | Genomic window width (bp) |
+| `step_size` | Sliding step (bp) |
 | `gap_detection.gradient_threshold` | Coverage drop ratio to flag a gap |
 | `gap_detection.max_consecutive_nan` | Max NaN bins before gap |
 | `smoothing.sigma` | Gaussian kernel sigma |

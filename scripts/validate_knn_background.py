@@ -1,132 +1,147 @@
-"""Validate an external KNN empirical-p-value background table."""
+#!/usr/bin/env python3
+"""Validate one scale-specific KNN background and write a JSON audit."""
 
 import argparse
+import csv
 import json
+from math import isfinite
 import os
 from pathlib import Path
 import tempfile
 
-import numpy as np
-import pandas as pd
+
+IDENTITY_COLUMNS = ("comparison", "chrom", "window_start", "window_end")
+NUMERIC_COLUMNS = ("EC", "IB", "SP", "MSE", "SSIM", "Spearman", "tw_pvalue", "NCC")
+REQUIRED_COLUMNS = (*IDENTITY_COLUMNS, *NUMERIC_COLUMNS)
 
 
-REQUIRED_COLUMNS = (
-    "comparison", "chrom", "window_start", "window_end",
-    "EC", "IB", "SP", "MSE", "SSIM", "Spearman", "tw_pvalue", "NCC",
-)
-NUMERIC_COLUMNS = REQUIRED_COLUMNS[2:]
+def positive_integer(value: str) -> int:
+    try:
+        integer = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("must be a positive integer") from error
+    if integer <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return integer
 
 
-def validate_background_table(path, resolution_bp, window_bins, step_bins, knn_k):
-    """Return an audit for a valid scale-specific external background table.
+def validate_background(path: Path, scale, knn_k: int) -> dict:
+    if type(knn_k) is not int or knn_k <= 0:
+        raise ValueError("knn_k must be a positive integer")
+    if not path.is_file() or path.stat().st_size == 0:
+        raise ValueError(f"background is missing or empty: {path}")
 
-    Raises:
-        ValueError: If the background schema, coordinates, or finite-row count is
-            incompatible with the requested KNN scale.
-    """
-    frame = pd.read_csv(path, sep="\t", usecols=lambda column: column in REQUIRED_COLUMNS)
-    missing = sorted(set(REQUIRED_COLUMNS).difference(frame.columns))
-    if missing:
-        raise ValueError(f"background missing columns: {', '.join(missing)}")
-    for column in NUMERIC_COLUMNS:
-        frame[column] = pd.to_numeric(frame[column], errors="coerce")
-    logical_keys = ["comparison", "chrom", "window_start", "window_end"]
-    if frame.duplicated(logical_keys).any():
-        raise ValueError("background has duplicate comparison/chrom/window coordinates")
+    resolution = int(scale["resolution_bp"])
+    window_bins = int(scale["window_bins"])
+    window_size = int(scale["window_size_bp"])
+    step_bins = int(scale["step_bins"])
+    step_size = int(scale["step_size_bp"])
+    minimum_tail = ((window_bins // 2) - 1) * resolution + 1
+    identities = set()
+    row_count = 0
+    valid_knn_rows = 0
+    observed_lengths = set()
 
-    expected_span = resolution_bp * window_bins
-    expected_step = resolution_bp * step_bins
-    if (
-        (frame["window_start"] < 0).any()
-        or (frame["window_start"] % resolution_bp != 0).any()
-    ):
-        raise ValueError(f"background starts must align to {resolution_bp} bp")
+    with path.open(newline="") as handle:
+        reader = csv.DictReader(handle, delimiter="\t")
+        missing = sorted(set(REQUIRED_COLUMNS).difference(reader.fieldnames or []))
+        if missing:
+            raise ValueError(f"background missing columns: {', '.join(missing)}")
+        for line_number, record in enumerate(reader, start=2):
+            row_count += 1
+            try:
+                start = int(record["window_start"])
+                end = int(record["window_end"])
+            except ValueError as error:
+                raise ValueError(
+                    f"{path}:{line_number} has non-integer coordinates"
+                ) from error
+            if start % step_size:
+                raise ValueError(
+                    f"{path}:{line_number} window_start {start} is not on the "
+                    f"{step_size} bp step grid"
+                )
+            length = end - start
+            observed_lengths.add(length)
+            if not minimum_tail <= length <= window_size:
+                raise ValueError(
+                    f"{path}:{line_number} window length {length} is outside "
+                    f"[{minimum_tail}, {window_size}]"
+                )
+            identity = (
+                record["comparison"],
+                record["chrom"],
+                start,
+                end,
+            )
+            if identity in identities:
+                raise ValueError(
+                    f"{path}:{line_number} duplicate logical background row: {identity}"
+                )
+            identities.add(identity)
+            try:
+                numeric = [float(record[column]) for column in NUMERIC_COLUMNS]
+            except ValueError:
+                numeric = []
+            if numeric and all(isfinite(value) for value in numeric):
+                valid_knn_rows += 1
 
-    complete_count = 0
-    partial_count = 0
-    for keys, group in frame.groupby(["comparison", "chrom"], sort=False):
-        group = group.sort_values(["window_start", "window_end"], kind="stable")
-        differences = group["window_start"].diff().dropna()
-        if (differences <= 0).any() or (differences % expected_step != 0).any():
-            raise ValueError(f"background start grid mismatch for {keys}")
-        spans = group["window_end"] - group["window_start"]
-        complete = spans.eq(expected_span)
-        partial = spans.lt(expected_span) & spans.ge(expected_span / 2)
-        if (~complete & ~partial).any():
-            raise ValueError(f"background window span mismatch for {keys}")
-        if partial.any() and (partial.sum() != 1 or not partial.iloc[-1]):
-            raise ValueError(f"partial background window must be terminal for {keys}")
-        complete_count += int(complete.sum())
-        partial_count += int(partial.sum())
-
-    finite = np.isfinite(frame[list(NUMERIC_COLUMNS)].to_numpy(dtype=float)).all(axis=1)
-    valid_rows = int(finite.sum())
-    if valid_rows < knn_k:
-        raise ValueError(f"background has {valid_rows} valid rows, fewer than knn_k={knn_k}")
+    if row_count == 0:
+        raise ValueError(f"background has no data rows: {path}")
+    if valid_knn_rows < knn_k:
+        raise ValueError(
+            f"valid KNN rows {valid_knn_rows} is smaller than knn_k {knn_k}"
+        )
     return {
-        "path": str(Path(path).resolve()),
-        "resolution_bp": resolution_bp,
+        "background_file": str(path.resolve()),
+        "resolution_bp": resolution,
         "window_bins": window_bins,
-        "window_size_bp": expected_span,
+        "window_size_bp": window_size,
         "step_bins": step_bins,
-        "step_size_bp": expected_step,
-        "total_rows": len(frame),
-        "valid_rows": valid_rows,
-        "complete_rows": complete_count,
-        "terminal_partial_rows": partial_count,
-        "comparisons": int(frame["comparison"].nunique()),
-        "chromosomes": int(frame["chrom"].nunique()),
+        "step_size_bp": step_size,
+        "row_count": row_count,
+        "valid_knn_rows": valid_knn_rows,
+        "observed_window_lengths_bp": sorted(observed_lengths),
     }
 
 
-def write_audit_atomically(audit, destination):
-    """Write *audit* to *destination* without replacing an existing audit early."""
-    destination = Path(destination)
-    temporary_path = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            dir=destination.parent,
-            prefix=f".{destination.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as temporary:
-            temporary_path = Path(temporary.name)
-            json.dump(audit, temporary, indent=2, sort_keys=True)
-            temporary.write("\n")
-        os.replace(temporary_path, destination)
-    finally:
-        if temporary_path is not None and temporary_path.exists():
-            temporary_path.unlink()
-
-
-def parse_args(argv=None):
-    parser = argparse.ArgumentParser(
-        description="Validate a scale-specific external KNN background table."
+def atomic_json(data, output: Path):
+    output.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(
+        dir=output.parent, prefix=f".{output.name}.", suffix=".tmp"
     )
-    parser.add_argument("--background", required=True)
-    parser.add_argument("--resolution-bp", required=True, type=int)
-    parser.add_argument("--window-bins", required=True, type=int)
-    parser.add_argument("--step-bins", required=True, type=int)
-    parser.add_argument("--knn-k", required=True, type=int)
-    parser.add_argument("--audit", required=True)
-    return parser.parse_args(argv)
-
-
-def main(argv=None):
-    args = parse_args(argv)
     try:
-        audit = validate_background_table(
-            args.background,
-            args.resolution_bp,
-            args.window_bins,
-            args.step_bins,
-            args.knn_k,
-        )
-    except ValueError as error:
-        raise SystemExit(str(error))
-    write_audit_atomically(audit, args.audit)
+        with os.fdopen(descriptor, "w") as handle:
+            json.dump(data, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+        os.replace(temporary, output)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--background", required=True, type=Path)
+    parser.add_argument("--resolution-bp", required=True, type=positive_integer)
+    parser.add_argument("--window-bins", required=True, type=positive_integer)
+    parser.add_argument("--step-bins", required=True, type=positive_integer)
+    parser.add_argument("--knn-k", required=True, type=int)
+    parser.add_argument("--out", required=True, type=Path)
+    args = parser.parse_args()
+    scale = {
+        "resolution_bp": args.resolution_bp,
+        "window_bins": args.window_bins,
+        "window_size_bp": args.resolution_bp * args.window_bins,
+        "step_bins": args.step_bins,
+        "step_size_bp": args.resolution_bp * args.step_bins,
+    }
+    audit = validate_background(args.background, scale, args.knn_k)
+    atomic_json(audit, args.out)
+    print(
+        f"[OK] r{args.resolution_bp} w{args.window_bins}: "
+        f"{audit['row_count']} rows"
+    )
 
 
 if __name__ == "__main__":

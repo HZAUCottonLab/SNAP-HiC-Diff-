@@ -9,7 +9,7 @@ ROOT="${SNAP_HIC_DIFF_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 CONDA_PREFIX_DIR="${CONDA_PREFIX_DIR:-$ROOT/.snakemake/conda}"
 READY_MARKER="$CONDA_PREFIX_DIR/offline.ready.tsv"
 MAMBA_BIN="${MAMBA_BIN:-mamba}"
-SPECS=(env/SNAP-HiC-Diff.yaml env/cworld.yaml env/meltron.yaml)
+SPECS=(env/SNAP-HiC-Diff.yaml env/cworld.yaml env/meltron.yaml env/tad.yaml)
 
 die() {
     printf '[ERROR] %s\n' "$*" >&2
@@ -110,6 +110,17 @@ validate_prefix() {
             [[ -f "$meltron_prefix/lib/R/library/data.table/DESCRIPTION" ]] || die "Missing R package data.table in $meltron_prefix"
             [[ -f "$meltron_prefix/lib/R/library/DescTools/DESCRIPTION" ]] || die "Missing R package DescTools in $meltron_prefix"
             ;;
+        env/tad.yaml)
+            local tad_prefix="$prefix"
+            [[ -x "$tad_prefix/bin/python" ]] || die "Missing Python in $tad_prefix"
+            validate_python_package "$tad_prefix/bin/python" cooler
+            validate_python_package "$tad_prefix/bin/python" h5py
+            validate_python_package "$tad_prefix/bin/python" numpy
+            validate_python_package "$tad_prefix/bin/python" scipy
+            validate_python_package "$tad_prefix/bin/python" matplotlib
+            validate_python_package "$tad_prefix/bin/python" scikit-learn
+            validate_python_package "$tad_prefix/bin/python" pandas
+            ;;
         *)
             die "Unknown environment specification: $spec"
             ;;
@@ -164,7 +175,7 @@ verify() {
     [[ -f "$READY_MARKER" ]] || die "Missing ready marker: $READY_MARKER"
     while IFS=$'\t' read -r spec hash prefix extra; do
         case "$spec" in
-            env/SNAP-HiC-Diff.yaml|env/cworld.yaml|env/meltron.yaml) ;;
+            env/SNAP-HiC-Diff.yaml|env/cworld.yaml|env/meltron.yaml|env/tad.yaml) ;;
             *) die "Unexpected ready-marker specification: $spec" ;;
         esac
     done < "$READY_MARKER"

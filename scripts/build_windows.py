@@ -16,9 +16,7 @@ def parse_args():
     p.add_argument("--output", required=True, help="Output parquet path")
     p.add_argument("--log", required=True, help="Log file path")
     p.add_argument("--resolution", type=int, default=32000)
-    p.add_argument("--window-bins", type=int, required=True)
     p.add_argument("--window-size", type=int, default=300000)
-    p.add_argument("--step-bins", type=int, required=True)
     p.add_argument("--step-size", type=int, default=300000)
     return p.parse_args()
 
@@ -58,7 +56,7 @@ def get_chrom_sizes_from_mcool(cool_uri, resolution):
         return {}
 
 
-def build_windows(chrom_sizes, window_size, step_size, resolution, window_bins, step_bins):
+def build_windows(chrom_sizes, window_size, step_size, resolution):
     """
     Generate sliding windows across genome.
 
@@ -67,8 +65,6 @@ def build_windows(chrom_sizes, window_size, step_size, resolution, window_bins, 
         window_size: window size in bp (default 300000)
         step_size: sliding step in bp (default 32000)
         resolution: bin resolution in bp (default 4000)
-        window_bins: window width in bins
-        step_bins: sliding step in bins
 
     Returns:
         DataFrame with window information
@@ -93,12 +89,7 @@ def build_windows(chrom_sizes, window_size, step_size, resolution, window_bins, 
                 "start": start,
                 "end": end,
                 "n_bins": (end - start) // resolution,
-                "window_size": end - start,
-                "resolution_bp": resolution,
-                "window_bins": window_bins,
-                "window_size_bp": window_size,
-                "step_bins": step_bins,
-                "step_size_bp": step_size,
+                "window_size": end - start
             })
 
     return pd.DataFrame(window_data)
@@ -107,9 +98,7 @@ def build_windows(chrom_sizes, window_size, step_size, resolution, window_bins, 
 def main():
     args = parse_args()
     resolution = args.resolution
-    window_bins = args.window_bins
     window_size = args.window_size
-    step_bins = args.step_bins
     step_size = args.step_size
 
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
@@ -120,9 +109,7 @@ def main():
         log(f"  Input: {args.input}", log_fh)
         log(f"  Output: {args.output}", log_fh)
         log(f"  Resolution: {resolution}", log_fh)
-        log(f"  Window bins: {window_bins}", log_fh)
         log(f"  Window size: {window_size}", log_fh)
-        log(f"  Step bins: {step_bins}", log_fh)
         log(f"  Step size: {step_size}", log_fh)
 
         manifest = pd.read_csv(args.input, sep="\t")
@@ -143,14 +130,7 @@ def main():
         log(f"Total unique chromosomes: {len(all_chrom_sizes)}", log_fh)
         log(f"Chromosomes: {list(all_chrom_sizes.keys())}", log_fh)
 
-        windows_df = build_windows(
-            all_chrom_sizes,
-            window_size,
-            step_size,
-            resolution,
-            window_bins,
-            step_bins,
-        )
+        windows_df = build_windows(all_chrom_sizes, window_size, step_size, resolution)
         log(f"Generated {len(windows_df)} windows", log_fh)
 
         chrom_counts = windows_df["chrom"].value_counts().to_dict()

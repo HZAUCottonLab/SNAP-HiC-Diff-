@@ -4,6 +4,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 CWORLD_ENV = REPO / "env" / "cworld.yaml"
 MELTRON_ENV = REPO / "env" / "meltron.yaml"
+TAD_ENV = REPO / "env" / "tad.yaml"
 CONDA_HELPER = REPO / "scripts" / "conda_envs.sh"
 RUN_SNAKEMAKE = REPO / "run_snakemake.sh"
 DSUB_SUBMIT = REPO / "config" / "dsub_submit.sh"
@@ -62,6 +63,21 @@ def test_meltron_environment_declares_python_dataframe_runtime_and_validates_it(
         )
 
 
+def test_tad_environment_is_isolated_and_pinned():
+    dependencies = dependency_lines(TAD_ENV)
+
+    assert {
+        "python=3.11",
+        "cooler",
+        "h5py",
+        "numpy<2",
+        "scipy",
+        "matplotlib=3.8.*",
+        "scikit-learn",
+        "pandas",
+        "pytest",
+    } <= dependencies
+
 def test_conda_helper_declares_all_specs_marker_and_runtime_checks():
     script = CONDA_HELPER.read_text()
 
@@ -69,6 +85,7 @@ def test_conda_helper_declares_all_specs_marker_and_runtime_checks():
         "env/SNAP-HiC-Diff.yaml",
         "env/cworld.yaml",
         "env/meltron.yaml",
+        "env/tad.yaml",
     ):
         assert spec in script
     assert 'ACTION="${1:-}"' in script

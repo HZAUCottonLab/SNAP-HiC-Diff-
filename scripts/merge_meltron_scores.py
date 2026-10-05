@@ -33,31 +33,8 @@ SCALE_COLUMNS = [
     "step_bins",
     "step_size_bp",
 ]
+SOURCE_COLUMNS = [*SCALE_COLUMNS, "window_start", "window_end", "window_id"]
 
-INTERVAL_MAP_COLUMNS = [
-    *SCALE_COLUMNS,
-    "chrom",
-    "interval_start",
-    "interval_end",
-    "window_start",
-    "window_end",
-    "window_id",
-    "ID",
-    "n_significant_metrics",
-]
-
-MERGED_COLUMNS = [
-    *INTERVAL_MAP_COLUMNS,
-    "meltron_melting_score",
-    "meltron_compaction_score",
-    "meltron_best_score",
-    "meltron_best_direction",
-    "meltron_is_significant",
-    "perc_na_or_missing_ref_decondensation",
-    "perc_na_or_missing_inp_decondensation",
-    "perc_na_or_missing_ref_condensation",
-    "perc_na_or_missing_inp_condensation",
-]
 
 def log(msg, log_file):
     print(msg)
@@ -85,26 +62,6 @@ def normalize_directional_na_columns(frame, direction):
         }
     )
 
-
-def read_interval_map(path, parser):
-    if not path or not os.path.exists(path):
-        return pd.DataFrame(columns=INTERVAL_MAP_COLUMNS)
-
-    interval_map = pd.read_csv(path, sep="\t")
-    metric_count_column = (
-        "n_significant_metrics"
-        if "n_significant_metrics" in interval_map.columns
-        else "n_significant"
-    )
-    if metric_count_column not in interval_map.columns:
-        parser.error("interval map requires n_significant or n_significant_metrics")
-    interval_map = interval_map.rename(
-        columns={metric_count_column: "n_significant_metrics"}
-    ).copy()
-    for column in INTERVAL_MAP_COLUMNS:
-        if column not in interval_map.columns:
-            interval_map[column] = np.nan
-    return interval_map.loc[:, INTERVAL_MAP_COLUMNS]
 
 def run():
     parser = argparse.ArgumentParser(
@@ -146,9 +103,38 @@ def run():
     decond = pd.read_csv(args.decondensation, sep="\t") if os.path.exists(args.decondensation) else pd.DataFrame()
     condens = pd.read_csv(args.condensation, sep="\t") if os.path.exists(args.condensation) else pd.DataFrame()
 
+    if not args.interval_map or not os.path.exists(args.interval_map):
+        parser.error("interval map is required")
+    interval_map = pd.read_csv(args.interval_map, sep="\t")
+    metric_count_column = next(
+        (
+            column
+            for column in ("n_significant", "n_significant_metrics")
+            if column in interval_map.columns
+        ),
+        None,
+    )
+    required = {"ID", *SOURCE_COLUMNS}
+    missing = sorted(required.difference(interval_map.columns))
+    if missing:
+        parser.error(f"interval map missing columns: {', '.join(missing)}")
+    if metric_count_column is None:
+        parser.error("interval map requires n_significant or n_significant_metrics")
+    if interval_map["ID"].isna().any() or interval_map["ID"].duplicated().any():
+        parser.error("interval map ID must be non-missing and unique")
+    interval_map = interval_map[
+        ["ID", *SOURCE_COLUMNS, metric_count_column]
+    ].rename(columns={metric_count_column: "n_significant_metrics"})
+
     if decond.empty and condens.empty:
         log("[WARN] Both Meltron results are empty — writing empty output", args.log_file)
-        pd.DataFrame(columns=MERGED_COLUMNS).to_csv(args.out, sep="\t", index=False)
+        pd.DataFrame(columns=[
+            "chrom", "start", "end", "ID",
+            *SOURCE_COLUMNS,
+            "meltron_melting_score", "meltron_compaction_score",
+            "meltron_best_score", "meltron_best_direction", "meltron_is_significant",
+            "n_significant_metrics"
+        ]).to_csv(args.out, sep="\t", index=False)
         sys.exit(0)
 
     decond = normalize_directional_score(
@@ -195,16 +181,16 @@ def run():
     # Advisory significance flag
     merged["meltron_is_significant"] = (merged["meltron_best_score"] >= args.score_threshold).astype(int)
 
-    # The interval map is the authoritative adapter for source-window identity.
-    provenance = read_interval_map(args.interval_map, parser)
     merged = merged.merge(
-        provenance,
-        on="ID",
-        how="left",
-        validate="one_to_one",
-        suffixes=("_score", ""),
+        interval_map, on="ID", how="left", validate="one_to_one"
     )
-    merged["chrom"] = merged["chrom"].combine_first(merged["chrom_score"])
+    missing_source_identity = merged[SOURCE_COLUMNS].isna().any(axis=1)
+    if missing_source_identity.any():
+        missing_ids = merged.loc[missing_source_identity, "ID"].astype(str).unique()
+        parser.error(
+            "interval map missing source identity for Meltron IDs: "
+            + ", ".join(missing_ids)
+        )
 
     # Rename perc_na columns for clarity in output
     for suffix, direction in [("_decond", "decondensation"), ("_condens", "condensation")]:
@@ -214,11 +200,19 @@ def run():
                 new_col = prefix + "_" + direction
                 merged.rename(columns={col: new_col}, inplace=True)
 
-    # Emit a stable schema even when one direction has no NA metrics.
-    for column in MERGED_COLUMNS:
-        if column not in merged.columns:
-            merged[column] = np.nan
-    merged = merged.loc[:, MERGED_COLUMNS]
+    # Select and order output columns
+    out_cols = [
+        "chrom", "start", "end", "ID",
+        *SOURCE_COLUMNS,
+        "meltron_melting_score", "meltron_compaction_score",
+        "meltron_best_score", "meltron_best_direction", "meltron_is_significant",
+        "perc_na_or_missing_ref_decondensation", "perc_na_or_missing_inp_decondensation",
+        "perc_na_or_missing_ref_condensation", "perc_na_or_missing_inp_condensation",
+        "n_significant_metrics"
+    ]
+    # Keep only columns that exist
+    out_cols = [c for c in out_cols if c in merged.columns]
+    merged = merged[out_cols]
 
     merged.to_csv(args.out, sep="\t", index=False)
     log(f"[INFO] Merged Meltron output: {args.out} ({len(merged)} rows)", args.log_file)

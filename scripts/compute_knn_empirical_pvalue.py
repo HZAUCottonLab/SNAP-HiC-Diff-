@@ -6,15 +6,14 @@ Usage:
     python scripts/compute_knn_empirical_pvalue.py \
         --comparison H1398_vs_L134 \
         --input results/window_compare/H1398_vs_L134/H1398_vs_L134_window_pair_metrics.tsv \
-        --background backgrounds/r4000_w25.tsv \
-        --config config/config.yaml \
-        --resolution-bp 4000 --window-bins 25 --window-size-bp 100000 \
-        --step-bins 5 --step-size-bp 20000 \
+        --background /share/home/xhhuang24/project/PanTE/background_pool/results/window_compare/HiC_window_background.tsv \
         --out results/knn_empirical_pvalue/H1398_vs_L134/H1398_vs_L134_knn_enriched.tsv \
         --log logs/knn_empirical_pvalue/H1398_vs_L134/knn_empirical_pvalue.log
 """
 
 import argparse
+import os
+import tempfile
 import warnings
 from pathlib import Path
 
@@ -25,6 +24,56 @@ from joblib import Parallel, delayed
 from sklearn.neighbors import BallTree
 
 warnings.filterwarnings("ignore", category=FutureWarning)
+
+
+SCALE_COLUMNS = [
+    "resolution_bp",
+    "window_bins",
+    "window_size_bp",
+    "step_bins",
+    "step_size_bp",
+]
+WINDOW_COLUMNS = ["chrom", "window_id", "window_start", "window_end", "comparison"]
+
+
+def attach_scale_metadata(frame, resolution_bp, window_bins, step_bins):
+    values = (resolution_bp, window_bins, step_bins)
+    if any(type(value) is not int or value <= 0 for value in values):
+        raise ValueError("resolution_bp, window_bins, and step_bins must be positive integers")
+    result = frame.copy()
+    result["resolution_bp"] = resolution_bp
+    result["window_bins"] = window_bins
+    result["window_size_bp"] = resolution_bp * window_bins
+    result["step_bins"] = step_bins
+    result["step_size_bp"] = resolution_bp * step_bins
+    return result
+
+
+def empty_knn_output(query_df, score_cols):
+    result = query_df[[*SCALE_COLUMNS, *WINDOW_COLUMNS]].copy()
+    for column in ("knn_valid_k", "knn_dist_median", "knn_dist_max"):
+        result[column] = pd.Series(index=result.index, dtype=float)
+    for score in score_cols:
+        result[f"{score}_empirical_pvalue"] = pd.Series(
+            index=result.index, dtype=float
+        )
+        result[f"bg_{score}_median"] = pd.Series(index=result.index, dtype=float)
+    return result
+
+
+def atomic_tsv(frame, output):
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(
+        dir=output.parent, prefix=f".{output.name}.", suffix=".tmp"
+    )
+    os.close(descriptor)
+    try:
+        frame.to_csv(temporary, sep="\t", index=False)
+        os.replace(temporary, output)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
 
 
 def log(msg, log_file):
@@ -165,105 +214,63 @@ def compute_knn_pvalues(query_df, bg_df, knn_k, n_jobs, score_cols, log_file):
     return pd.DataFrame(rows)
 
 
-def validate_query_identity(query_df, resolution_bp, window_bins):
-    """Require each query row to have one complete, unique scale coordinate."""
-    required = ["chrom", "window_id", "window_start", "window_end", "comparison"]
-    missing = [column for column in required if column not in query_df.columns]
-    if missing:
-        raise ValueError(f"query missing columns: {', '.join(missing)}")
-
-    coordinate_columns = ["chrom", "window_start", "window_end"]
-    if query_df[coordinate_columns].isna().any().any():
-        raise ValueError("query has incomplete resolution/window/chrom/window coordinates")
-
-    identity = query_df[coordinate_columns].copy()
-    identity.insert(0, "window_bins", window_bins)
-    identity.insert(0, "resolution_bp", resolution_bp)
-    if identity.duplicated().any():
-        raise ValueError("duplicate query resolution/window/chrom/window coordinates")
-
-
 def main():
     parser = argparse.ArgumentParser(description="Compute KNN-based empirical P-values for window pair metrics.")
     parser.add_argument("--comparison", required=True, help="Comparison name")
     parser.add_argument("--input", required=True, help="Input window_pair_metrics TSV file")
     parser.add_argument("--background", required=True, help="Background TSV file")
-    parser.add_argument("--config", required=True, help="Pipeline configuration YAML file")
-    parser.add_argument("--resolution-bp", required=True, type=int)
-    parser.add_argument("--window-bins", required=True, type=int)
-    parser.add_argument("--window-size-bp", required=True, type=int)
-    parser.add_argument("--step-bins", required=True, type=int)
-    parser.add_argument("--step-size-bp", required=True, type=int)
     parser.add_argument("--out", required=True, help="Output TSV file")
     parser.add_argument("--log", required=True, help="Log file path")
+    parser.add_argument("--config", required=True, help="Workflow YAML configuration")
+    parser.add_argument("--resolution-bp", required=True, type=int)
+    parser.add_argument("--window-bins", required=True, type=int)
+    parser.add_argument("--step-bins", required=True, type=int)
     args = parser.parse_args()
 
     Path(args.log).parent.mkdir(parents=True, exist_ok=True)
-
-    with open(args.config) as f:
-        knn_cfg = yaml.safe_load(f)["knn_empirical_pvalue"]
+    with open(args.config) as handle:
+        knn_cfg = yaml.safe_load(handle)["knn_empirical_pvalue"]
 
     knn_k = knn_cfg["knn_k"]
     score_cols = knn_cfg["score_columns"]
     n_jobs = knn_cfg.get("n_jobs", 80)
 
-    log(f"[INFO] === KNN Empirical P-Value ===", args.log)
-    log(f"[INFO] Comparison: {args.comparison}", args.log)
-    log(f"[INFO] Input: {args.input}", args.log)
-    log(f"[INFO] Background: {args.background}", args.log)
-    log(f"[INFO] KNN k: {knn_k}", args.log)
-    log(f"[INFO] Scaler: {knn_cfg['scaler']}", args.log)
-    log(f"[INFO] Score columns: {score_cols}", args.log)
-    log(f"[INFO] n_jobs: {n_jobs}", args.log)
-
     query_df = pd.read_csv(args.input, sep="\t")
-    validate_query_identity(query_df, args.resolution_bp, args.window_bins)
-    log(f"[INFO] Loaded input: {len(query_df)} rows", args.log)
-
-    derive_configs = knn_cfg.get("derive_scores", {})
-    query_df = derive_scores(query_df, derive_configs)
-    log(f"[INFO] Derived scores: d_SSIM, d_Spearman, tw_score, d_NCC", args.log)
+    query_df = derive_scores(query_df, knn_cfg.get("derive_scores", {}))
+    query_df = attach_scale_metadata(
+        query_df, args.resolution_bp, args.window_bins, args.step_bins
+    )
+    if query_df.empty:
+        atomic_tsv(empty_knn_output(query_df, score_cols), args.out)
+        log("[INFO] Input contains zero windows; wrote a valid empty output", args.log)
+        return
 
     bg_df = pd.read_csv(args.background, sep="\t")
-    log(f"[INFO] Loaded background: {len(bg_df)} rows", args.log)
     bg_cols = ["EC", "IB", "SP", "MSE", "SSIM", "Spearman", "tw_pvalue", "NCC"]
-    for col in bg_cols:
-        if col not in bg_df.columns:
-            raise ValueError(f"Background missing column: {col}")
-    bg_df = bg_df[bg_cols].copy()
-    for col, formula in derive_configs.items():
-        if "max(tw_pvalue" in formula:
-            bg_df[col] = -np.log10(np.maximum(bg_df["tw_pvalue"], 1e-30))
-        elif "1 - " in formula:
-            src = formula.split("1 - ")[1]
-            bg_df[col] = 1.0 - bg_df[src]
+    missing = sorted(set(bg_cols).difference(bg_df.columns))
+    if missing:
+        raise ValueError(f"Background missing columns: {', '.join(missing)}")
+    bg_df = derive_scores(
+        bg_df[bg_cols].copy(), knn_cfg.get("derive_scores", {})
+    )
     bg_df = bg_df.replace([np.inf, -np.inf], np.nan).dropna()
-    log(f"[INFO] Background after cleaning: {len(bg_df)} rows", args.log)
+    if len(bg_df) < knn_k:
+        raise ValueError(
+            f"Background has {len(bg_df)} valid rows, smaller than knn_k {knn_k}"
+        )
 
     knn_results = compute_knn_pvalues(
         query_df, bg_df, knn_k, n_jobs=n_jobs, score_cols=score_cols, log_file=args.log
     )
-
-    key_cols = ["chrom", "window_id", "window_start", "window_end", "comparison"]
-    scale_df = pd.DataFrame(
-        {
-            "resolution_bp": args.resolution_bp,
-            "window_bins": args.window_bins,
-            "window_size_bp": args.window_size_bp,
-            "step_bins": args.step_bins,
-            "step_size_bp": args.step_size_bp,
-        },
-        index=range(len(query_df)),
-    )
     out_df = pd.concat(
-        [scale_df, query_df[key_cols].reset_index(drop=True), knn_results], axis=1
+        [
+            query_df[[*SCALE_COLUMNS, *WINDOW_COLUMNS]].reset_index(drop=True),
+            knn_results.reset_index(drop=True),
+        ],
+        axis=1,
     )
-
-    log(f"[INFO] Final output: {len(out_df)} rows, {len(out_df.columns)} columns", args.log)
-
-    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    out_df.to_csv(args.out, sep="\t", index=False)
-    log(f"[INFO] Saved to {args.out}", args.log)
+    atomic_tsv(out_df, args.out)
+    log(f"[INFO] Saved {len(out_df)} rows to {args.out}", args.log)
 
 
 if __name__ == "__main__":

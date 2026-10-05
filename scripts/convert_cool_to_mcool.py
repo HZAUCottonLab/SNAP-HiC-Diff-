@@ -47,6 +47,7 @@ def run_convert(cool_uri: str, mcool_out: str, resolutions: list, threads: int, 
         cool_uri,
         "-o", mcool_out,
         "-r", ",".join(map(str, resolutions)),
+        "--balance",
         "--nproc", str(threads),
     ]
     print(f"[INFO] Converting: {cool_uri} -> {mcool_out}", file=log_file)

@@ -1,36 +1,27 @@
 #!/usr/bin/env python3
-"""Build an evidence ledger and genomic union from aligned KNN/Meltron scales."""
+"""Build merged IS-change candidate regions from KNN and Meltron TSVs."""
 
 import argparse
 import os
 from pathlib import Path
-import shutil
 import tempfile
 
 import pandas as pd
 import yaml
 
 from cworld_is_config import parse_cworld_is_settings
-from is_change_candidates import (
-    SORT_COLUMNS,
-    merge_candidate_windows,
-    select_final_windows,
-)
+from is_change_candidates import merge_candidate_windows, select_final_windows
 from is_change_config import parse_is_change_settings
-
-
-BED_COLUMNS = ["chrom", "region_start", "region_end", "region_id"]
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--knn-enriched", required=True, nargs="+")
-    parser.add_argument("--meltron-merged", required=True, nargs="+")
-    parser.add_argument("--expected-window-bins", required=True, nargs="+", type=int)
+    parser.add_argument("--knn-enriched", nargs="+", required=True)
+    parser.add_argument("--meltron-merged", nargs="+", required=True)
     parser.add_argument("--config", required=True)
-    parser.add_argument("--out-all", required=True)
-    parser.add_argument("--out-regions", required=True)
-    parser.add_argument("--out-bed", required=True)
+    parser.add_argument("--out-candidates", required=True)
+    parser.add_argument("--out-union-tsv", required=True)
+    parser.add_argument("--out-union-bed", required=True)
     parser.add_argument("--log", required=True)
     return parser.parse_args()
 
@@ -43,140 +34,19 @@ def log(message, path):
         handle.write(f"{message}\n")
 
 
-def _observed_scale(frame, label, path):
-    required = ["resolution_bp", "window_bins"]
-    missing = set(required).difference(frame.columns)
-    if missing:
-        raise ValueError(f"{label} {path} missing columns: {', '.join(sorted(missing))}")
-    if frame.empty:
-        return None
-
-    values = frame.loc[:, required].apply(pd.to_numeric, errors="coerce")
-    if values.isna().any().any():
-        raise ValueError(f"{label} {path} has non-numeric scale provenance")
-    unique = values.drop_duplicates()
-    if len(unique) != 1:
-        raise ValueError(f"{label} {path} must contain exactly one observed scale")
-    resolution, window_bins = unique.iloc[0]
-    if not float(resolution).is_integer() or not float(window_bins).is_integer():
-        raise ValueError(f"{label} {path} has non-integer scale provenance")
-    return int(resolution), int(window_bins)
-
-
-def validate_aligned_scale_inputs(
-    knn_frames, meltron_frames, knn_paths, meltron_paths, expected_window_bins, resolution_bp
-):
-    expected = tuple(expected_window_bins)
-    if not expected or any(value <= 0 for value in expected):
-        raise ValueError("--expected-window-bins must contain positive integers")
-    if len(set(expected)) != len(expected):
-        raise ValueError("--expected-window-bins contains duplicates")
-    if not (
-        len(knn_frames)
-        == len(meltron_frames)
-        == len(expected)
-        == len(knn_paths)
-        == len(meltron_paths)
-    ):
-        raise ValueError(
-            "KNN inputs, Meltron inputs, and --expected-window-bins must have equal lengths"
-        )
-
-    observed = set()
-    for expected_bins, knn, meltron, knn_path, meltron_path in zip(
-        expected, knn_frames, meltron_frames, knn_paths, meltron_paths
-    ):
-        for frame, path, label in (
-            (knn, knn_path, "KNN"),
-            (meltron, meltron_path, "Meltron"),
-        ):
-            scale = _observed_scale(frame, label, path)
-            if scale is None:
-                continue
-            if scale != (resolution_bp, expected_bins):
-                raise ValueError(
-                    f"{label} {path} reports r{scale[0]}/w{scale[1]}, "
-                    f"expected r{resolution_bp}/w{expected_bins}"
-                )
-            observed.add(scale[1])
-
-    unexpected = observed.difference(expected)
-    if unexpected:
-        raise ValueError(f"observed unexpected window bins: {sorted(unexpected)}")
-
-
-def build_candidates(knn_frames, meltron_frames, settings):
-    selected_frames = []
-    audits = []
-    for knn, meltron in zip(knn_frames, meltron_frames):
-        selected, audit = select_final_windows(
-            knn, meltron, settings, return_audit=True
-        )
-        selected_frames.append(selected)
-        audits.append(audit)
-
-    all_candidates = pd.concat(selected_frames, ignore_index=True, sort=False)
-    if not all_candidates.empty:
-        all_candidates = all_candidates.sort_values(
-            SORT_COLUMNS, kind="stable"
-        ).reset_index(drop=True)
-    regions = merge_candidate_windows(all_candidates, settings)
-    return all_candidates, regions, audits
-
-
-def _temporary_sibling(path, suffix=".tmp"):
-    destination = Path(path)
-    destination.parent.mkdir(parents=True, exist_ok=True)
+def atomic_table(frame, path, header=True):
+    output = Path(path)
+    output.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(
-        dir=destination.parent,
-        prefix=f".{destination.name}.",
-        suffix=suffix,
+        dir=output.parent, prefix=f".{output.name}.", suffix=".tmp"
     )
     os.close(descriptor)
-    return Path(temporary)
-
-
-def write_outputs_atomically(all_candidates, regions, out_all, out_regions, out_bed):
-    destinations = [Path(out_all), Path(out_regions), Path(out_bed)]
-    if len({destination.resolve() for destination in destinations}) != len(destinations):
-        raise ValueError("all three output paths must be distinct")
-
-    temporaries = [_temporary_sibling(destination) for destination in destinations]
-    backups = {}
-    promoted = set()
     try:
-        all_candidates.to_csv(temporaries[0], sep="\t", index=False)
-        regions.to_csv(temporaries[1], sep="\t", index=False)
-        regions.loc[:, BED_COLUMNS].to_csv(
-            temporaries[2], sep="\t", index=False, header=False
-        )
-        for destination in destinations:
-            if destination.exists():
-                backup = _temporary_sibling(destination, suffix=".bak")
-                shutil.copyfile(destination, backup)
-                backups[destination] = backup
-        for temporary, destination in zip(temporaries, destinations):
-            os.replace(temporary, destination)
-            promoted.add(destination)
-    except BaseException as original_error:
-        rollback_errors = []
-        for destination in destinations:
-            backup = backups.get(destination)
-            try:
-                if backup is not None:
-                    os.replace(backup, destination)
-                elif destination in promoted:
-                    destination.unlink(missing_ok=True)
-            except BaseException as rollback_error:
-                rollback_errors.append(rollback_error)
-        if rollback_errors:
-            raise RuntimeError("failed to restore atomic candidate outputs") from original_error
+        frame.to_csv(temporary, sep="\t", index=False, header=header)
+        os.replace(temporary, output)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
         raise
-    finally:
-        for temporary in temporaries:
-            temporary.unlink(missing_ok=True)
-        for backup in backups.values():
-            backup.unlink(missing_ok=True)
 
 
 def main():
@@ -184,37 +54,34 @@ def main():
     with open(args.config) as handle:
         config = yaml.safe_load(handle)
     settings = parse_is_change_settings(config, parse_cworld_is_settings(config))
-    knn_frames = [pd.read_csv(path, sep="\t") for path in args.knn_enriched]
-    meltron_frames = [pd.read_csv(path, sep="\t") for path in args.meltron_merged]
-    validate_aligned_scale_inputs(
-        knn_frames,
-        meltron_frames,
-        args.knn_enriched,
-        args.meltron_merged,
-        args.expected_window_bins,
-        settings.resolution_bp,
-    )
-    all_candidates, regions, audits = build_candidates(
-        knn_frames, meltron_frames, settings
-    )
-    write_outputs_atomically(
-        all_candidates, regions, args.out_all, args.out_regions, args.out_bed
-    )
-
-    log(
-        f"Matched {sum(audit['matched_windows'] for audit in audits)} "
-        "KNN/Meltron windows by scale-qualified source identity",
-        args.log,
-    )
-    log(
-        f"Selected {len(all_candidates)} windows after KNN and Meltron thresholds",
-        args.log,
-    )
-    log(
-        f"Wrote {len(all_candidates)} source windows to {args.out_all}; "
-        f"{len(regions)} union regions to {args.out_regions} and {args.out_bed}",
-        args.log,
-    )
+    if len(args.knn_enriched) != len(args.meltron_merged):
+        raise ValueError("KNN and Meltron input lists must have equal lengths")
+    selected_scales = []
+    for knn_path, meltron_path in zip(args.knn_enriched, args.meltron_merged):
+        selected, audit = select_final_windows(
+            pd.read_csv(knn_path, sep="\t"),
+            pd.read_csv(meltron_path, sep="\t"),
+            settings,
+            return_audit=True,
+        )
+        selected_scales.append(selected)
+        log(
+            f"{knn_path}: matched={audit['matched_windows']} "
+            f"selected={audit['selected_windows']}",
+            args.log,
+        )
+    if all(selected.empty for selected in selected_scales):
+        candidates = selected_scales[0].copy()
+    else:
+        candidates = pd.concat(selected_scales, ignore_index=True)
+    candidates = candidates.sort_values(
+        ["chrom", "window_start", "window_end", "window_bins"], kind="stable"
+    ).reset_index(drop=True)
+    regions = merge_candidate_windows(candidates, settings)
+    bed = regions[["chrom", "region_start", "region_end", "region_id"]]
+    atomic_table(candidates, args.out_candidates)
+    atomic_table(regions, args.out_union_tsv)
+    atomic_table(bed, args.out_union_bed, header=False)
 
 
 if __name__ == "__main__":
