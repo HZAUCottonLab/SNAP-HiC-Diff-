@@ -134,6 +134,28 @@ def test_jitter_uses_q95_and_falls_back_below_minimum(settings):
     assert fallback.source == "fallback_max_tad_resolution"
 
 
+def test_fixed_overlap_survives_a_smaller_shift_sensitivity_radius(settings):
+    # A wide merged boundary can physically overlap B while their centers are
+    # farther apart than the 60/80 kb shift radii. It is still a fixed overlap.
+    a = unified_frame([("A02", 0, 200000, "wide_a")])
+    b = unified_frame([("A02", 192000, 200000, "narrow_b")])
+    jitter = JitterEstimate(12000, "empirical_q95", 200, 12000.0)
+
+    events = call_boundary_events(
+        a, b, jitter, settings, "H1398_vs_L134", "H1398", "L134"
+    )
+
+    assert len(events) == 1
+    event = events.iloc[0]
+    assert event.position_state == "conserved"
+    assert event.position_substate == "conserved_exact"
+    assert event.boundary_a_id == "wide_a"
+    assert event.boundary_b_id == "narrow_b"
+    assert event.shift_bp == 96000
+    assert all(event[f"state_at_{radius}"] == "conserved" for radius in (60000, 80000, 100000))
+    assert bool(event.position_state_stable)
+
+
 def test_calls_fixed_shift_gain_and_loss_without_crossing(settings):
     a = unified_frame([
         ("A02", 0, 8000, "a1"),

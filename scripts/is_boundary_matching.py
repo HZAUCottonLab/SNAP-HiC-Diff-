@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from is_boundary_io import BOUNDARY_EVENT_COLUMNS, BOUNDARY_STABILITY_COLUMNS
-from is_boundary_unification import maximum_cardinality_pairs, overlaps
+from is_boundary_unification import _overlap_pairs, maximum_cardinality_pairs, overlaps
 
 
 @dataclass(frozen=True)
@@ -110,10 +110,20 @@ def _local_pairs(boundaries_a, boundaries_b, max_distance_bp):
     return pairs
 
 
-def _candidate_data(boundaries_a, boundaries_b, max_distance_bp):
+def _candidate_data(boundaries_a, boundaries_b, max_distance_bp, *, include_overlaps=False):
     by_a = {index: [] for index in range(len(boundaries_a))}
     by_b = {index: [] for index in range(len(boundaries_b))}
     edges = _local_pairs(boundaries_a, boundaries_b, max_distance_bp)
+    if include_overlaps:
+        # Fixed-overlap matches are independent of the shift radius. Wide
+        # boundary intervals can overlap while their centers exceed that
+        # radius; keep their metadata available during sensitivity checks.
+        existing = {(index_a, index_b) for index_a, index_b, _ in edges}
+        centers_a = boundaries_a["center_bp"].to_numpy(dtype=int)
+        centers_b = boundaries_b["center_bp"].to_numpy(dtype=int)
+        for index_a, index_b in _overlap_pairs(boundaries_a, boundaries_b):
+            if (index_a, index_b) not in existing:
+                edges.append((index_a, index_b, abs(int(centers_a[index_a]) - int(centers_b[index_b]))))
     for index_a, index_b, distance in edges:
         by_a[index_a].append((distance, index_b))
         by_b[index_b].append((distance, index_a))
@@ -405,7 +415,7 @@ def _events_at_distance(
                 ),
             ))
 
-        candidates = _candidate_data(simple_a, simple_b, max_shift_bp)
+        candidates = _candidate_data(simple_a, simple_b, max_shift_bp, include_overlaps=True)
         consumed_a, consumed_b = set(), set()
         for component_a, component_b, edges in candidates[2]:
             if len(component_a) > 1 and len(component_b) > 1 and any(
