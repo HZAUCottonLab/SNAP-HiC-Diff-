@@ -15,6 +15,7 @@ from is_boundary_annotation import (
     evidence_tier,
     summarize_annotations,
 )
+from is_boundary_point_state import POINT_STATE_COLUMNS
 from is_boundary_io import (
     ANNOTATION_COLUMNS,
     BOUNDARY_EVENT_COLUMNS,
@@ -69,6 +70,58 @@ def _strength(**updates):
 
 def _masked(rows=()):
     return pd.DataFrame(rows, columns=["chrom", "start", "end", "reason"])
+
+
+class _ChangeSettings:
+    scale_bands = {
+        "small": (32000, 60000, 92000),
+        "medium": (120000, 152000, 180000),
+        "large": (212000, 240000, 272000, 300000),
+    }
+    min_primary_scale_bands = 2
+
+
+def _scaled_masked(rows):
+    return pd.DataFrame(rows, columns=["chrom", "start", "end", "reason", "scale_bp"])
+
+
+def test_mask_at_one_scale_does_not_void_a_multiscale_locus():
+    locus = pd.DataFrame([
+        _locus(region_id="multi", support_scales="32000,60000,120000"),
+    ])
+    events = pd.DataFrame([_event()], columns=BOUNDARY_EVENT_COLUMNS)
+    strength = pd.DataFrame([_strength()], columns=STRENGTH_SUMMARY_COLUMNS)
+    single_scale_mask = _scaled_masked([("chr1", 100000, 104000, "FLANK_COVERAGE", 32000)])
+
+    annotated = annotate_loci(
+        locus, events, strength, single_scale_mask,
+        type("S", (), {"base_bin_bp": 4000})(),
+        is_change_settings=_ChangeSettings(),
+    )
+
+    assert annotated.iloc[0].position_state == "conserved"
+
+
+def test_mask_covering_all_supporting_scales_voids_the_locus():
+    locus = pd.DataFrame([
+        _locus(region_id="multi", support_scales="32000,60000,120000"),
+    ])
+    events = pd.DataFrame([_event()], columns=BOUNDARY_EVENT_COLUMNS)
+    strength = pd.DataFrame([_strength()], columns=STRENGTH_SUMMARY_COLUMNS)
+    all_scale_mask = _scaled_masked([
+        ("chr1", 100000, 104000, "FLANK_COVERAGE", 32000),
+        ("chr1", 100000, 104000, "FLANK_COVERAGE", 60000),
+        ("chr1", 100000, 104000, "FLANK_COVERAGE", 120000),
+    ])
+
+    annotated = annotate_loci(
+        locus, events, strength, all_scale_mask,
+        type("S", (), {"base_bin_bp": 4000})(),
+        is_change_settings=_ChangeSettings(),
+    )
+
+    assert annotated.iloc[0].position_state == "ambiguous"
+    assert annotated.iloc[0].annotation_reason == "mask_overlap:FLANK_COVERAGE"
 
 
 def test_shifted_span_is_not_an_overlap_target():
@@ -385,19 +438,31 @@ def test_summary_uses_confidence_tier_denominators_and_explicit_state_order():
     assert summary.iloc[0].position_state == "conserved"
 
 
-def test_annotation_qc_counts_each_mask_reason():
+def test_annotation_qc_counts_only_mask_loci_that_became_ambiguous():
+    """A mask hit alone does not make a locus masked; it must also be ambiguous."""
     from is_boundary_annotation import annotation_qc
 
     loci = pd.DataFrame([
-        {"annotation_reason": "mask_overlap:IS_NA_A", "n_boundary_candidates": 0},
-        {"annotation_reason": "mask_overlap:IS_NA_A,FLANK_COVERAGE", "n_boundary_candidates": 1},
-        {"annotation_reason": "unique_boundary_event", "n_boundary_candidates": 1},
+        {"annotation_reason": "mask_overlap:IS_NA_A", "position_state": "ambiguous",
+         "n_boundary_candidates": 0},
+        {"annotation_reason": "mask_overlap:IS_NA_A,FLANK_COVERAGE", "position_state": "ambiguous",
+         "n_boundary_candidates": 1},
+        # Mask overlap, but enough scale bands survived, so the locus is decided.
+        {"annotation_reason": "mask_overlap:IS_NA_A", "position_state": "conserved",
+         "n_boundary_candidates": 1},
+        {"annotation_reason": "unique_boundary_event", "position_state": "conserved",
+         "n_boundary_candidates": 1},
     ])
     events = pd.DataFrame({"jitter_source": ["empirical_q95"], "position_state_stable": [True]})
     strength_long = pd.DataFrame({"robust_z": [float("nan"), 1.0]})
     strength_summary = pd.DataFrame({"strength_state_stable": [True]})
 
     qc = annotation_qc(loci, loci.iloc[0:0], events, strength_long, strength_summary)
+
+    metrics = qc.set_index("metric")["value"].to_dict()
+    assert metrics["masked_loci"] == 2
+    assert metrics["mask_overlapping_loci"] == 3
+    assert metrics["mask_rescued_loci"] == 1
 
     reasons = qc[qc.metric.eq("masked_loci_reason")].set_index("detail")["value"].to_dict()
     assert reasons == {"FLANK_COVERAGE": 1, "IS_NA_A": 2}
@@ -433,12 +498,27 @@ def _write_tracks(tmp_path):
         pd.DataFrame(rows).to_csv(tmp_path / f"{name}.is.tsv", sep="\t", index=False)
 
 
+def _write_boundaries(tmp_path):
+    """Empty unified-boundary tables: the point layer must tolerate no hits."""
+    columns = [
+        "chrom", "start", "end", "unified_boundary_id", "center_bp",
+        "component_state", "signal_support", "raw_boundary_ids",
+        "balanced_boundary_ids", "support_resolutions",
+        "n_supporting_resolutions", "n_source_boundaries", "tie_resolution",
+    ]
+    for name in ("a", "b"):
+        pd.DataFrame(columns=columns).to_csv(
+            tmp_path / f"{name}.boundaries.tsv", sep="\t", index=False
+        )
+
+
 def _annotation_command(tmp_path, events, primary, preliminary):
     events.to_csv(tmp_path / "events.tsv", sep="\t", index=False)
     primary.to_csv(tmp_path / "primary.tsv", sep="\t", index=False)
     preliminary.to_csv(tmp_path / "preliminary.tsv", sep="\t", index=False)
     (tmp_path / "masked.tsv").write_text("")
     _write_tracks(tmp_path)
+    _write_boundaries(tmp_path)
     return [
         sys.executable, str(REPO / "scripts" / "annotate_is_change_boundaries.py"),
         "--comparison", "A_vs_B", "--events", str(tmp_path / "events.tsv"),
@@ -450,6 +530,9 @@ def _annotation_command(tmp_path, events, primary, preliminary):
         "--out-strength", str(tmp_path / "strength.tsv"),
         "--out-strength-summary", str(tmp_path / "strength-summary.tsv"),
         "--out-qc", str(tmp_path / "qc.tsv"), "--out-summary", str(tmp_path / "summary.tsv"),
+        "--boundaries-a", str(tmp_path / "a.boundaries.tsv"),
+        "--boundaries-b", str(tmp_path / "b.boundaries.tsv"),
+        "--out-point-map", str(tmp_path / "point-map.tsv"),
         "--log", str(tmp_path / "annotation.log"),
     ]
 
@@ -464,7 +547,7 @@ def test_annotation_cli_writes_valid_header_only_outputs(tmp_path):
 
     assert result.returncode == 0, result.stderr
     assert pd.read_csv(tmp_path / "annotated.primary.tsv", sep="\t").columns.tolist() == (
-        list(PRIMARY_COLUMNS) + list(ANNOTATION_COLUMNS)
+        list(PRIMARY_COLUMNS) + list(ANNOTATION_COLUMNS) + list(POINT_STATE_COLUMNS)
     )
     assert pd.read_csv(tmp_path / "strength.tsv", sep="\t").columns.tolist() == list(STRENGTH_LONG_COLUMNS)
     assert pd.read_csv(tmp_path / "strength-summary.tsv", sep="\t").columns.tolist() == list(STRENGTH_SUMMARY_COLUMNS)
@@ -482,6 +565,8 @@ def test_annotation_cli_preserves_input_columns_before_annotation_columns(tmp_pa
 
     assert result.returncode == 0, result.stderr
     observed = pd.read_csv(tmp_path / "annotated.primary.tsv", sep="\t")
-    assert observed.columns.tolist() == list(primary.columns) + list(ANNOTATION_COLUMNS)
+    assert observed.columns.tolist() == (
+        list(primary.columns) + list(ANNOTATION_COLUMNS) + list(POINT_STATE_COLUMNS)
+    )
     assert observed.loc[0, "region_id"] == "r1"
     assert observed.loc[0, "boundary_event_id"] == "e1"

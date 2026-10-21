@@ -16,11 +16,16 @@ from is_boundary_errors import ISBoundaryError
 from is_boundary_io import (
     ANNOTATION_COLUMNS,
     BOUNDARY_EVENT_COLUMNS,
+    UNIFIED_BOUNDARY_COLUMNS,
     STRENGTH_LONG_COLUMNS,
     STRENGTH_SUMMARY_COLUMNS,
     TAD_UNEVALUABLE_COLUMNS,
     atomic_write_tables,
     read_tad_unevaluable,
+    read_unified_boundaries,
+)
+from is_boundary_point_state import (
+    POINT_BOUNDARY_COLUMNS, POINT_STATE_COLUMNS, BoundaryIndex, attach_point_state,
 )
 from is_boundary_strength import compute_strength_long, summarize_strength
 from is_change_config import parse_is_change_settings
@@ -33,6 +38,7 @@ SUMMARY_COLUMNS = (
     "evidence_tier", "n_loci", "denominator", "fraction",
 )
 MASK_COLUMNS = ("chrom", "start", "end", "reason")
+SCALED_MASK_COLUMNS = ("chrom", "start", "end", "reason", "scale_bp")
 
 
 def build_parser():
@@ -46,6 +52,12 @@ def build_parser():
     parser.add_argument("--is-b", required=True)
     parser.add_argument("--tad-unevaluable-a")
     parser.add_argument("--tad-unevaluable-b")
+    parser.add_argument("--boundaries-a", required=True)
+    parser.add_argument("--boundaries-b", required=True)
+    parser.add_argument(
+        "--matching-qc",
+        help="matching QC table; its jitter_threshold_bp overrides point.shift_tolerance_bp",
+    )
     parser.add_argument("--config", required=True)
     parser.add_argument("--out-primary", required=True)
     parser.add_argument("--out-preliminary", required=True)
@@ -53,6 +65,7 @@ def build_parser():
     parser.add_argument("--out-strength-summary", required=True)
     parser.add_argument("--out-qc", required=True)
     parser.add_argument("--out-summary", required=True)
+    parser.add_argument("--out-point-map", required=True)
     parser.add_argument("--log", required=True)
     return parser
 
@@ -89,25 +102,41 @@ def _read_loci(path):
 
 
 def _read_masked(path):
+    """Read the IS-change mask table.
+
+    Accepts the legacy four-column layout (no scale) and the current
+    five-column layout that carries ``scale_bp``.  A legacy row means the
+    position is masked at every scale, which preserves the old behaviour.
+    """
     try:
         frame = pd.read_csv(path, sep="\t", header=None)
     except pd.errors.EmptyDataError:
-        return pd.DataFrame(columns=MASK_COLUMNS)
+        return pd.DataFrame(columns=SCALED_MASK_COLUMNS)
     if frame.empty:
-        return pd.DataFrame(columns=MASK_COLUMNS)
-    if tuple(frame.iloc[0].astype(str)) == MASK_COLUMNS:
+        return pd.DataFrame(columns=SCALED_MASK_COLUMNS)
+    header = tuple(frame.iloc[0].astype(str))
+    if header in (MASK_COLUMNS, SCALED_MASK_COLUMNS):
         frame = frame.iloc[1:].reset_index(drop=True)
-    if frame.shape[1] != len(MASK_COLUMNS):
-        raise ValueError("masked IS table must have four columns")
-    frame.columns = MASK_COLUMNS
+    if frame.shape[1] == len(MASK_COLUMNS):
+        frame.columns = list(MASK_COLUMNS)
+        frame["scale_bp"] = pd.NA
+    elif frame.shape[1] == len(SCALED_MASK_COLUMNS):
+        frame.columns = list(SCALED_MASK_COLUMNS)
+    else:
+        raise ValueError("masked IS table must have four or five columns")
     for column in ("start", "end"):
         values = pd.to_numeric(frame[column], errors="raise")
         if not values.eq(values.astype(int)).all():
             raise ValueError("masked IS coordinates must be integers")
         frame[column] = values.astype(int)
+    scales = pd.to_numeric(frame["scale_bp"], errors="coerce")
+    if scales.notna().any():
+        if not scales.dropna().eq(scales.dropna().astype(int)).all():
+            raise ValueError("masked IS scale values must be integers")
+        frame["scale_bp"] = scales.astype("Int64")
     if (frame["start"] < 0).any() or (frame["end"] <= frame["start"]).any():
         raise ValueError("masked IS coordinates must be non-empty")
-    return frame
+    return frame.loc[:, list(SCALED_MASK_COLUMNS)]
 
 
 def _validate_events(events, comparison):
@@ -134,6 +163,40 @@ def _canonicalize_current_locus_comparison(loci, events, comparison):
     return loci.assign(comparison=loci["comparison"].where(loci["comparison"] != legacy, canonical))
 
 
+def _pair_samples(events, comparison):
+    """Sample names for the comparison, taken from the event map."""
+    pairs = events[["sample_a", "sample_b"]].dropna().drop_duplicates()
+    if len(pairs) == 1:
+        return str(pairs.iloc[0]["sample_a"]), str(pairs.iloc[0]["sample_b"])
+    if "_vs_" in comparison:
+        sample_a, sample_b = comparison.split("_vs_", 1)
+        return sample_a, sample_b
+    raise ValueError("cannot resolve sample pair for the comparison")
+
+
+def _jitter_threshold(path, fallback):
+    """Empirical jitter threshold from the matching QC table.
+
+    The matching stage already calibrates this value from the observed
+    raw-vs-balanced offsets; reusing it keeps the shift rule tied to the data
+    rather than to a second guess. A missing or unusable value falls back to
+    the configured tolerance.
+    """
+    try:
+        frame = pd.read_csv(path, sep="\t")
+    except Exception:
+        return fallback
+    if not {"metric", "value"}.issubset(frame.columns):
+        return fallback
+    value = frame.loc[frame["metric"].eq("jitter_threshold_bp"), "value"]
+    if value.empty:
+        return fallback
+    try:
+        return int(float(value.iloc[0]))
+    except (TypeError, ValueError):
+        return fallback
+
+
 def _write_log(path, message):
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -151,6 +214,7 @@ def run_from_args(args):
     boundary_settings, is_settings = _settings(args.config)
     try:
         events = _read_table(args.events, BOUNDARY_EVENT_COLUMNS)
+        sample_a, sample_b = _pair_samples(events, args.comparison)
         _validate_events(events, args.comparison)
         primary = _read_loci(args.primary)
         preliminary = _read_loci(args.preliminary)
@@ -180,19 +244,46 @@ def run_from_args(args):
         _raise("IS_BOUNDARY_STRENGTH_FAILED", error)
     try:
         annotated_primary = annotate_loci(
-            primary, events, strength_summary, masked, boundary_settings, tad_unevaluable
+            primary, events, strength_summary, masked, boundary_settings, tad_unevaluable,
+            is_change_settings=is_settings,
         )
         annotated_preliminary = annotate_loci(
-            preliminary, events, strength_summary, masked, boundary_settings, tad_unevaluable
+            preliminary, events, strength_summary, masked, boundary_settings, tad_unevaluable,
+            is_change_settings=is_settings,
         )
+        boundaries_a = BoundaryIndex(read_unified_boundaries(args.boundaries_a))
+        boundaries_b = BoundaryIndex(read_unified_boundaries(args.boundaries_b))
+        tolerance = boundary_settings.point.shift_tolerance_bp
+        if args.matching_qc:
+            tolerance = _jitter_threshold(args.matching_qc, tolerance)
+        annotated_primary, point_primary = attach_point_state(
+            annotated_primary, boundaries_a, boundaries_b, sample_a, sample_b,
+            args.comparison, boundary_settings.base_bin_bp, tolerance,
+        )
+        annotated_preliminary, point_preliminary = attach_point_state(
+            annotated_preliminary, boundaries_a, boundaries_b, sample_a, sample_b,
+            args.comparison, boundary_settings.base_bin_bp, tolerance,
+        )
+        point_map = pd.concat([point_primary, point_preliminary], ignore_index=True)
         summary = summarize_annotations(annotated_primary, annotated_preliminary)
         qc = annotation_qc(
             annotated_primary, annotated_preliminary, events, strength_long, strength_summary
         )
-        if tuple(annotated_primary.columns) != tuple([*primary.columns, *ANNOTATION_COLUMNS]):
-            raise ValueError("invalid primary annotation schema")
-        if tuple(annotated_preliminary.columns) != tuple([*preliminary.columns, *ANNOTATION_COLUMNS]):
-            raise ValueError("invalid preliminary annotation schema")
+        for frame, source in (
+            (annotated_primary, primary), (annotated_preliminary, preliminary)
+        ):
+            # ``locus_key`` is an internal join key added by the point layer; it
+            # is not part of the published schema.
+            published = [c for c in frame.columns if c != "locus_key"]
+            expected = [*source.columns, *ANNOTATION_COLUMNS, *POINT_STATE_COLUMNS]
+            if published != expected:
+                raise ValueError(
+                    "invalid annotation schema: "
+                    f"missing={sorted(set(expected) - set(published))} "
+                    f"extra={sorted(set(published) - set(expected))}"
+                )
+        if tuple(point_map.columns) != POINT_BOUNDARY_COLUMNS:
+            raise ValueError("invalid point map schema")
         if tuple(summary.columns) != SUMMARY_COLUMNS or tuple(qc.columns) != QC_COLUMNS:
             raise ValueError("invalid annotation summary schema")
         atomic_write_tables([
@@ -202,13 +293,15 @@ def run_from_args(args):
             (strength_summary, args.out_strength_summary, STRENGTH_SUMMARY_COLUMNS),
             (qc, args.out_qc, QC_COLUMNS),
             (summary, args.out_summary, SUMMARY_COLUMNS),
+            (point_map, args.out_point_map, POINT_BOUNDARY_COLUMNS),
         ])
     except Exception as error:
         _raise("IS_BOUNDARY_ANNOTATION_FAILED", error)
     _write_log(
         args.log,
         f"comparison={args.comparison} primary={len(annotated_primary)} "
-        f"preliminary={len(annotated_preliminary)} events={len(events)}",
+        f"preliminary={len(annotated_preliminary)} events={len(events)} "
+        f"point_rows={len(point_map)}",
     )
 
 

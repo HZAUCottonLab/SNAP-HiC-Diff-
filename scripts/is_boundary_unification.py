@@ -96,7 +96,7 @@ def _resolution_union(rows):
     })))
 
 
-def _row(raw_rows, balanced_rows, component_state=None):
+def _row(raw_rows, balanced_rows, component_state=None, tie_resolution=""):
     raw_rows = list(raw_rows)
     balanced_rows = list(balanced_rows)
     rows = raw_rows + balanced_rows
@@ -131,6 +131,7 @@ def _row(raw_rows, balanced_rows, component_state=None):
         "support_resolutions": resolutions,
         "n_supporting_resolutions": len(resolutions.split(",")),
         "n_source_boundaries": sum(int(item.n_source_boundaries) for item in rows),
+        "tie_resolution": tie_resolution,
     }
 
 
@@ -172,6 +173,32 @@ def _has_tie(raw, balanced, tie_tolerance_bp):
     )
 
 
+def balanced_priority_pairs(left, right):
+    """Match every balanced boundary to its nearest overlapping raw boundary.
+
+    Balanced is the arbiter: each balanced row claims the closest still-free raw
+    row, so a raw boundary never pulls a balanced one away from a nearer partner.
+    Unclaimed rows fall through as single-signal boundaries.
+    """
+    pairs, taken_left = [], set()
+    for right_index in range(len(right)):
+        item_right = right.iloc[right_index]
+        best = None
+        for left_index in range(len(left)):
+            if left_index in taken_left:
+                continue
+            item_left = left.iloc[left_index]
+            if not overlaps(item_left, item_right):
+                continue
+            distance = abs(int(item_left.center_bp) - int(item_right.center_bp))
+            if best is None or distance < best[0]:
+                best = (distance, left_index)
+        if best is not None:
+            taken_left.add(best[1])
+            pairs.append((best[1], right_index))
+    return pairs
+
+
 def _chrom_rank(chromosomes, chrom_order):
     if chrom_order is None:
         return {chrom: index for index, chrom in enumerate(chromosomes)}
@@ -200,22 +227,30 @@ def unify_boundaries(raw, balanced, tie_tolerance_bp, chrom_order=None) -> pd.Da
             component_right = right.iloc[right_indices].reset_index(drop=True)
             used_left.update(left_indices)
             used_right.update(right_indices)
-            if (
-                len(component_left) > 1 and len(component_right) > 1
-            ) or _has_tie(component_left, component_right, tie_tolerance_bp):
-                output.append(_row(component_left.itertuples(index=False), component_right.itertuples(index=False), "complex_within_sample"))
-                continue
-            pairs = maximum_cardinality_pairs(component_left, component_right, overlaps)
+            # A near-tie used to void the whole component. It is instead settled
+            # by the balanced-priority rule below, and every pairing that the
+            # tie influenced carries a marker so it stays auditable downstream.
+            was_tied = _has_tie(component_left, component_right, tie_tolerance_bp)
+            pairs = balanced_priority_pairs(component_left, component_right)
             matched_left = {index for index, _ in pairs}
             matched_right = {index for _, index in pairs}
+            if was_tied:
+                tie_resolution = "balanced_priority_tied_component"
+            elif len(component_left) > 1 or len(component_right) > 1:
+                tie_resolution = "balanced_priority_many_to_many"
+            else:
+                tie_resolution = "balanced_priority"
             for left_index, right_index in pairs:
-                output.append(_row([component_left.iloc[left_index]], [component_right.iloc[right_index]]))
+                output.append(_row(
+                    [component_left.iloc[left_index]], [component_right.iloc[right_index]],
+                    tie_resolution=tie_resolution,
+                ))
             for index, item in component_left.iterrows():
                 if index not in matched_left:
-                    output.append(_row([item], []))
+                    output.append(_row([item], [], tie_resolution=tie_resolution))
             for index, item in component_right.iterrows():
                 if index not in matched_right:
-                    output.append(_row([], [item]))
+                    output.append(_row([], [item], tie_resolution=tie_resolution))
         for index, item in left.iterrows():
             if index not in used_left:
                 output.append(_row([item], []))

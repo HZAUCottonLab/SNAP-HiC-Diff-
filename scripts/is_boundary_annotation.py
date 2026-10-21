@@ -143,15 +143,73 @@ def _event_order(events):
     )
 
 
-def _mask_reasons(locus, masked, base_bin_bp):
+def _locus_scales(locus):
+    """Return the IS scales that support one locus, or an empty tuple."""
+    value = getattr(locus, "support_scales", None)
+    if value is None or pd.isna(value) or not str(value).strip():
+        return ()
+    return tuple(sorted({int(item) for item in str(value).split(",") if item.strip()}))
+
+
+def _evaluable_scale_bands(locus, masked, base_bin_bp, is_change_settings):
+    """Bands whose scales are not masked at the locus anchor.
+
+    A mask row applies only to its own ``scale_bp``.  Rows without a scale
+    (legacy tables) apply to every scale, which reproduces the previous
+    all-or-nothing behaviour.
+    """
+    scales = _locus_scales(locus)
+    if not scales or is_change_settings is None:
+        return None
+    start, end = locus_anchor(locus, base_bin_bp)
+    rows = masked[masked["chrom"].eq(locus.chrom)]
+    overlapping = [
+        row for row in rows.itertuples(index=False)
+        if _interval_overlap(start, end, int(row.start), int(row.end))
+    ]
+    if not overlapping:
+        return None
+    masked_scales = set()
+    applies_to_all = False
+    for row in overlapping:
+        scale = getattr(row, "scale_bp", None)
+        if scale is None or pd.isna(scale):
+            applies_to_all = True
+        else:
+            masked_scales.add(int(scale))
+    if applies_to_all:
+        return None
+    evaluable = [scale for scale in scales if scale not in masked_scales]
+    bands = [
+        band
+        for band, band_scales in is_change_settings.scale_bands.items()
+        if any(scale in band_scales for scale in evaluable)
+    ]
+    return bands, tuple(sorted({str(row.reason) for row in overlapping}))
+
+
+def _mask_reasons(locus, masked, base_bin_bp, is_change_settings=None):
     if masked.empty:
         return ()
     start, end = locus_anchor(locus, base_bin_bp)
     rows = masked[masked["chrom"].eq(locus.chrom)]
-    return tuple(sorted({
-        str(row.reason) for row in rows.itertuples(index=False)
+    overlapping = [
+        row for row in rows.itertuples(index=False)
         if _interval_overlap(start, end, int(row.start), int(row.end))
-    }))
+    ]
+    if not overlapping:
+        return ()
+    if is_change_settings is not None:
+        evaluable = _evaluable_scale_bands(
+            locus, masked, base_bin_bp, is_change_settings
+        )
+        if evaluable is not None:
+            bands, reasons = evaluable
+            if len(bands) >= is_change_settings.min_primary_scale_bands:
+                # Enough scales survive the mask; the locus stays evaluable.
+                return ()
+            return tuple(sorted(reasons))
+    return tuple(sorted({str(row.reason) for row in overlapping}))
 
 
 def _tad_coverage_reasons(locus, tad_unevaluable, base_bin_bp):
@@ -192,7 +250,8 @@ def _event_values(event):
     }
 
 
-def annotate_loci(loci, events, strength_summary, masked, settings, tad_unevaluable=None):
+def annotate_loci(loci, events, strength_summary, masked, settings, tad_unevaluable=None,
+                  is_change_settings=None):
     """Annotate each locus once; shifted corridors are never association targets."""
     result_columns = [*loci.columns, *ANNOTATION_COLUMNS]
     if loci.empty:
@@ -210,7 +269,9 @@ def annotate_loci(loci, events, strength_summary, masked, settings, tad_unevalua
     for locus in loci.itertuples(index=False):
         local_events = ordered[ordered["chrom"].eq(locus.chrom)]
         ids = associated_event_ids(locus, local_events, settings.base_bin_bp)
-        mask_reasons = _mask_reasons(locus, masked, settings.base_bin_bp)
+        mask_reasons = _mask_reasons(
+            locus, masked, settings.base_bin_bp, is_change_settings
+        )
         tad_coverage_reasons = _tad_coverage_reasons(
             locus, tad_unevaluable, settings.base_bin_bp
         )
@@ -288,17 +349,23 @@ def summarize_annotations(primary, preliminary):
 def annotation_qc(primary, preliminary, events, strength_long, strength_summary):
     """Return concise evaluability and sensitivity diagnostics for annotation outputs."""
     loci = pd.concat((primary, preliminary), ignore_index=True)
+    mask_overlap = loci["annotation_reason"].str.startswith("mask_overlap:", na=False)
+    ambiguous_mask = mask_overlap & loci["position_state"].eq("ambiguous")
     rows = [
-        {"metric": "masked_loci", "value": int(loci["annotation_reason"].str.startswith("mask_overlap:", na=False).sum()), "detail": ""},
+        # ``masked_loci`` counts loci whose state actually became ambiguous
+        # because every supporting scale was masked.  The raw number of loci
+        # that overlap any mask is reported separately: with scale-aware masks
+        # most of those keep enough evaluable scales and stay decided.
+        {"metric": "masked_loci", "value": int(ambiguous_mask.sum()), "detail": ""},
+        {"metric": "mask_overlapping_loci", "value": int(mask_overlap.sum()), "detail": ""},
+        {"metric": "mask_rescued_loci", "value": int((mask_overlap & ~ambiguous_mask).sum()), "detail": ""},
         {"metric": "unevaluable_strength_scales", "value": int(strength_long["robust_z"].isna().sum()), "detail": ""},
         {"metric": "fallback_jitter_events", "value": int(events["jitter_source"].eq("fallback_max_tad_resolution").sum()), "detail": ""},
         {"metric": "position_label_changes_across_shift_thresholds", "value": int((~events["position_state_stable"].astype(bool)).sum()), "detail": ""},
         {"metric": "strength_label_changes_across_z_thresholds", "value": int((~strength_summary["strength_state_stable"].astype(bool)).sum()), "detail": ""},
     ]
     mask_counts = {}
-    for reason in loci.loc[
-        loci["annotation_reason"].str.startswith("mask_overlap:", na=False), "annotation_reason"
-    ]:
+    for reason in loci.loc[ambiguous_mask, "annotation_reason"]:
         for item in str(reason).split(":", 1)[1].split(","):
             mask_counts[item] = mask_counts.get(item, 0) + 1
     for reason, count in sorted(mask_counts.items()):

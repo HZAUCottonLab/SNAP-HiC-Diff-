@@ -110,6 +110,9 @@ rule annotate_is_change_boundaries:
         is_b=lambda w: get_comparison_is_file(w.comparison, 1),
         tad_unevaluable_a=lambda w: boundary_tad_unevaluable_path(get_pair_samples(w.comparison)[0]),
         tad_unevaluable_b=lambda w: boundary_tad_unevaluable_path(get_pair_samples(w.comparison)[1]),
+        boundaries_a=lambda w: unified_boundary_path(get_pair_samples(w.comparison)[0]),
+        boundaries_b=lambda w: unified_boundary_path(get_pair_samples(w.comparison)[1]),
+        matching_qc=lambda w: OUTDIR + "/tad_boundary_events/{comparison}.matching_qc.tsv".format(comparison=w.comparison),
     output:
         primary=MULTISCALE_ROOT + "/{comparison}/is_change/{comparison}_is_change_loci.boundary_annotated.tsv",
         preliminary=MULTISCALE_ROOT + "/{comparison}/is_change/{comparison}_is_change_loci_preliminary.boundary_annotated.tsv",
@@ -117,6 +120,7 @@ rule annotate_is_change_boundaries:
         strength_summary=OUTDIR + "/tad_boundary_events/{comparison}.boundary_strength_summary.tsv",
         qc=OUTDIR + "/tad_boundary_events/{comparison}.annotation_qc.tsv",
         summary=OUTDIR + "/tad_boundary_events/{comparison}.annotation_summary.tsv",
+        point_map=OUTDIR + "/tad_boundary_events/{comparison}.boundary_point_map.tsv",
     log:
         OUTDIR + "/logs/is_boundary/{comparison}.annotation.log",
     benchmark:
@@ -142,6 +146,9 @@ rule annotate_is_change_boundaries:
             --is-b {input.is_b:q} \
             --tad-unevaluable-a {input.tad_unevaluable_a:q} \
             --tad-unevaluable-b {input.tad_unevaluable_b:q} \
+            --boundaries-a {input.boundaries_a:q} \
+            --boundaries-b {input.boundaries_b:q} \
+            --matching-qc {input.matching_qc:q} \
             --config {params.config:q} \
             --out-primary {output.primary:q} \
             --out-preliminary {output.preliminary:q} \
@@ -149,6 +156,7 @@ rule annotate_is_change_boundaries:
             --out-strength-summary {output.strength_summary:q} \
             --out-qc {output.qc:q} \
             --out-summary {output.summary:q} \
+            --out-point-map {output.point_map:q} \
             --log {log:q} \
             >> {log:q} 2>&1
         """

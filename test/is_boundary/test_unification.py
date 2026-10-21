@@ -100,15 +100,32 @@ def test_adjacency_does_not_unify_and_many_to_many_is_complex(tmp_path):
 
     observed = unify_boundaries(raw, balanced, tie_tolerance_bp=4000)
 
-    assert (observed["component_state"] == "complex_within_sample").sum() == 1
-    complex_row = observed.loc[
-        observed["component_state"] == "complex_within_sample"
-    ].iloc[0]
-    assert complex_row[["raw_boundary_ids", "balanced_boundary_ids"]].to_dict() == {
-        "raw_boundary_ids": "r1,r2",
-        "balanced_boundary_ids": "b1,b2",
-    }
+    assert "complex_within_sample" not in set(observed["component_state"])
+    tied = observed[observed["tie_resolution"] == "balanced_priority_tied_component"]
+    assert len(tied) == 2
+    assert tied[["raw_boundary_ids", "balanced_boundary_ids"]].apply(
+        lambda row: tuple(sorted(row)), axis=1
+    ).tolist() == [("b1", "r1"), ("b2", "r2")]
     assert set(observed.loc[observed.start >= 30000, "signal_support"]) == {"raw_only", "balanced_only"}
+
+
+def test_many_to_many_without_tie_is_resolved_instead_of_complex():
+    """A many-to-many component with a unique nearest match is not ambiguous."""
+    raw = pd.DataFrame([
+        {"chrom": "A02", "start": 0, "end": 8000, "boundary_id": "r1", "support_resolutions": "4000", "n_supporting_resolutions": 1, "n_source_boundaries": 1, "signal": "raw"},
+        {"chrom": "A02", "start": 40000, "end": 48000, "boundary_id": "r2", "support_resolutions": "4000", "n_supporting_resolutions": 1, "n_source_boundaries": 1, "signal": "raw"},
+        {"chrom": "A02", "start": 44000, "end": 52000, "boundary_id": "r3", "support_resolutions": "4000", "n_supporting_resolutions": 1, "n_source_boundaries": 1, "signal": "raw"},
+    ])
+    balanced = pd.DataFrame([
+        {"chrom": "A02", "start": 2000, "end": 10000, "boundary_id": "b1", "support_resolutions": "4000", "n_supporting_resolutions": 1, "n_source_boundaries": 1, "signal": "balanced"},
+        {"chrom": "A02", "start": 40000, "end": 48000, "boundary_id": "b2", "support_resolutions": "4000", "n_supporting_resolutions": 1, "n_source_boundaries": 1, "signal": "balanced"},
+        {"chrom": "A02", "start": 44000, "end": 52000, "boundary_id": "b3", "support_resolutions": "4000", "n_supporting_resolutions": 1, "n_source_boundaries": 1, "signal": "balanced"},
+    ])
+
+    observed = unify_boundaries(raw, balanced, tie_tolerance_bp=1000)
+
+    assert "complex_within_sample" not in set(observed["component_state"])
+    assert (observed["signal_support"] == "both").sum() == 3
 
 
 def test_readers_reject_bad_bed_schema_and_atomic_writer_removes_temporary_file(tmp_path, monkeypatch):
@@ -283,10 +300,11 @@ def test_jitter_offsets_include_raw_balanced_pair_and_propagate_exclusions():
         ("A02", 0, 8000, "near_tie_balanced_1", "4000", 1),
         ("A02", 2000, 10000, "near_tie_balanced_2", "4000", 1),
     ])
-    assert (
-        unify_boundaries(near_tie_raw, near_tie_balanced, tie_tolerance_bp=4000)
-        ["component_state"].eq("complex_within_sample").all()
+    near_tie_unified = unify_boundaries(
+        near_tie_raw, near_tie_balanced, tie_tolerance_bp=4000
     )
+    assert near_tie_unified["tie_resolution"].eq("balanced_priority_tied_component").all()
+    assert near_tie_unified["component_state"].eq("simple").all()
     near_tie_offsets = build_jitter_offsets(
         near_tie_raw, near_tie_balanced, per_resolution, base_bin_bp=4000
     )

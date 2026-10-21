@@ -18,6 +18,11 @@ class StrengthSettings:
 
 
 @dataclass(frozen=True)
+class PointSettings:
+    shift_tolerance_bp: int
+
+
+@dataclass(frozen=True)
 class PermutationSettings:
     enabled: bool
     n_permutations: int
@@ -36,6 +41,7 @@ class ISBoundarySettings:
     max_shift_bp: int
     shift_sensitivity_bp: Sequence[int]
     match_tie_tolerance_bp: int
+    point: PointSettings
     strength: StrengthSettings
     permutation: PermutationSettings
 
@@ -98,6 +104,7 @@ def parse_is_boundary_settings(
         _required(config, "is_boundary_annotation"),
         "is_boundary_annotation",
     )
+    point_raw = _mapping(_required(raw, "point"), "point")
     strength_raw = _mapping(_required(raw, "strength"), "strength")
     permutation_raw = _mapping(_required(raw, "permutation"), "permutation")
 
@@ -219,6 +226,13 @@ def parse_is_boundary_settings(
         max_shift_bp=max_shift,
         shift_sensitivity_bp=sensitivity,
         match_tie_tolerance_bp=match_tie_tolerance,
+        point=PointSettings(
+            shift_tolerance_bp=_distance(
+                _required(point_raw, "shift_tolerance_bp"),
+                "point.shift_tolerance_bp",
+                base,
+            )
+        ),
         strength=strength,
         permutation=permutation,
     )

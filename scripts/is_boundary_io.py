@@ -15,13 +15,13 @@ UNIFIED_BOUNDARY_COLUMNS = (
     "chrom", "start", "end", "unified_boundary_id", "center_bp",
     "component_state", "signal_support", "raw_boundary_ids",
     "balanced_boundary_ids", "support_resolutions",
-    "n_supporting_resolutions", "n_source_boundaries",
+    "n_supporting_resolutions", "n_source_boundaries", "tie_resolution",
 )
 BOUNDARY_VIEW_COLUMNS = (
     "sample", "view", "chrom", "start", "end", "unified_boundary_id",
     "center_bp", "component_state", "signal_support", "raw_boundary_ids",
     "balanced_boundary_ids", "support_resolutions",
-    "n_supporting_resolutions", "n_source_boundaries",
+    "n_supporting_resolutions", "n_source_boundaries", "tie_resolution",
 )
 TAD_UNEVALUABLE_COLUMNS = (
     "sample", "chrom", "start", "end", "reason",

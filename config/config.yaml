@@ -198,6 +198,11 @@ is_boundary_annotation:
   max_shift_bp: 100000
   shift_sensitivity_bp: [60000, 80000, 100000]
   match_tie_tolerance_bp: 4000
+  point:
+    # Maximum distance between a lost and a gained locus for the pair to be
+    # reported as one boundary that moved. Overridden by the empirical jitter
+    # threshold from matching_qc when that file is supplied.
+    shift_tolerance_bp: 12000
   strength:
     local_radius_scale_factor: 1.0
     min_reference_boundaries: 50
