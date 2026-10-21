@@ -114,7 +114,7 @@ See [docs/dsub_hpc_standard.md](docs/dsub_hpc_standard.md) for HPC setup details
 
 The default workflow runs raw and balanced 3DNetMod D calls at 4 kb, 8 kb,
 and 20 kb for every manifest sample. Raw calls use positive pixel counts;
-balanced calls use `count * weight1 * weight2`. No chromosome is excluded by
+balanced calls use `count * weight1 * weight2` rescaled by one constant to raw-count depth. No chromosome is excluded by
 default.
 
 Build or refresh all Conda prefixes on the login node before submission:

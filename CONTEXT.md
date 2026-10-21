@@ -13,7 +13,9 @@ values.
 ## Balanced TAD signal
 
 Finite positive values calculated as pixel count multiplied by both endpoint
-bin weights. Balanced calls are separate results, not replacements for raw
+bin weights, then multiplied by one per-run constant (total raw count divided
+by total weighted value over the kept pixels) so the values sit on the raw-count
+scale that 3DNetMod's log2 guard expects. Balanced calls are separate results, not replacements for raw
 calls.
 
 ## TAD boundary region

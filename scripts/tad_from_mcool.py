@@ -140,30 +140,27 @@ def iter_pixels_as_triples(clr, signal):
     if signal not in VALID_SIGNALS:
         raise TadError("TAD_CONFIG_INVALID", signal=signal)
     pixels = clr.pixels()[:]
-    weights = None
+    bin1 = pixels["bin1_id"].to_numpy()
+    bin2 = pixels["bin2_id"].to_numpy()
+    count = pixels["count"].to_numpy(dtype=float)
+    keep = np.isfinite(count) & (count > 0)
+    value = count
     if signal == "balanced":
         weights = clr.bins()[:]["weight"].to_numpy(dtype=float)
-    for bin1, bin2, count in zip(
-        pixels["bin1_id"].to_numpy(),
-        pixels["bin2_id"].to_numpy(),
-        pixels["count"].to_numpy(dtype=float),
-    ):
-        if not np.isfinite(count) or count <= 0:
-            continue
-        value = count
-        if weights is not None:
-            weight1 = weights[int(bin1)]
-            weight2 = weights[int(bin2)]
-            if (
-                not np.isfinite(weight1)
-                or not np.isfinite(weight2)
-                or weight1 <= 0
-                or weight2 <= 0
-            ):
-                continue
-            value = count * weight1 * weight2
-        if np.isfinite(value) and value > 0:
-            yield int(bin1) + 1, int(bin2) + 1, float(value)
+        weight1 = weights[bin1]
+        weight2 = weights[bin2]
+        keep &= (
+            np.isfinite(weight1) & np.isfinite(weight2)
+            & (weight1 > 0) & (weight2 > 0)
+        )
+        value = count * weight1 * weight2
+        keep &= np.isfinite(value) & (value > 0)
+        if keep.any():
+            # ICE weights make values ~1e-3, but 3DNetMod log2-transforms with
+            # a raw-count guard (>=1); rescale to the raw contact depth.
+            value = value * (count[keep].sum() / value[keep].sum())
+    for b1, b2, v in zip(bin1[keep], bin2[keep], value[keep]):
+        yield int(b1) + 1, int(b2) + 1, float(v)
 
 
 def write_bed_from_bins(path: Path, clr: cooler.Cooler) -> int:

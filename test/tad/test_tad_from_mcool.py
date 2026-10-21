@@ -106,8 +106,8 @@ def test_raw_values_and_balanced_values_with_nonfinite_weight_filter(tiny_mcool)
         (1, 3, 4.0),
     ]
     assert list(adapter.iter_pixels_as_triples(clr, "balanced")) == [
-        (1, 1, 0.5),
-        (1, 2, 0.5),
+        (1, 1, 6.0),
+        (1, 2, 6.0),
     ]
 
 
@@ -128,7 +128,31 @@ def test_balanced_values_reject_negative_and_zero_endpoint_weights(tmp_path):
     cooler.create_cooler(f"{path}::/resolutions/4000", bins, pixels)
 
     clr = cooler.Cooler(f"{path}::/resolutions/4000")
-    assert list(adapter.iter_pixels_as_triples(clr, "balanced")) == [(4, 4, 2.0)]
+    assert list(adapter.iter_pixels_as_triples(clr, "balanced")) == [(4, 4, 8.0)]
+
+
+def test_balanced_values_are_scaled_to_raw_count_depth(tmp_path):
+    adapter = load_adapter()
+    path = tmp_path / "tiny-weights.mcool"
+    bins = pd.DataFrame({
+        "chrom": ["A02"] * 3,
+        "start": [0, 4000, 8000],
+        "end": [4000, 8000, 12000],
+        "weight": [0.01, 0.02, 0.01],
+    })
+    pixels = pd.DataFrame({
+        "bin1_id": [0, 0, 1],
+        "bin2_id": [0, 1, 2],
+        "count": [100.0, 50.0, 25.0],
+    })
+    cooler.create_cooler(f"{path}::/resolutions/4000", bins, pixels)
+
+    clr = cooler.Cooler(f"{path}::/resolutions/4000")
+    triples = list(adapter.iter_pixels_as_triples(clr, "balanced"))
+
+    assert sum(value for _, _, value in triples) == pytest.approx(175.0)
+    assert [(a, b) for a, b, _ in triples] == [(1, 1), (1, 2), (2, 3)]
+    assert triples[0][2] == pytest.approx(175.0 * 0.01 / (0.01 + 0.01 + 0.005))
 
 
 def test_4kb_override_is_identical_for_both_signal_runs():
@@ -256,7 +280,7 @@ def test_cli_creates_signal_artifacts_and_invalidates_stale_ready_before_bad_rer
     assert adapter.cli(balanced_args) == 0
     assert capsys.readouterr().err == ""
     assert (input_dir / "sample-X.balanced.interactions").read_text() == (
-        "1\t1\t0.5\n1\t2\t0.5\n"
+        "1\t1\t6.0\n1\t2\t6.0\n"
     )
     assert "counts_file_1\tsample-X.balanced.interactions\n" in (
         run_dir / "settings_sample-X.balanced.txt"
