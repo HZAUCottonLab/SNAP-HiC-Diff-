@@ -28,14 +28,18 @@ from is_change_detection import (
 REFINEMENT_COLUMNS = [
     "discovery_mode", "original_summit", "refinement_status",
     "refinement_direction", "refinement_support_scale_bands",
+    "insulation_direction",
 ]
+# lower IS means a stronger boundary, so a valley in B is a strengthened
+# boundary and a peak in B is a weakened one.
+INSULATION_DIRECTION = {"valley": "stronger_in_B", "peak": "weaker_in_B"}
 PRIMARY_COLUMNS = [
     "comparison", "region_id", "chrom", "event_start", "event_end", "summit",
     "is_change_type", "confidence_tier", "support_scale_bands", "support_scales",
     "max_amplitude_percentile", "max_transition_percentile", "max_pulse_percentile",
     "broad_shift_length_bp", "mask_status", "coverage_state_summary", "rank_within_region",
 ] + REFINEMENT_COLUMNS
-MASK_COLUMNS = ["chrom", "start", "end", "reason"]
+MASK_COLUMNS = ["chrom", "start", "end", "reason", "scale_bp"]
 TRACK_VALUE_COLUMNS = ["start", "IS"]
 
 
@@ -195,7 +199,10 @@ def _event_rows_for_region(region, settings, track_a, track_b, bins_a, bins_b):
             score = core_scores.iloc[index]
             if not reasons and (not score["transition_evaluable"] or not score["pulse_evaluable"]):
                 reasons.append("FLANK_COVERAGE")
-            masks.extend((chrom, int(row["start"]), int(row["start"] + settings.resolution_bp), reason) for reason in reasons)
+            masks.extend(
+                (chrom, int(row["start"]), int(row["start"] + settings.resolution_bp), reason, int(scale))
+                for reason in reasons
+            )
         scale_events = classify_scale_events(scored, settings)
         points = scale_events[scale_events["event_type"] != "broad_shift"]
         points = points[points["summit"].between(core_start, core_end - settings.resolution_bp)]
@@ -281,6 +288,9 @@ def output_rows(regions, settings, track_a, track_b, bins_a, bins_b, comparison)
                 "refinement_status": cluster["refinement_status"],
                 "refinement_direction": cluster["refinement_direction"],
                 "refinement_support_scale_bands": cluster["refinement_support_scale_bands"],
+                "insulation_direction": INSULATION_DIRECTION.get(
+                    cluster["refinement_direction"], ""
+                ),
             }
             (primary if row["confidence_tier"] == "primary" else preliminary).append(row)
     def finish(rows):

@@ -306,6 +306,52 @@ def select_nearest_extremum(
     )[0]
 
 
+def _interval_direction(consensus, start, end):
+    """Signed direction of the consensus z over a broad interval.
+
+    A broad interval has no single summit, so its direction is the sign of the
+    median consensus z inside it. ``peak`` means B is less insulated (weaker
+    boundary), ``valley`` means B is more insulated (stronger boundary).
+    """
+    window = consensus.loc[
+        consensus["coordinate"].ge(int(start)) & consensus["coordinate"].lt(int(end))
+    ]
+    values = window.loc[
+        window["valid"].fillna(False).astype(bool), "consensus_z"
+    ].to_numpy(dtype=float)
+    values = values[np.isfinite(values)]
+    if not len(values):
+        return None
+    median = float(np.median(values))
+    if median > 0:
+        return "peak"
+    if median < 0:
+        return "valley"
+    return None
+
+
+def _interval_support_bands(score_tracks, start, end, direction, settings):
+    """Scale bands whose own median z in the interval agrees with the direction."""
+    sign = 1.0 if direction == "peak" else -1.0
+    scales = []
+    for scale, track in score_tracks.items():
+        window = track.loc[
+            track["coordinate"].ge(int(start)) & track["coordinate"].lt(int(end))
+        ]
+        values = window.loc[
+            window["valid"].fillna(False).astype(bool), "z"
+        ].to_numpy(dtype=float)
+        values = values[np.isfinite(values)]
+        if len(values) and np.median(values) * sign > 0:
+            scales.append(int(scale))
+    bands = [
+        band
+        for band, band_scales in settings.scale_bands.items()
+        if any(scale in band_scales for scale in scales)
+    ]
+    return bands
+
+
 def refine_point_clusters(clusters, consensus, extrema, score_tracks, settings):
     """Move point clusters to supported consensus extrema and record provenance."""
     columns = list(clusters.columns) + [
@@ -318,12 +364,23 @@ def refine_point_clusters(clusters, consensus, extrema, score_tracks, settings):
     for _, row in clusters.iterrows():
         record = row.to_dict()
         if row["event_type"] == "broad_shift":
+            direction = _interval_direction(
+                consensus, row["event_start"], row["event_end"]
+            )
+            bands = (
+                _interval_support_bands(
+                    score_tracks, row["event_start"], row["event_end"],
+                    direction, settings,
+                )
+                if direction is not None
+                else []
+            )
             record.update(
                 discovery_mode="original",
                 original_summit=np.nan,
                 refinement_status="unchanged",
-                refinement_direction=np.nan,
-                refinement_support_scale_bands="",
+                refinement_direction=direction if direction is not None else np.nan,
+                refinement_support_scale_bands=",".join(bands),
             )
             records.append(record)
             continue
