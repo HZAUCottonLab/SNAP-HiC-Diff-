@@ -12,3 +12,10 @@ logs/
 
 # Subagent development scratch state
 .superpowers/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Large intermediate matrices
+tmp/cworld_matrix/
