@@ -55,9 +55,22 @@ def test_boundary_rule_shells_quote_paths_and_prepare_benchmarks():
 
 
 def _dry_run(target, cache_dir, configfile="config/config.yaml"):
+    """Dry-run inside a throwaway working directory.
+
+    Snakemake keeps a record of each rule's last parameters under
+    ``.snakemake/metadata`` of its working directory and prints a before/now
+    diff whenever they change. A repository that has actually run the pipeline
+    therefore leaks the previous parameters into this test's output, turning a
+    correct plan into a failure. Pointing the working directory at a scratch
+    tree of symlinks gives snakemake somewhere disposable to write that state
+    while every path it resolves still lands on the real repository.
+    """
+    workdir = _isolated_workdir(cache_dir.parent / "workdir")
     return subprocess.run(
-        ["snakemake", "-n", "-p", "--configfile", configfile, "--", target],
-        cwd=REPO,
+        ["snakemake", "-n", "-p",
+         "-s", str(REPO / "Snakefile"),
+         "--configfile", configfile, "--", target],
+        cwd=workdir,
         text=True,
         capture_output=True,
         env={
@@ -66,6 +79,25 @@ def _dry_run(target, cache_dir, configfile="config/config.yaml"):
             "XDG_CACHE_HOME": str(cache_dir),
         },
     )
+
+
+_ISOLATED_SKIP = {".snakemake", ".git", "tmp", ".worktrees", "__pycache__"}
+
+
+def _isolated_workdir(path):
+    """A scratch tree whose entries are symlinks to the repository's own.
+
+    ``.snakemake`` is deliberately not linked: the point is to give snakemake a
+    private metadata store instead of the repository's.
+    """
+    path.mkdir(parents=True, exist_ok=True)
+    for entry in REPO.iterdir():
+        if entry.name in _ISOLATED_SKIP:
+            continue
+        link = path / entry.name
+        if not link.exists():
+            link.symlink_to(entry, target_is_directory=entry.is_dir())
+    return path
 
 
 def test_annotated_primary_dag_has_boundary_rules_but_not_permutation(tmp_path):
