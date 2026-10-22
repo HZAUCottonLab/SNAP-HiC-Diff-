@@ -44,7 +44,15 @@ fi
 
 SAMPLE_A="${COMPARISON%%_vs_*}"
 SAMPLE_B="${COMPARISON##*_vs_}"
-LOCUS_ROOT="${OUTDIR:-results}/multiscale/r4000/${COMPARISON}/is_change"
+# The multiscale root is keyed on the configured working resolution, not a
+# fixed 4 kb, so read it from the config the run will actually use.
+RESOLUTION="$(
+    python3 - "${CONFIG}" <<'PY'
+import sys, yaml
+print(yaml.safe_load(open(sys.argv[1]))["resolution"])
+PY
+)"
+LOCUS_ROOT="${OUTDIR:-results}/multiscale/r${RESOLUTION}/${COMPARISON}/is_change"
 EVENT_ROOT="${OUTDIR:-results}/tad_boundary_events"
 BOUNDARY_ROOT="${OUTDIR:-results}/tad_boundaries"
 
