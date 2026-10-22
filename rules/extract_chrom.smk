@@ -8,9 +8,18 @@
 
 checkpoint extract_and_balance_sample:
     input:
-        mcool = lambda w: get_sample_mcool(w.sample)
+        mcool = lambda w: get_sample_mcool(w.sample),
+        manifest_check = "data/manifest_mcool.tsv",
     output:
-        manifest = OUTDIR + "/logs/extract_balance/{sample}.done"
+        manifest = OUTDIR + "/logs/extract_balance/{sample}.done",
+        cool_files = expand(
+            OUTDIR + "/balanced/{{sample}}/{{sample}}__{chrom}_iced.cool",
+            chrom=CHROMS
+        ),
+        raw_files = expand(
+            OUTDIR + "/raw/{{sample}}/{{sample}}__{chrom}.raw.cool",
+            chrom=CHROMS
+        ),
     log:
         OUTDIR + "/logs/extract_balance/{sample}.log"
     benchmark:
@@ -29,15 +38,23 @@ checkpoint extract_and_balance_sample:
         set -euo pipefail
 
         SAMPLE="{wildcards.sample}"
+        INPUT_PATH="{input.mcool}"
+        RESOLUTION="{params.resolution}"
+
+        # .cool files are single-resolution: use direct path
+        # .mcool files need /resolutions/$RESOLUTION suffix
+        if [[ "$INPUT_PATH" == *.cool ]]; then
+            URI="$INPUT_PATH"
+        else
+            URI="$INPUT_PATH::/resolutions/$RESOLUTION"
+        fi
 
         mkdir -p "{params.outdir}/balanced/${{SAMPLE}}" \
                  "{params.outdir}/raw/${{SAMPLE}}" \
                  "{params.outdir}/logs/extract_balance" \
                  "{params.tmpdir}"
 
-        URI="{input.mcool}::/resolutions/{params.resolution}"
-
-        echo "[INFO] Input mcool: {input.mcool}"
+        echo "[INFO] Input: $INPUT_PATH"
         echo "[INFO] URI: $URI"
         echo "[INFO] Sample: $SAMPLE"
 
@@ -69,7 +86,7 @@ checkpoint extract_and_balance_sample:
                 --sorted \
             | hictk load - "$RAW" \
                 --chrom-sizes "$CHROMSIZES" \
-                --bin-size "{params.resolution}" \
+                --bin-size "$RESOLUTION" \
                 --format bg2 \
                 --assume-sorted \
                 --threads {threads} \

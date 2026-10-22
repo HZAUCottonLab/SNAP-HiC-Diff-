@@ -2,7 +2,7 @@
 
 rule validate_inputs:
     input:
-        manifest = config["manifest"],
+        manifest = "data/manifest_mcool.tsv",
         script = SCRIPT_DIR + "/scripts/validate_inputs.py",
     output:
         validated = OUTDIR + "/validated/manifest.validated.tsv"

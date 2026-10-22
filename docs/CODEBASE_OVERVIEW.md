@@ -12,14 +12,14 @@ SNAP-HiC-Diff 是一个基于 Snakemake 的 Hi-C 差异分析流程，从 `.mcoo
 
 | 路径 | 作用 | 关键输入/输出 | 备注 |
 |------|------|--------------|------|
-| `Snakefile` | 入口编排，8 个 rule include | config + manifest | `rule all` 定义最终产物 |
+| `Snakefile` | 入口编排（含 `compute_IS`、`meltron`） | config + manifest | `rule all` 定义最终产物 |
 | `run_snakemake.sh` | 本地/HPC 启动脚本 | — | 支持 `--dsub` 走 HPC |
 | `config/config.yaml` | 主配置：分辨率、窗口、QC 阈值 | — | 74 个参数 |
 | `config/chroms.yaml` | 染色体列表 | — | 26 条（HC04_A01-A13, D01-D13）|
 | `data/manifest.tsv` | 74 个样本元数据 | `.mcool` URI | 样本 = rep1 + rep2 配对 |
 | `data/window_compare_pairs.yaml` | 36 对样本比较配置 | — | 36 个 comparison |
 | `env/SNAP-HiC-Diff.yaml` | Conda 环境 | — | snakemake>=8.0, hictk, cooltools |
-| `rules/*.smk` | Snakemake 规则定义（8 个文件）| checkpoint/rule | 含 2 个 checkpoint |
+| `rules/*.smk` | Snakemake 规则定义 | checkpoint/rule | 含 per-sample CWorld IS 与 Meltron 分支 |
 | `scripts/*.py` | Python 执行脚本（13 个）| argparse / snakemake 双模式 | subprocess 调子脚本避免 pickle |
 | `jupyter/` | 探索性 notebook | — | 不参与主流程 |
 
@@ -58,7 +58,27 @@ extract_chrom.smk (checkpoint × 74 samples)
                     ├─ compare_gaussian_smoothed_windows → {cmp}_gaussian_metrics.tsv
                     ├─ compare_iced_windows_tw → {cmp}_tw.tsv
                     └─ merge_window_pair_metrics → {cmp}_window_pair_metrics.tsv
+
+extract_chrom.smk (configured-resolution balanced `iced.cool` per sample × chromosome; default 4 kb)
+    │
+    ▼
+compute_IS.smk: `compute_IS_chrom` (26 four-CPU jobs per sample)
+    │ each job: one chromosome `.cool` → `tmp/cworld_matrix/{sample}/` matrix
+    │          → ten sequential CWorld scales (32000, 60000, 92000, 120000,
+    │            152000, 180000, 212000, 240000, 272000, 300000 bp)
+    │          → ten `.insulation.bedGraph` files + one manifest in
+    │             `results/cworld_insulation/{sample}/`
+    ▼
+compute_IS.smk: `merge_IS` (one four-CPU job per sample)
+    │ consumes all 26 manifests through convert_cworld_IS_to_meltron_IS.py
+    ▼
+results/IS/{sample}/{sample}_IS.tsv
+    │ `chrom<TAB>viewpoint<TAB>IS_distance<TAB>IS`
+    ▼
+meltron.smk (per comparison; reads the unchanged TSV contract for both samples)
 ```
+
+`compute_IS.smk` 由两个普通 rule 组成，而非旧的 per-sample `compute_IS` checkpoint：`compute_IS_chrom` 按 sample × chromosome 运行，使用 `meltron.cworld_is.source_resolution_bp` 配置的输入分辨率（整数且不低于 1 kb；默认 4 kb）并在一个 job 中顺序计算十个 scale；`merge_IS` 仅在该 sample 的 26 个 manifest 均存在时生成最终 TSV。任一 chromosome 失败只阻塞所属 sample 的 merge 及其下游比较。
 
 ## 4. 关键文件说明
 
@@ -66,11 +86,13 @@ extract_chrom.smk (checkpoint × 74 samples)
 
 | 文件 | 作用 |
 |------|------|
-| `Snakefile` | include 顺序：validate_inputs → build_windows → extract_chrom → extract_expected → compute_oe_matrix → compute_gap_qc → sliding_window → window_compare |
+| `Snakefile` | include 顺序：validate_inputs → build_windows → extract_chrom → extract_expected → compute_oe_matrix → compute_gap_qc → sliding_window → window_compare → compute_IS → meltron |
 | `rules/extract_chrom.smk` | **checkpoint** `extract_and_balance_sample`；每个 sample 一个 job，shell 循环 26 条染色体；`hictk load + balance` |
 | `rules/extract_expected.smk` | 2 个 rule：`extract_expected_tsv`（cooltools）和 `extract_expected_npz`（子脚本）|
 | `rules/compute_gap_qc.smk` | **checkpoint** `compute_gap_qc`；调用 `compute_gap_qc.py` |
 | `rules/sliding_window.smk` | **checkpoint** `sliding_window` + `rule sliding_window_h5`（声明 H5 输出）|
+| `rules/compute_IS.smk` | 两个 rule：`compute_IS_chrom` 为每个 sample × chromosome 使用 `meltron.cworld_is.source_resolution_bp` 配置的 `iced.cool`（整数且不低于 1 kb；默认 4 kb），顺序生成十个 scale（32000, 60000, 92000, 120000, 152000, 180000, 212000, 240000, 272000, 300000 bp）的 bedGraph 和 manifest；`merge_IS` 汇总 26 个 manifest，写出 `results/IS/{sample}/{sample}_IS.tsv` |
+| `rules/meltron.smk` | `meltron_per_comparison`；读取双方不变的四列 IS TSV 契约和 KNN-enriched windows |
 
 ### Python 脚本
 
@@ -85,12 +107,14 @@ extract_chrom.smk (checkpoint × 74 samples)
 | `detect_breakpoint_by_nan_density.py` | 5×5 滑动窗口 NaN 密度断点检测；被 `compute_gap_qc.py` 调用 |
 | `compute_window_pair_covariates.py` | EC（调和均值 CPM）、IB（|log2 比率|）、SP（nz_frac 均值）|
 | `merge_window_pair_metrics.py` | 合并 3 路指标 + 加 comparison 元数据 |
+| `convert_cworld_IS_to_meltron_IS.py` | 由 `merge_IS` 读取每个 chromosome 的 manifest 并汇总 native CWorld insulation bedGraph，写出 Meltron 兼容的 `chrom, viewpoint, IS_distance, IS` TSV |
 
 ## 5. Config 关键参数
 
 | 参数路径 | 默认值 | 作用 |
 |---------|--------|------|
 | `resolution` | `4000` | Hi-C bin 大小（bp）|
+| `meltron.cworld_is.source_resolution_bp` | `4000` | CWorld/Meltron 输入 bin 大小（bp；整数且不低于 1000，必须与 `.cool` 一致）|
 | `window_size` | `300000` | 滑动窗口宽度（bp）|
 | `step_size` | `32000` | 滑动步长（bp）|
 | `smoothing.sigma` | `1.0` | 高斯平滑 sigma |
@@ -130,7 +154,38 @@ extract_chrom.smk (checkpoint × 74 samples)
 2. 读取对应 stage 的 H5 文件
 3. 在 `merge_window_pair_metrics.py` 中追加 merge 逻辑
 
-## 8. 需要人工确认
+## 5a. Chromosome Naming Convention — CRITICAL
+
+**Two naming schemes exist in this project:**
+
+| Scheme | Prefix | Example | Used by |
+|--------|--------|---------|---------|
+| Old | `Ghir_` | `Ghir_A01` | `Ghir_Pyb` mcool files |
+| Current | `HC04_` | `HC04_A01` | `compare_mtx_v2` mcool files |
+
+**`config/chroms.yaml` must match the actual mcool files.** Mismatch causes all 36 `extract_and_balance_sample` jobs to fail with `exit 1`.
+
+**How to verify:**
+
+```bash
+# Check what names the mcool files actually use
+# (extract mcool path from data/manifest_mcool.tsv first column)
+hictk dump /path/to/sample.mcool::/resolutions/4000 --table chroms | head -3
+
+# Compare with chroms.yaml
+cat config/chroms.yaml
+```
+
+**`dsub` runs from git HEAD, NOT the working tree.** Working-tree-only changes to `config/chroms.yaml` are invisible to dsub. Always commit before submitting:
+
+```bash
+git add config/chroms.yaml && git commit -m "fix: align chroms.yaml"
+dsub -s run_snakemake.sh
+```
+
+See `docs/BUG_FIX_GUIDE.md` for the full fix procedure.
+
+## 6. 需要人工确认
 
 1. `extract_expected.py` 支持 `snakemake` 对象（与 `chunk_windows.py` 相同的双模式设计），但从未在 rule 中以 snakemake 方式调用——是否应删除 snakemake 分支？
 2. `compute_gap_qc.py` 的动态 P20 阈值设计为 per-chromosome 级别应用，但 QC PASS/Fail 状态在每个样本内部不一致——是否有全局统一阈值的需求？

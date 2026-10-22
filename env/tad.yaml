@@ -1,0 +1,15 @@
+name: snap_hic_diff_tad
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.11
+  - cooler
+  - h5py
+  - numpy<2
+  - scipy
+  - matplotlib=3.8.*
+  - scikit-learn
+  - pandas
+  - pytest

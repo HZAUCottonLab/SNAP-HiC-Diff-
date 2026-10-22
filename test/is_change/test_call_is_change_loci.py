@@ -1,0 +1,446 @@
+from pathlib import Path
+import subprocess
+import sys
+from types import SimpleNamespace
+
+import cooler
+import numpy as np
+import pandas as pd
+import pytest
+import yaml
+
+
+REPO = Path(__file__).resolve().parents[2]
+SCRIPT = REPO / "scripts" / "call_is_change_loci.py"
+sys.path.insert(0, str(REPO / "scripts"))
+from call_is_change_loci import REFINEMENT_COLUMNS, index_is_track, read_balanced_bins, track_values
+
+SCALES = (32000, 60000, 92000, 120000, 152000, 180000, 212000, 240000, 272000, 300000)
+PRIMARY_COLUMNS = [
+    "comparison", "region_id", "chrom", "event_start", "event_end", "summit",
+    "is_change_type", "confidence_tier", "support_scale_bands", "support_scales",
+    "max_amplitude_percentile", "max_transition_percentile", "max_pulse_percentile",
+    "broad_shift_length_bp", "mask_status", "coverage_state_summary", "rank_within_region",
+] + REFINEMENT_COLUMNS
+
+
+def test_index_is_track_partitions_chromosome_and_scale():
+    track = pd.DataFrame([
+        {"chrom": "chr1", "start": 0, "IS_distance": 32000, "IS": 1.0},
+        {"chrom": "chr1", "start": 4000, "IS_distance": 32000, "IS": 2.0},
+        {"chrom": "chr1", "start": 0, "IS_distance": 60000, "IS": 3.0},
+        {"chrom": "chr2", "start": 0, "IS_distance": 32000, "IS": 4.0},
+    ])
+
+    index = index_is_track(track)
+
+    assert set(index) == {("chr1", 32000), ("chr1", 60000), ("chr2", 32000)}
+    assert index[("chr1", 32000)].to_dict("records") == [
+        {"start": 0, "IS": 1.0}, {"start": 4000, "IS": 2.0},
+    ]
+    missing = track_values(index, "chr2", 60000)
+    assert missing.columns.tolist() == ["start", "IS"]
+    assert missing.empty
+
+
+
+def write_config(root):
+    config = {
+        "meltron": {"cworld_is": {
+            "source_resolution_bp": 4000, "is_distances_bp": list(SCALES),
+            "ids_divisor": 2, "chrom_job_threads": 1, "merge_job_threads": 1,
+        }},
+        "is_change": {
+            "raw_knn_pvalue_threshold": 0.05, "meltron_score_threshold": 5.0,
+            "merge_gap_bp": 0, "context_bp": 300000, "local_radius_bins": 1,
+            "min_local_valid_fraction": 2 / 3, "flank_fraction_of_scale": 0.25,
+            "min_flank_bins": 2, "min_flank_valid_fraction": 0.80,
+            "max_missing_run_bins": 1, "high_percentile": 0.90,
+            "broad_percentile": 0.80, "spatial_cluster_tolerance_bp": 12000,
+            "min_primary_scale_bands": 2,
+            "scale_bands": {
+                "small": [32000, 60000, 92000],
+                "medium": [120000, 152000, 180000],
+                "large": [212000, 240000, 272000, 300000],
+            },
+            "diagnostic_plot_top_n": 2,
+        },
+    }
+    path = root / "config.yaml"
+    path.write_text(yaml.safe_dump(config))
+    return path
+
+
+def make_balanced_coolers(root, weights_a, weights_b):
+    starts = np.arange(len(weights_a)) * 4000
+    bins = pd.DataFrame({"chrom": "chr1", "start": starts, "end": starts + 4000})
+    pixels = pd.DataFrame({"bin1_id": np.arange(len(bins)), "bin2_id": np.arange(len(bins)), "count": 1})
+    paths = []
+    for name, weights in (("a.cool", weights_a), ("b.cool", weights_b)):
+        path = root / name
+        table = bins.assign(weight=np.asarray(weights, dtype=float))
+        cooler.create_cooler(str(path), table, pixels, ordered=True)
+        paths.append(path)
+    return paths
+
+def make_chromosome_cooler(root, name, chrom, weights):
+    starts = np.arange(len(weights)) * 4000
+    bins = pd.DataFrame({"chrom": chrom, "start": starts, "end": starts + 4000, "weight": weights})
+    pixels = pd.DataFrame({"bin1_id": np.arange(len(bins)), "bin2_id": np.arange(len(bins)), "count": 1})
+    path = root / name
+    cooler.create_cooler(str(path), bins, pixels, ordered=True)
+    return path
+
+def test_read_balanced_bins_concatenates_chromosome_shards_and_rejects_duplicates(tmp_path):
+    chr1 = make_chromosome_cooler(tmp_path, "chr1.cool", "chr1", [1.0, np.nan])
+    chr2 = make_chromosome_cooler(tmp_path, "chr2.cool", "chr2", [1.0, 1.0])
+
+    bins = read_balanced_bins([chr1, chr2], 4000)
+
+    assert bins.to_dict("records") == [
+        {"chrom": "chr1", "start": 0, "available": True},
+        {"chrom": "chr1", "start": 4000, "available": False},
+        {"chrom": "chr2", "start": 0, "available": True},
+        {"chrom": "chr2", "start": 4000, "available": True},
+    ]
+    duplicate = make_chromosome_cooler(tmp_path, "chr1_duplicate.cool", "chr1", [1.0, 1.0])
+    with pytest.raises(ValueError, match="duplicate chrom/start"):
+        read_balanced_bins([chr1, duplicate], 4000)
+
+
+def test_read_balanced_bins_accepts_terminal_partial_bin(tmp_path):
+    bins = pd.DataFrame({
+        "chrom": ["chr1", "chr1"],
+        "start": [0, 4000],
+        "end": [4000, 6500],
+        "weight": [1.0, np.nan],
+    })
+    pixels = pd.DataFrame({"bin1_id": [0, 1], "bin2_id": [0, 1], "count": [1, 1]})
+    path = tmp_path / "chr1_terminal_partial.cool"
+    cooler.create_cooler(str(path), bins, pixels, ordered=True)
+
+    observed = read_balanced_bins([path], 4000)
+
+    assert observed.to_dict("records") == [
+        {"chrom": "chr1", "start": 0, "available": True},
+        {"chrom": "chr1", "start": 4000, "available": False},
+    ]
+
+
+def write_all_scale_is_tracks(root, n_bins=160):
+    starts = np.arange(n_bins) * 4000
+    rows_a, rows_b = [], []
+    baseline = np.tile(np.array([-0.2, 0.2]), n_bins // 2)
+    for scale in SCALES:
+        delta = baseline.copy()
+        if scale in (32000, 120000):  # two independent bands: transition at 320 kb
+            delta[72:80] = -2.0
+            delta[80:89] = 2.0
+        elif scale == 60000:  # one-band pulse
+            delta[48:50] = 2.0
+        elif scale == 92000:  # broad-shift candidate, separate from the transition
+            delta[100:114] = 2.0
+        rows_a.extend(("chr1", start, scale, 0.0) for start in starts)
+        rows_b.extend(("chr1", start, scale, value) for start, value in zip(starts, delta))
+    columns = ["chrom", "viewpoint", "IS_distance", "IS"]
+    a_path, b_path = root / "is_a.tsv", root / "is_b.tsv"
+    pd.DataFrame(rows_a, columns=columns).to_csv(a_path, sep="\t", index=False)
+    pd.DataFrame(rows_b, columns=columns).to_csv(b_path, sep="\t", index=False)
+    return a_path, b_path
+
+
+def write_recovery_is_tracks(root, n_bins=160):
+    starts = np.arange(n_bins) * 4000
+    rows_a, rows_b = [], []
+    for scale in SCALES:
+        delta = np.tile(np.array([-0.2, 0.2]), n_bins // 2)
+        for start in range(20, 80, 6):
+            delta[start : start + 6] = [0.0, -20.0, 0.1, 0.1, -20.0, 0.0]
+        delta[88:96] = [0.0, 2.0, -3.0, 3.0, 3.0, -3.0, 2.0, 0.0]
+        rows_a.extend(("chr1", start, scale, 0.0) for start in starts)
+        rows_b.extend(("chr1", start, scale, value) for start, value in zip(starts, delta))
+    columns = ["chrom", "viewpoint", "IS_distance", "IS"]
+    a_path, b_path = root / "is_a.tsv", root / "is_b.tsv"
+    pd.DataFrame(rows_a, columns=columns).to_csv(a_path, sep="\t", index=False)
+    pd.DataFrame(rows_b, columns=columns).to_csv(b_path, sep="\t", index=False)
+    return a_path, b_path
+
+
+def write_candidate_regions(root, rows):
+    path = root / "candidate_regions.tsv"
+    pd.DataFrame(rows, columns=["region_id", "chrom", "region_start", "region_end"]).to_csv(
+        path, sep="\t", index=False
+    )
+    return path
+
+
+def run_caller(root, config_path, cool_a, cool_b, regions):
+    return subprocess.run(
+        [
+            sys.executable, str(SCRIPT), "--candidate-regions", str(regions),
+            "--is-a", str(root / "is_a.tsv"), "--is-b", str(root / "is_b.tsv"),
+            "--cool-a", str(cool_a), "--cool-b", str(cool_b), "--config", str(config_path),
+            "--out-primary", str(root / "primary.tsv"),
+            "--out-preliminary", str(root / "preliminary.tsv"),
+            "--out-masked", str(root / "masked.bed"), "--log", str(root / "caller.log"),
+        ], text=True, capture_output=True, check=False,
+    )
+
+
+def test_caller_keeps_zero_masks_invalid_weight_and_calls_two_bands(tmp_path):
+    config = write_config(tmp_path)
+    cool_a, cool_b = make_balanced_coolers(
+        tmp_path, [1.0, np.nan] + [1.0] * 158, [1.0] * 160
+    )
+    write_all_scale_is_tracks(tmp_path)
+    regions = write_candidate_regions(
+        tmp_path, [(1, "chr1", 0, 32000), (2, "chr1", 320000, 324000)]
+    )
+
+    result = run_caller(tmp_path, config, cool_a, cool_b, regions)
+
+    assert result.returncode == 0, result.stderr
+    masked = pd.read_csv(tmp_path / "masked.bed", sep="\t", header=None)
+    assert (masked[1] == 4000).any()
+    assert "A_EMPTY" in set(masked[3])
+    primary = pd.read_csv(tmp_path / "primary.tsv", sep="\t")
+    assert not primary.empty
+    assert (primary["mask_status"] == "clean").all()
+    assert set(primary["support_scale_bands"].str.split(",").explode()) >= {"small", "medium"}
+
+
+def test_caller_writes_empty_schemas_and_not_evaluable_masks(tmp_path):
+    config = write_config(tmp_path)
+    cool_a, cool_b = make_balanced_coolers(tmp_path, [np.nan] * 160, [np.nan] * 160)
+    write_all_scale_is_tracks(tmp_path)
+    regions = write_candidate_regions(tmp_path, [(1, "chr1", 0, 32000)])
+
+    result = run_caller(tmp_path, config, cool_a, cool_b, regions)
+
+    assert result.returncode == 0, result.stderr
+    assert pd.read_csv(tmp_path / "primary.tsv", sep="\t").columns.tolist() == PRIMARY_COLUMNS
+    assert pd.read_csv(tmp_path / "preliminary.tsv", sep="\t").columns.tolist() == PRIMARY_COLUMNS
+    reasons = set(pd.read_csv(tmp_path / "masked.bed", sep="\t", header=None)[3])
+    assert "BOTH_EMPTY" in reasons
+
+
+def test_caller_aligns_non_grid_context_to_track_coordinates(tmp_path):
+    config = write_config(tmp_path)
+    raw = yaml.safe_load(config.read_text())
+    raw["is_change"]["context_bp"] = 300001
+    config.write_text(yaml.safe_dump(raw))
+    cool_a, cool_b = make_balanced_coolers(tmp_path, [1.0] * 160, [1.0] * 160)
+    write_all_scale_is_tracks(tmp_path)
+    regions = write_candidate_regions(tmp_path, [(1, "chr1", 320000, 324000)])
+
+    result = run_caller(tmp_path, config, cool_a, cool_b, regions)
+
+    assert result.returncode == 0, result.stderr
+    assert not pd.read_csv(tmp_path / "primary.tsv", sep="\t").empty
+
+
+def test_caller_removes_temp_file_after_serialization_failure(tmp_path, monkeypatch):
+    sys.path.insert(0, str(REPO / "scripts"))
+    from call_is_change_loci import atomic_write
+
+    def fail(*args, **kwargs):
+        raise OSError("write failed")
+
+    monkeypatch.setattr(pd.DataFrame, "to_csv", fail)
+    with pytest.raises(OSError, match="write failed"):
+        atomic_write(pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), (
+            tmp_path / "primary.tsv", tmp_path / "preliminary.tsv", tmp_path / "masked.bed",
+        ))
+    assert not list(tmp_path.glob(".*.tmp"))
+
+
+def test_caller_ranks_region_events_by_evidence_before_coordinates(monkeypatch):
+    sys.path.insert(0, str(REPO / "scripts"))
+    import call_is_change_loci as caller
+
+    clusters = pd.DataFrame([
+        {
+            "chrom": "chr1", "event_start": 4000, "event_end": 8000, "summit": 4000,
+            "event_type": "transition", "confidence_tier": "primary",
+            "support_scale_bands": "small", "support_scales": "32000",
+            "max_amplitude_percentile": 0.99, "max_transition_percentile": 0.99,
+            "max_pulse_percentile": 0.99,
+        },
+        {
+            "chrom": "chr1", "event_start": 8000, "event_end": 12000, "summit": 8000,
+            "event_type": "transition", "confidence_tier": "primary",
+            "support_scale_bands": "small,medium", "support_scales": "32000,120000",
+            "max_amplitude_percentile": 0.50, "max_transition_percentile": 0.50,
+            "max_pulse_percentile": 0.50,
+        },
+    ])
+    monkeypatch.setattr(caller, "_event_rows_for_region", lambda *args: (clusters, [], {}))
+    regions = pd.DataFrame([{"region_id": 1, "chrom": "chr1", "region_start": 0, "region_end": 12000}])
+
+    primary, _, _ = caller.output_rows(regions, None, None, None, None, None, "A__vs__B")
+
+    assert primary.loc[primary["event_start"] == 8000, "rank_within_region"].item() == 1
+
+
+
+def test_caller_serializes_refinement_provenance_without_changing_stage_one_fields(monkeypatch):
+    sys.path.insert(0, str(REPO / "scripts"))
+    import call_is_change_loci as caller
+
+    settings = SimpleNamespace(
+        resolution_bp=4000,
+        scales_bp=SCALES,
+        scale_bands={
+            "small": (32000, 60000, 92000),
+            "medium": (120000, 152000, 180000),
+            "large": (212000, 240000, 272000, 300000),
+        },
+        min_primary_scale_bands=2,
+    )
+    coordinates = np.arange(8) * settings.resolution_bp
+    valid = np.array([True, True, True, True, True, False, True, True])
+    z = np.array([-1.0, -1.0, 1.0, 3.0, -1.0, np.nan, 1.0, -1.0])
+    tracks = {
+        scale: pd.DataFrame(
+            {"chrom": "chr1", "coordinate": coordinates, "valid": valid, "z": z}
+        )
+        for scale in settings.scales_bp
+    }
+    clusters = pd.DataFrame([
+        {
+            "chrom": "chr1", "event_start": 8000, "event_end": 12000, "summit": 8000,
+            "event_type": "transition", "confidence_tier": "primary",
+            "support_scale_bands": "small,medium", "support_scales": "32000,120000",
+            "max_amplitude_percentile": 0.96, "max_transition_percentile": 0.99,
+            "max_pulse_percentile": 0.95,
+        },
+        {
+            "chrom": "chr1", "event_start": 24000, "event_end": 28000, "summit": 24000,
+            "event_type": "transition", "confidence_tier": "single_band_preliminary",
+            "support_scale_bands": "small", "support_scales": "32000",
+            "max_amplitude_percentile": 0.91, "max_transition_percentile": 0.92,
+            "max_pulse_percentile": 0.93,
+        },
+    ])
+    monkeypatch.setattr(caller, "_event_rows_for_region", lambda *args: (clusters, [], tracks))
+    regions = pd.DataFrame([
+        {"region_id": 1, "chrom": "chr1", "region_start": 0, "region_end": 32000}
+    ])
+
+    primary, preliminary, _ = caller.output_rows(
+        regions, settings, None, None, None, None, "A__vs__B"
+    )
+
+    assert primary.columns.tolist() == PRIMARY_COLUMNS
+    assert preliminary.columns.tolist() == PRIMARY_COLUMNS
+    assert primary.loc[0, ["summit", "discovery_mode", "original_summit", "refinement_status"]].tolist() == [
+        12000, "refined", 8000, "refined"
+    ]
+    assert len(primary.loc[0, "refinement_support_scale_bands"].split(",")) >= 2
+    unchanged = preliminary.iloc[0]
+    assert unchanged[["confidence_tier", "support_scale_bands", "support_scales", "refinement_status"]].tolist() == [
+        "single_band_preliminary", "small", "32000", "unchanged"
+    ]
+
+
+def test_caller_writes_recovered_residual_only_to_primary(tmp_path):
+    config = write_config(tmp_path)
+    cool_a, cool_b = make_balanced_coolers(tmp_path, [1.0] * 160, [1.0] * 160)
+    write_recovery_is_tracks(tmp_path)
+    regions = write_candidate_regions(
+        tmp_path, [(1, "chr1", 0, 32000), (2, "chr1", 320000, 448000)]
+    )
+
+    result = run_caller(tmp_path, config, cool_a, cool_b, regions)
+
+    assert result.returncode == 0, result.stderr
+    primary = pd.read_csv(tmp_path / "primary.tsv", sep="\t")
+    preliminary = pd.read_csv(tmp_path / "preliminary.tsv", sep="\t")
+    recovered = primary.loc[primary["discovery_mode"] == "recovered"]
+    assert not recovered.empty
+    row = recovered.iloc[0]
+    assert row[["confidence_tier", "refinement_status"]].tolist() == ["primary", "recovered"]
+    assert pd.isna(row["original_summit"])
+    assert row["event_end"] - row["event_start"] == 4000
+    assert row["is_change_type"] in {"recovered_peak", "recovered_valley"}
+    assert row["refinement_direction"] in {"peak", "valley"}
+    assert row["is_change_type"] == f"recovered_{row['refinement_direction']}"
+    assert len(row["refinement_support_scale_bands"].split(",")) >= 2
+    assert not (preliminary["discovery_mode"] == "recovered").any()
+
+
+def test_caller_keeps_collision_lost_original_summit_occupied_for_recovery(monkeypatch):
+    sys.path.insert(0, str(REPO / "scripts"))
+    import call_is_change_loci as caller
+
+    settings = SimpleNamespace(
+        resolution_bp=4000,
+        scales_bp=(32000, 120000, 212000),
+        scale_bands={
+            "small": (32000,),
+            "medium": (120000,),
+            "large": (212000,),
+        },
+        min_primary_scale_bands=2,
+        high_percentile=0.95,
+    )
+    coordinates = np.arange(7) * settings.resolution_bp
+    tracks = {
+        scale: pd.DataFrame(
+            {
+                "chrom": "chr1",
+                "coordinate": coordinates,
+                "valid": True,
+                "z": [-1.0, -3.0, 1.0, 4.0, 2.0, -3.0, -1.0],
+                "amplitude_percentile": settings.high_percentile,
+            }
+        )
+        for scale in settings.scales_bp
+    }
+    strong = {
+        "chrom": "chr1", "event_start": 16000, "event_end": 20000, "summit": 16000,
+        "event_type": "transition", "confidence_tier": "primary",
+        "support_scale_bands": "small,medium", "support_scales": "32000,120000",
+        "n_supporting_scales": 2, "max_amplitude_percentile": 0.96,
+        "max_transition_percentile": 0.99, "max_pulse_percentile": 0.95,
+    }
+    dropped = {
+        **strong,
+        "event_start": 8000,
+        "event_end": 12000,
+        "summit": 8000,
+        "support_scale_bands": "small",
+        "support_scales": "32000",
+        "n_supporting_scales": 1,
+        "max_transition_percentile": 0.90,
+    }
+    clusters = pd.DataFrame([strong, dropped])
+    consensus = caller.build_consensus_track(tracks, settings)
+    captured = {}
+    residual_extrema = caller.residual_extrema
+
+    def capture_residuals(consensus_track, occupied_coordinates, caller_settings):
+        captured["occupied_coordinates"] = occupied_coordinates
+        residuals = residual_extrema(
+            consensus_track, occupied_coordinates, caller_settings
+        )
+        captured["residuals"] = residuals
+        return residuals
+
+    monkeypatch.setattr(caller, "_event_rows_for_region", lambda *args: (clusters, [], tracks))
+    monkeypatch.setattr(caller, "residual_extrema", capture_residuals)
+    regions = pd.DataFrame([
+        {"region_id": 1, "chrom": "chr1", "region_start": 0, "region_end": 28000}
+    ])
+
+    primary, preliminary, _ = caller.output_rows(
+        regions, settings, None, None, None, None, "A__vs__B"
+    )
+
+    assert primary[["summit", "original_summit"]].values.tolist() == [[12000, 16000]]
+    assert preliminary.empty
+    assert {8000, 12000}.issubset(captured["occupied_coordinates"])
+    assert not (
+        captured["residuals"]["plateau_start"].le(12000)
+        & captured["residuals"]["plateau_end"].ge(12000)
+    ).any()

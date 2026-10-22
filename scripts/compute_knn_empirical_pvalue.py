@@ -12,6 +12,8 @@ Usage:
 """
 
 import argparse
+import os
+import tempfile
 import warnings
 from pathlib import Path
 
@@ -22,6 +24,56 @@ from joblib import Parallel, delayed
 from sklearn.neighbors import BallTree
 
 warnings.filterwarnings("ignore", category=FutureWarning)
+
+
+SCALE_COLUMNS = [
+    "resolution_bp",
+    "window_bins",
+    "window_size_bp",
+    "step_bins",
+    "step_size_bp",
+]
+WINDOW_COLUMNS = ["chrom", "window_id", "window_start", "window_end", "comparison"]
+
+
+def attach_scale_metadata(frame, resolution_bp, window_bins, step_bins):
+    values = (resolution_bp, window_bins, step_bins)
+    if any(type(value) is not int or value <= 0 for value in values):
+        raise ValueError("resolution_bp, window_bins, and step_bins must be positive integers")
+    result = frame.copy()
+    result["resolution_bp"] = resolution_bp
+    result["window_bins"] = window_bins
+    result["window_size_bp"] = resolution_bp * window_bins
+    result["step_bins"] = step_bins
+    result["step_size_bp"] = resolution_bp * step_bins
+    return result
+
+
+def empty_knn_output(query_df, score_cols):
+    result = query_df[[*SCALE_COLUMNS, *WINDOW_COLUMNS]].copy()
+    for column in ("knn_valid_k", "knn_dist_median", "knn_dist_max"):
+        result[column] = pd.Series(index=result.index, dtype=float)
+    for score in score_cols:
+        result[f"{score}_empirical_pvalue"] = pd.Series(
+            index=result.index, dtype=float
+        )
+        result[f"bg_{score}_median"] = pd.Series(index=result.index, dtype=float)
+    return result
+
+
+def atomic_tsv(frame, output):
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(
+        dir=output.parent, prefix=f".{output.name}.", suffix=".tmp"
+    )
+    os.close(descriptor)
+    try:
+        frame.to_csv(temporary, sep="\t", index=False)
+        os.replace(temporary, output)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
 
 
 def log(msg, log_file):
@@ -56,6 +108,19 @@ def robust_scaler_transform(data, med, iqr):
     if iqr == 0:
         return np.zeros_like(data, dtype=float)
     return (data - med) / iqr
+
+
+def _knn_query_chunk(chunk_features, bg_features, knn_k):
+    """Run BallTree.query on one chunk of query features.
+    
+    Each loky worker builds its own BallTree from bg_features, so we avoid
+    passing the large tree object across process boundaries as an argument.
+    Instead bg_features is captured via closure in the parent scope and each
+    worker gets its own copy when the subprocess is forked/spawned.
+    """
+    tree = BallTree(bg_features, metric="euclidean")
+    dists, indices = tree.query(chunk_features, k=knn_k)
+    return dists, indices
 
 
 def _one_window(i, all_indices, all_dists, bg_scores, query_scores, score_cols):
@@ -93,13 +158,13 @@ def compute_knn_pvalues(query_df, bg_df, knn_k, n_jobs, score_cols, log_file):
     log(f"[INFO] IB  median={ib_med:.6f}, IQR={ib_iqr:.6f}", log_file)
     log(f"[INFO] SP  median={sp_med:.6f}, IQR={sp_iqr:.6f}", log_file)
 
+    # Build background KNN features
     bg_knn_features = np.column_stack([
         robust_scaler_transform(bg_df["EC"].values, ec_med, ec_iqr),
         robust_scaler_transform(bg_df["IB"].values, ib_med, ib_iqr),
         robust_scaler_transform(bg_df["SP"].values, sp_med, sp_iqr),
     ])
-    tree = BallTree(bg_knn_features, metric="euclidean")
-    log(f"[INFO] BallTree built: n={len(bg_knn_features)}, metric=euclidean, k={knn_k}", log_file)
+    log(f"[INFO] BallTree feature matrix: n={len(bg_knn_features)}, k={knn_k}", log_file)
 
     # Pre-compute scaled query features
     query_ec = robust_scaler_transform(query_df["EC"].values, ec_med, ec_iqr)
@@ -107,10 +172,31 @@ def compute_knn_pvalues(query_df, bg_df, knn_k, n_jobs, score_cols, log_file):
     query_sp = robust_scaler_transform(query_df["SP"].values, sp_med, sp_iqr)
     query_features = np.column_stack([query_ec, query_ib, query_sp])
 
-    # Batch KNN query (single call, not parallelised)
+    # Parallel KNN query: chunk windows and dispatch to loky workers
     n_windows = len(query_df)
-    log(f"[INFO] Running {n_windows} KNN queries with k={knn_k}...", log_file)
-    all_dists, all_indices = tree.query(query_features, k=knn_k)
+    chunk_size = max(1, n_windows // n_jobs)
+    n_chunks = max(1, (n_windows + chunk_size - 1) // chunk_size)
+
+    log(
+        f"[INFO] Parallel KNN query: {n_windows} windows in {n_chunks} chunks "
+        f"(~{chunk_size}/chunk) with {n_jobs} loky workers...",
+        log_file,
+    )
+
+    # Build chunks of query feature arrays (views are fine, loky copies on fork)
+    chunk_results = Parallel(n_jobs=n_jobs, backend="loky", max_nbytes="1G")(
+        delayed(_knn_query_chunk)(
+            query_features[i : i + chunk_size],
+            bg_knn_features,
+            knn_k,
+        )
+        for i in range(0, n_windows, chunk_size)
+    )
+
+    # Concatenate per-chunk results
+    all_dists = np.vstack([r[0] for r in chunk_results])
+    all_indices = np.vstack([r[1] for r in chunk_results])
+    log(f"[INFO] KNN query done. result shape: dists={all_dists.shape}, indices={all_indices.shape}", log_file)
 
     # Prepare shared numpy arrays for thread workers
     bg_scores = {col: bg_df[col].values for col in score_cols}
@@ -135,62 +221,56 @@ def main():
     parser.add_argument("--background", required=True, help="Background TSV file")
     parser.add_argument("--out", required=True, help="Output TSV file")
     parser.add_argument("--log", required=True, help="Log file path")
+    parser.add_argument("--config", required=True, help="Workflow YAML configuration")
+    parser.add_argument("--resolution-bp", required=True, type=int)
+    parser.add_argument("--window-bins", required=True, type=int)
+    parser.add_argument("--step-bins", required=True, type=int)
     args = parser.parse_args()
 
     Path(args.log).parent.mkdir(parents=True, exist_ok=True)
-
-    with open("config/config.yaml") as f:
-        knn_cfg = yaml.safe_load(f)["knn_empirical_pvalue"]
+    with open(args.config) as handle:
+        knn_cfg = yaml.safe_load(handle)["knn_empirical_pvalue"]
 
     knn_k = knn_cfg["knn_k"]
     score_cols = knn_cfg["score_columns"]
     n_jobs = knn_cfg.get("n_jobs", 80)
 
-    log(f"[INFO] === KNN Empirical P-Value ===", args.log)
-    log(f"[INFO] Comparison: {args.comparison}", args.log)
-    log(f"[INFO] Input: {args.input}", args.log)
-    log(f"[INFO] Background: {args.background}", args.log)
-    log(f"[INFO] KNN k: {knn_k}", args.log)
-    log(f"[INFO] Scaler: {knn_cfg['scaler']}", args.log)
-    log(f"[INFO] Score columns: {score_cols}", args.log)
-    log(f"[INFO] n_jobs: {n_jobs} (threading backend)", args.log)
-
     query_df = pd.read_csv(args.input, sep="\t")
-    log(f"[INFO] Loaded input: {len(query_df)} rows", args.log)
-
-    derive_configs = knn_cfg.get("derive_scores", {})
-    query_df = derive_scores(query_df, derive_configs)
-    log(f"[INFO] Derived scores: d_SSIM, d_Spearman, tw_score, d_NCC", args.log)
+    query_df = derive_scores(query_df, knn_cfg.get("derive_scores", {}))
+    query_df = attach_scale_metadata(
+        query_df, args.resolution_bp, args.window_bins, args.step_bins
+    )
+    if query_df.empty:
+        atomic_tsv(empty_knn_output(query_df, score_cols), args.out)
+        log("[INFO] Input contains zero windows; wrote a valid empty output", args.log)
+        return
 
     bg_df = pd.read_csv(args.background, sep="\t")
-    log(f"[INFO] Loaded background: {len(bg_df)} rows", args.log)
     bg_cols = ["EC", "IB", "SP", "MSE", "SSIM", "Spearman", "tw_pvalue", "NCC"]
-    for col in bg_cols:
-        if col not in bg_df.columns:
-            raise ValueError(f"Background missing column: {col}")
-    bg_df = bg_df[bg_cols].copy()
-    for col, formula in derive_configs.items():
-        if "max(tw_pvalue" in formula:
-            bg_df[col] = -np.log10(np.maximum(bg_df["tw_pvalue"], 1e-30))
-        elif "1 - " in formula:
-            src = formula.split("1 - ")[1]
-            bg_df[col] = 1.0 - bg_df[src]
+    missing = sorted(set(bg_cols).difference(bg_df.columns))
+    if missing:
+        raise ValueError(f"Background missing columns: {', '.join(missing)}")
+    bg_df = derive_scores(
+        bg_df[bg_cols].copy(), knn_cfg.get("derive_scores", {})
+    )
     bg_df = bg_df.replace([np.inf, -np.inf], np.nan).dropna()
-    log(f"[INFO] Background after cleaning: {len(bg_df)} rows", args.log)
+    if len(bg_df) < knn_k:
+        raise ValueError(
+            f"Background has {len(bg_df)} valid rows, smaller than knn_k {knn_k}"
+        )
 
     knn_results = compute_knn_pvalues(
         query_df, bg_df, knn_k, n_jobs=n_jobs, score_cols=score_cols, log_file=args.log
     )
-
-    key_cols = ["chrom", "window_id", "window_start", "window_end", "comparison"]
-    out_df = query_df[key_cols].copy()
-    out_df = pd.concat([out_df.reset_index(drop=True), knn_results], axis=1)
-
-    log(f"[INFO] Final output: {len(out_df)} rows, {len(out_df.columns)} columns", args.log)
-
-    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    out_df.to_csv(args.out, sep="\t", index=False)
-    log(f"[INFO] Saved to {args.out}", args.log)
+    out_df = pd.concat(
+        [
+            query_df[[*SCALE_COLUMNS, *WINDOW_COLUMNS]].reset_index(drop=True),
+            knn_results.reset_index(drop=True),
+        ],
+        axis=1,
+    )
+    atomic_tsv(out_df, args.out)
+    log(f"[INFO] Saved {len(out_df)} rows to {args.out}", args.log)
 
 
 if __name__ == "__main__":

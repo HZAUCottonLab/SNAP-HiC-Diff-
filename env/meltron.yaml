@@ -1,0 +1,15 @@
+# Meltron R Conda Environment Specification
+name: meltron
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python>=3.10
+  - numpy
+  - pandas
+  - r-base>=4.2
+  - r-tidyverse>=1.3
+  - r-descTools>=0.99
+  - r-data.table>=1.14
+  - r-argparser

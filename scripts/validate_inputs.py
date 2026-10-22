@@ -34,8 +34,16 @@ def run_hictk_validate(mcool_path):
         return False, str(e)
 
 
+def get_uri(cool_path, resolution):
+    """Build hictk URI. For .cool files use direct path (no resolution suffix).
+    For .mcool files append ::/resolutions/{resolution}."""
+    if cool_path.endswith(".cool"):
+        return cool_path
+    return f"{cool_path}::/resolutions/{resolution}"
+
+
 def run_hictk_dump_chroms(mcool_path, resolution):
-    uri = f"{mcool_path}::/resolutions/{resolution}"
+    uri = get_uri(mcool_path, resolution)
     cmd = ["hictk", "dump", uri, "--table", "chroms"]
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
@@ -47,8 +55,9 @@ def run_hictk_dump_chroms(mcool_path, resolution):
                 if len(parts) >= 2:
                     chroms.append(parts[0])
             return True, chroms
-        return False, []
-    except Exception:
+        # Failed: return actual output for diagnostics
+        return False, result.stdout.strip().split("\n") if result.stdout else []
+    except Exception as e:
         return False, []
 
 
@@ -114,7 +123,7 @@ def main():
 
         has_chroms, chroms = run_hictk_dump_chroms(cool_uri, target_res)
         if not has_chroms:
-            log(f"  ERROR: Could not extract chromosomes", sys.stdout)
+            log(f"  ERROR: Could not extract chromosomes — actual: {chroms[:20]}", sys.stdout)
             continue
 
         log(f"  Chromosomes ({len(chroms)}): {chroms[:5]}...", sys.stdout)

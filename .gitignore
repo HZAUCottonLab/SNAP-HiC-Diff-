@@ -3,3 +3,19 @@
 
 # Pipeline outputs
 results/
+result_old/
+result_pyb/
+logs/
+
+# Isolated development worktrees
+.worktrees/
+
+# Subagent development scratch state
+.superpowers/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Large intermediate matrices
+tmp/cworld_matrix/

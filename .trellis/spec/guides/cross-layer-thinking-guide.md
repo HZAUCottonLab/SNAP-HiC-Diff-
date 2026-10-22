@@ -375,3 +375,70 @@ pandas.merge() ← BREAKS at three points
 - **P1**: Extract shared merge logic to `scripts/utils/df_transforms.py`.
 - **P1**: Add integration tests that call `main()` end-to-end for all pipeline scripts.
 - **P2**: Add warning filter in tests for known acceptable RuntimeWarnings (e.g., `np.log(0)`).
+
+---
+
+## Case Study: Chromosome Naming Mismatch — Working Tree vs Git HEAD (Jun 2026)
+
+### Symptom
+
+36 个 `extract_and_balance_sample` 样本全部失败，同一错误：
+
+```
+[ERROR] Chromosome Ghir_A01 not found in /path/to/L282.mcool::/resolutions/4000
+exit 1
+```
+
+### Root Cause
+
+**Working tree 变更对 dsub 不可见。**
+
+`config/chroms.yaml` committed 版本使用 `Ghir_*`，working tree 改为 `HC04_*`（mcool 实际染色体名），但未 commit。
+
+```
+Working tree:  chroms.yaml = HC04_A01   (← mcool 实际命名)
+Git HEAD:      chroms.yaml = Ghir_A01   (← dsub 从此构建)
+dsub job:      读取 Git HEAD → for CHR in Ghir_A01...
+                  → awk '$1 == Ghir_A01' → no match → exit 1
+```
+
+`rules/extract_chrom.smk` shell block 用 `for CHR in {params.chroms}`，本身正确（参数化），但参数值来自 committed `chroms.yaml`。
+
+### Four Execution Layers (Re-enforced)
+
+```
+Local shell (git commit)
+    → Snakemake DAG (reads committed config)
+    → dsub job (remote node, committed files only)
+    → hictk / awk (reads actual mcool chromosome names)
+```
+
+**Layer 3→4 contract**: `hictk dump --table chroms` 输出的染色体名必须和 shell `for CHR in ...` 的值完全一致。
+
+### Why the Bug Persisted
+
+1. **Working tree 变更对 dsub 不可见**：dsub 从 git HEAD 构建环境，未 commit 变更完全忽略
+2. **染色体命名约定未文档化**：pipeline 没有记录每批数据的染色体命名来源
+3. **两次修改未原子 commit**：commit `c83f43b` 同时改了 `chroms.yaml` 和 `extract_chrom.smk`，但都基于旧命名体系
+4. **无染色体名预验证**：Snakemake DAG 构建阶段不检查 `hictk dump` 能否匹配染色体名
+
+### Prevention
+
+| Priority | Action |
+|----------|--------|
+| P0 | 提交 dsub job 前：运行 `git status` 确认 working tree 无相关变更 |
+| P0 | 同一 commit 中修改 config 和对应 rule，确保两者同步 |
+| P0 | 提交后立即验证：取第一个样本，验证 `hictk dump --table chroms` 的输出列名是否在 `chroms.yaml` 中 |
+| P1 | 在 manifest TSV 中增加染色体命名列（`chrom_naming: HC04`）供 pipeline 自动推断 |
+| P1 | 建立数据源清单，记录每批 rawdata 的染色体命名约定 |
+| P2 | Snakemake rule 在 shell block 开头加染色体名预检查 |
+
+**Pre-submission checklist for config changes:**
+
+```
+Before `dsub -s run_snakemake.sh`:
+- [ ] git status → no uncommitted changes in config/ or rules/
+- [ ] Verify config values match actual data:
+      hictk dump {input} --table chroms | head -1  → must match chroms.yaml[0]
+- [ ] snakemake -n on cluster (not local dry-run)
+```

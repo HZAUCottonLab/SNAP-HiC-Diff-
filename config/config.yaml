@@ -12,11 +12,19 @@ outdir: "results"
 tmpdir: "tmp"
 
 # ============================================================================
+# Convert .cool to .mcool (hictk zoomify)
+# ============================================================================
+convert:
+  resolutions: [4000, 8000, 10000, 20000, 100000]
+  threads: 20
+
+# ============================================================================
 # Analysis Parameters
 # ============================================================================
 resolution: 4000           # 4kb bins (finest available in mcool)
-window_size: 300000       # 300kb windows
-step_size: 32000          # 32kb step (sliding window)
+window_analysis:
+  window_bins: [25, 50, 75, 100, 125]
+  step_fraction: 0.2
 
 # ============================================================================
 # Samples (loaded dynamically from manifest.tsv - do not hardcode here)
@@ -59,6 +67,7 @@ smoothing:
 parallel:
   threads_per_job: 80          # Threads per compute job (passed to joblib)
 
+
 # ============================================================================
 # Tracy-Widom Parameters
 # ============================================================================
@@ -70,7 +79,12 @@ tracy_widom:
 # KNN Empirical P-Value Parameters
 # ============================================================================
 knn_empirical_pvalue:
-  background_file: "/share/home/xhhuang24/project/PanTE/background_pool/results/window_compare/HiC_window_background.tsv"
+  background_presets:
+    - {resolution_bp: 4000, window_bins: 25, step_bins: 5, file: "/share/home/xhhuang24/project/PanTE/background_pool/results/multiscale_4k/window_scales/100kb/window_compare/HiC_window_background.tsv"}
+    - {resolution_bp: 4000, window_bins: 50, step_bins: 10, file: "/share/home/xhhuang24/project/PanTE/background_pool/results/multiscale_4k/window_scales/200kb/window_compare/HiC_window_background.tsv"}
+    - {resolution_bp: 4000, window_bins: 75, step_bins: 15, file: "/share/home/xhhuang24/project/PanTE/background_pool/results/multiscale_4k/window_scales/300kb/window_compare/HiC_window_background.tsv"}
+    - {resolution_bp: 4000, window_bins: 100, step_bins: 20, file: "/share/home/xhhuang24/project/PanTE/background_pool/results/multiscale_4k/window_scales/400kb/window_compare/HiC_window_background.tsv"}
+    - {resolution_bp: 4000, window_bins: 125, step_bins: 25, file: "/share/home/xhhuang24/project/PanTE/background_pool/results/multiscale_4k/window_scales/500kb/window_compare/HiC_window_background.tsv"}
   knn_k: 10000
   knn_metric: "euclidean"
   scaler: "robust"
@@ -124,6 +138,118 @@ window_compare:
     n_jobs: 80                       # Parallel jobs for Gaussian comparison
   tw:
     n_jobs: 80                       # Parallel jobs for Tracy-Widom test
+
+# ============================================================================
+# Meltron Parameters
+# ============================================================================
+meltron:
+  cores: 20
+  cworld_is:
+    source_resolution_bp: 4000  # integer >= 1000; must match the balanced .cool bin size
+    is_distances_bp: [32000, 60000, 92000, 120000, 152000,
+                      180000, 212000, 240000, 272000, 300000]
+    ids_divisor: 2
+    chrom_job_threads: 2
+    merge_job_threads: 2
+  # Meltron run parameters
+  comparison_directions: [decondensation, condensation]  # run both per comparison
+  cutoff_na: 0.5          # acceptable fraction of missing IS values per interval
+  # Scoring
+  score_threshold: 5.0    # advisory threshold for melting_score (-log10(Bonferroni pval))
+                          # NOTE: not genome-wide significance; calibrate empirically with null windows
+  # Candidate selection (per Phase 03 FDR output)
+  min_significant: 1      # min metrics with FDR < 0.05 to enter Meltron (1 = any strong signal)
+
+# ============================================================================
+# IS-change Parameters
+# ============================================================================
+is_change:
+  raw_knn_pvalue_threshold: 0.05
+  meltron_score_threshold: 5.0
+  merge_gap_bp: 0
+  context_bp: 300000
+  local_radius_bins: 1
+  min_local_valid_fraction: 0.6666666666666666
+  flank_fraction_of_scale: 0.25
+  min_flank_bins: 2
+  min_flank_valid_fraction: 0.80
+  max_missing_run_bins: 1
+  high_percentile: 0.95
+  broad_percentile: 0.90
+  spatial_cluster_tolerance_bp: 12000
+  min_primary_scale_bands: 2
+  scale_bands:
+    small: [32000, 60000, 92000]
+    medium: [120000, 152000, 180000]
+    large: [212000, 240000, 272000, 300000]
+  diagnostic_plot_top_n: 50
+
+# ============================================================================
+# IS boundary annotation Parameters
+# ============================================================================
+is_boundary_annotation:
+  enabled: true
+  association_padding_bp: 0
+  raw_balanced_overlap_only: true
+  base_bin_bp: 4000
+  jitter_quantile: 0.95
+  jitter_min_pairs: 100
+  jitter_fallback_bp: 20000
+  max_shift_bp: 100000
+  shift_sensitivity_bp: [60000, 80000, 100000]
+  match_tie_tolerance_bp: 4000
+  point:
+    # Maximum distance between a lost and a gained locus for the pair to be
+    # reported as one boundary that moved. Overridden by the empirical jitter
+    # threshold from matching_qc when that file is supplied.
+    shift_tolerance_bp: 12000
+  strength:
+    local_radius_scale_factor: 1.0
+    min_reference_boundaries: 50
+    min_valid_scales_per_band: 2
+    robust_z_threshold: 2.0
+    stable_abs_z_threshold: 1.0
+    sensitivity_thresholds: [1.5, 2.0, 2.5]
+  permutation:
+    enabled: false
+    n_permutations: 10000
+    seed: 20260903
+
+# ============================================================================
+# TAD Parameters
+# ============================================================================
+tad:
+  resolutions: [4000, 8000, 20000]
+  signals: [raw, balanced]
+  threads: 20
+  parameter_set: D
+  run_root: results/tad_runs
+  code_dir: scripts/python3_3dnetmod
+  badregionfilter: false
+  bad_region_bed: null
+  excluded_chromosomes: []
+  d:
+    region_size_bins: 150
+    overlap_bins: 100
+    logged: true
+    scale: genomewide
+    plateau: 3
+    chaosfilter: true
+    chaos_pct: 0.9
+    max_gamma: 3.2
+    num_part: 20
+    plots: false
+    pctile_threshold: 0
+    pct_value: 0
+    final_consistent_domains: true
+    size_threshold_bins: 4
+    boundary_buffer_bins: 8
+    size_bins: [100, 200, 400, 750, 3000]
+    variance_thresholds: [45, 45, 60, 45, 45]
+    resolution_overrides:
+      4000:
+        size_threshold_bins: 10
+        variance_thresholds: [20, 20, 30, 20, 20]
 
 # ============================================================================
 # Dsub Parameters

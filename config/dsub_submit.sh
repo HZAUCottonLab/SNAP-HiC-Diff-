@@ -26,6 +26,9 @@ _wrapper="${_wrapper_dir}/.dsub_wrapper_$$.sh"
 
 # Build wrapper: exports + original script + self-deletion
 {
+    printf '#!/usr/bin/env bash\n'
+    printf 'set -euo pipefail\n'
+    printf 'export CONDA_OFFLINE=true\n'
     cat "$_jobscript"
     printf 'rm -f "%s"\n' "$_wrapper"
 } > "$_wrapper"
@@ -42,7 +45,7 @@ msg=$(dsub \
     --cwd "${PROJECT_ROOT}" \
     -n "${_rulename}" \
     -aa \
-    -q arm \
+    -q "${DSUB_QUEUE:-arm}" \
     -R "cpu=${_threads}" \
     -o "logs/cluster/${_rulename}_%J.out" \
     -e "logs/cluster/${_rulename}_%J.err" \
