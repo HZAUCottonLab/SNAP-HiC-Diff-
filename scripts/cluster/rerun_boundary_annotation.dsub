@@ -1,0 +1,111 @@
+#!/bin/bash
+#DSUB -n SNAPHiCDiff_boundary_rerun
+#DSUB -R 'cpu=2'
+#DSUB -q arm
+#DSUB -aa
+#DSUB -o logs/cluster/boundary_rerun_%J.out
+
+# Re-run the boundary annotation stages for one comparison and archive whatever
+# they overwrite. Nothing here names a specific sample: the comparison string
+# carries both sample ids, and every path follows from it.
+#
+# Usage:
+#   dsub -s scripts/cluster/rerun_boundary_annotation.dsub -a "<comparison>"
+#   COMPARISON=H1398_vs_L134 bash scripts/cluster/rerun_boundary_annotation.dsub
+#
+# When no comparison is given, the first pair in data/window_compare_pairs.yaml
+# is used, which is what an interactive run wants.
+
+set -euo pipefail
+
+WORKDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SHARED_CONDA_PREFIX="${CONDA_PREFIX_DIR:-${WORKDIR}/.snakemake/conda}"
+CONFIG="${CONFIG:-config/config.yaml}"
+PAIRS="${PAIRS_FILE:-data/window_compare_pairs.yaml}"
+
+cd "${WORKDIR}"
+
+COMPARISON="${1:-${COMPARISON:-}}"
+if [[ -z "${COMPARISON}" ]]; then
+    COMPARISON="$(
+        python3 - "${PAIRS}" <<'PY'
+import sys, yaml
+pairs = yaml.safe_load(open(sys.argv[1])).get("comparisons") or []
+if not pairs:
+    raise SystemExit("no comparisons declared in the pairs file")
+print(pairs[0]["name"])
+PY
+    )"
+fi
+if [[ "${COMPARISON}" != *_vs_* ]]; then
+    echo "ERROR: comparison '${COMPARISON}' must look like <sampleA>_vs_<sampleB>" >&2
+    exit 1
+fi
+
+SAMPLE_A="${COMPARISON%%_vs_*}"
+SAMPLE_B="${COMPARISON##*_vs_}"
+LOCUS_ROOT="${OUTDIR:-results}/multiscale/r4000/${COMPARISON}/is_change"
+EVENT_ROOT="${OUTDIR:-results}/tad_boundary_events"
+BOUNDARY_ROOT="${OUTDIR:-results}/tad_boundaries"
+
+printf 'Comparison: %s  (A=%s  B=%s)\n' "${COMPARISON}" "${SAMPLE_A}" "${SAMPLE_B}"
+
+mkdir -p "${OUTDIR:-results}/audits" logs/cluster
+AUDIT_DIR="$(mktemp -d "${OUTDIR:-results}/audits/${COMPARISON}_boundary_rerun_$(date +%Y%m%d).XXXXXX")"
+printf 'Audit directory: %s/%s\n' "${WORKDIR}" "${AUDIT_DIR}"
+
+# Archive every file this run can overwrite, so the delta stays auditable.
+ARCHIVE=()
+for sample in "${SAMPLE_A}" "${SAMPLE_B}"; do
+    for suffix in multires.unified.boundaries.tsv annotation_views.tsv \
+                  boundary_jitter_offsets.tsv tad_unevaluable.tsv; do
+        path="${BOUNDARY_ROOT}/${sample}.${suffix}"
+        [[ -e "${path}" ]] && ARCHIVE+=("${path}")
+    done
+done
+for suffix in boundary_events.tsv boundary_event_stability.tsv matching_qc.tsv \
+              boundary_strength_by_scale.tsv boundary_strength_summary.tsv \
+              annotation_qc.tsv annotation_summary.tsv boundary_point_map.tsv; do
+    path="${EVENT_ROOT}/${COMPARISON}.${suffix}"
+    [[ -e "${path}" ]] && ARCHIVE+=("${path}")
+done
+for tier in "" "_preliminary"; do
+    path="${LOCUS_ROOT}/${COMPARISON}_is_change_loci${tier}.boundary_annotated.tsv"
+    [[ -e "${path}" ]] && ARCHIVE+=("${path}")
+done
+if (( ${#ARCHIVE[@]} )); then
+    tar -czf "${AUDIT_DIR}/previous_results.tar.gz" "${ARCHIVE[@]}"
+fi
+cp -p "${CONFIG}" "${AUDIT_DIR}/config.yaml"
+sha256sum scripts/is_boundary_point_state.py scripts/is_boundary_annotation.py \
+    scripts/annotate_is_change_boundaries.py scripts/is_boundary_unification.py \
+    > "${AUDIT_DIR}/code.sha256"
+
+export CONDA_OFFLINE=true
+export CONDA_ENVS_PATH="${SHARED_CONDA_PREFIX}"
+CONDA_PREFIX_DIR="${SHARED_CONDA_PREFIX}" bash scripts/conda_envs.sh verify
+
+snakemake \
+    --executor cluster-generic \
+    --use-conda \
+    --conda-prefix "${SHARED_CONDA_PREFIX}" \
+    -j 4 \
+    --configfile "${CONFIG}" \
+    --rerun-incomplete \
+    --rerun-triggers mtime \
+    --latency-wait 180 \
+    --cluster-generic-submit-cmd "bash config/dsub_submit.sh {threads} {rulename}" \
+    --cluster-generic-status-cmd "bash config/dsub_status.sh" \
+    --cluster-generic-cancel-cmd dkill \
+    --cluster-generic-cancel-nargs 1 \
+    --allowed-rules unify_tad_boundaries call_tad_boundary_events annotate_is_change_boundaries \
+    --forcerun unify_tad_boundaries call_tad_boundary_events annotate_is_change_boundaries \
+    -- \
+    "${LOCUS_ROOT}/${COMPARISON}_is_change_loci.boundary_annotated.tsv" \
+    "${EVENT_ROOT}/${COMPARISON}.boundary_point_map.tsv"
+
+for suffix in matching_qc.tsv annotation_qc.tsv annotation_summary.tsv; do
+    path="${EVENT_ROOT}/${COMPARISON}.${suffix}"
+    [[ -e "${path}" ]] && cp -p "${path}" "${AUDIT_DIR}/"
+done
+printf 'Boundary rerun completed for %s. Audit: %s/%s\n' "${COMPARISON}" "${WORKDIR}" "${AUDIT_DIR}"

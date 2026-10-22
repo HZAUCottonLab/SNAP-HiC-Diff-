@@ -360,6 +360,10 @@ IS_BOUNDARY_ALL_OUTPUTS = (
         comparison=get_window_compare_pairs(),
     )
     + expand(
+        OUTDIR + "/tad_boundary_events/{comparison}.boundary_point_map.tsv",
+        comparison=get_window_compare_pairs(),
+    )
+    + expand(
         MULTISCALE_ROOT + "/{comparison}/is_change/{comparison}_is_change_loci.boundary_annotated.tsv",
         comparison=get_window_compare_pairs(),
     )
